@@ -1,0 +1,10 @@
+{
+  "name": "Re: Remix: GoodSale",
+  "description": "A premium African C2C marketplace featuring identity verification, secure escrow payments, and a sophisticated, trust-driven user experience.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
