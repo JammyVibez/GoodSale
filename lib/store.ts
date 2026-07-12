@@ -226,6 +226,13 @@ export interface Message {
     image: string;
     condition: string;
   };
+  offerDetails?: {
+    amount: number;
+    productId: number;
+    status: 'PENDING' | 'ACCEPTED' | 'COUNTERED' | 'DECLINED';
+    counterAmount?: number;
+    proposedBy: number;
+  };
   createdAt: string;
 }
 
@@ -294,7 +301,7 @@ export interface Notification {
   userId: number;
   title: string;
   message: string;
-  type: 'ORDER' | 'BID' | 'DISPUTE' | 'POINTS' | 'CHAT' | 'VERIFICATION';
+  type: 'ORDER' | 'BID' | 'DISPUTE' | 'POINTS' | 'CHAT' | 'VERIFICATION' | 'SAFEMEET' | 'ESCROW';
   isRead: boolean;
   createdAt: string;
 }
@@ -349,149 +356,14 @@ export interface ProductBundle {
 }
 
 // Initial Mock Datasets representing the Nigerian Local Context
-const INITIAL_USERS: User[] = [
-  {
-    id: 1,
-    fullName: 'Hamza Ibrahim',
-    username: 'hamzadev',
-    email: 'hamza@goodsale.ng',
-    phoneNumber: '+2348123456789',
-    role: UserRole.BUYER,
-    referralCode: 'GS-HAMZA-99',
-    trustScore: 98,
-    sellerLevel: 'BRONZE',
-    goodPoints: 350,
-  },
-  {
-    id: 2,
-    fullName: 'Fatima Abubakar',
-    username: 'fatima_couture',
-    email: 'fatima@couture.ng',
-    phoneNumber: '+2348098765432',
-    role: UserRole.VERIFIED_SELLER,
-    referralCode: 'GS-FATIMA-12',
-    trustScore: 99,
-    sellerLevel: 'GOLD',
-    goodPoints: 2450,
-  },
-  {
-    id: 3,
-    fullName: 'Chidi Okonkwo',
-    username: 'alaba_electronics',
-    email: 'chidi@alabaelectronics.com',
-    phoneNumber: '+2347012345678',
-    role: UserRole.VERIFIED_BUSINESS,
-    referralCode: 'GS-CHIDI-ALABA',
-    trustScore: 95,
-    sellerLevel: 'PLATINUM',
-    goodPoints: 4800,
-  },
-  {
-    id: 4,
-    fullName: 'Sandra Edet',
-    username: 'sandra_beauty',
-    email: 'sandra@beautyhub.ng',
-    phoneNumber: '+2349011223344',
-    role: UserRole.BUSINESS,
-    referralCode: 'GS-SANDRA-77',
-    trustScore: 88,
-    sellerLevel: 'SILVER',
-    goodPoints: 120,
-  },
-  {
-    id: 99,
-    fullName: 'GoodSale Admin',
-    username: 'goodsale_moderator',
-    email: 'admin@goodsale.ng',
-    phoneNumber: '+2341000000',
-    role: UserRole.ADMIN,
-    referralCode: 'GS-ADMIN-X',
-    trustScore: 100,
-    sellerLevel: 'DIAMOND',
-    goodPoints: 99999,
-  },
-];
+const INITIAL_USERS: User[] = [];
 
-const INITIAL_PROFILES: Profile[] = [
-  {
-    userId: 1,
-    photoUrl: 'https://picsum.photos/seed/hamza/200',
-    coverUrl: 'https://picsum.photos/seed/hamzacover/800/300',
-    bio: 'Software Craftsman based in Gbagada, Lagos. Always looking for reliable gadgets and fair deals.',
-    address: 'Block B2, Phase 1, Gbagada Estate',
-    city: 'Gbagada',
-    state: 'Lagos',
-    deliveryPreference: 'GOODSALE_PARTNER',
-    pushEnabled: true,
-    emailEnabled: true,
-    smsEnabled: true,
-  },
-  {
-    userId: 2,
-    photoUrl: 'https://picsum.photos/seed/fatima/200',
-    coverUrl: 'https://picsum.photos/seed/fatimacover/800/300',
-    bio: 'Aesthetic bespoke fashion designs for ladies. Shipping nationwide from Abuja.',
-    address: 'Suite 410, Grand Square Mall, Central Business District',
-    city: 'Abuja CBD',
-    state: 'FCT Abuja',
-    deliveryPreference: 'THIRD_PARTY_COURIER',
-    pushEnabled: true,
-    emailEnabled: true,
-    smsEnabled: false,
-  },
-  {
-    userId: 3,
-    photoUrl: 'https://picsum.photos/seed/chidi/200',
-    coverUrl: 'https://picsum.photos/seed/chidicover/800/300',
-    bio: 'Authorized importer and retail outlet for brand new and premium grade-A UK-used Laptops and iPhones. 1 Year Escrow-backed warranty!',
-    address: 'Line E, Shop 23-25, Alaba International Market',
-    city: 'Ojo',
-    state: 'Lagos',
-    deliveryPreference: 'GOODSALE_PARTNER',
-    pushEnabled: true,
-    emailEnabled: true,
-    smsEnabled: true,
-  },
-];
+const INITIAL_PROFILES: Profile[] = [];
 
-const INITIAL_BUSINESSES: Business[] = [
-  {
-    id: 1,
-    ownerId: 3,
-    name: 'Alaba Tech & Electronics Hub',
-    logoUrl: 'https://picsum.photos/seed/alaba_logo/150',
-    bannerUrl: 'https://picsum.photos/seed/alaba_banner/1000/400',
-    description: 'We are Nigeria’s leading trusted warehouse outlet in Alaba International Market. We import certified Grade-A UK-used devices, offer physical testing, escrow delivery protection, and official invoice records.',
-    openingHours: '08:00 AM - 06:00 PM (Mon - Sat)',
-    address: 'Line E, Shop 23-25, Alaba International Market',
-    city: 'Ojo',
-    state: 'Lagos',
-    isVerified: true,
-    trustScore: 96,
-    followers: 1240,
-    rating: 4.8,
-    reviewsCount: 84,
-  },
-  {
-    id: 2,
-    ownerId: 2,
-    name: 'Fatima Bespoke Couture',
-    logoUrl: 'https://picsum.photos/seed/fatima_logo/150',
-    bannerUrl: 'https://picsum.photos/seed/fatima_banner/1000/400',
-    description: 'Premium Nigerian handcrafted garments, bridal wear, and traditional caps. Crafted with rich Aso Oke, Ankara, and Senegalese materials.',
-    openingHours: '09:00 AM - 05:00 PM (Mon - Fri)',
-    address: 'Suite 410, Grand Square Mall, CBD',
-    city: 'Abuja CBD',
-    state: 'FCT Abuja',
-    isVerified: true,
-    trustScore: 99,
-    followers: 820,
-    rating: 4.9,
-    reviewsCount: 43,
-  },
-];
+const INITIAL_BUSINESSES: Business[] = [];
 
-const INITIAL_PRODUCTS: Product[] = [
+const INITIAL_PRODUCTS: Product[] = [];
+const OLD_INITIAL_PRODUCTS: any[] = [
   {
     id: 101,
     sellerId: 3,
@@ -633,7 +505,8 @@ const INITIAL_PRODUCTS: Product[] = [
   }
 ];
 
-const INITIAL_AUCTIONS: Auction[] = [
+const INITIAL_AUCTIONS: Auction[] = [];
+const OLD_INITIAL_AUCTIONS: any[] = [
   {
     id: 1,
     productId: 102, // MacBook
@@ -654,7 +527,8 @@ const INITIAL_AUCTIONS: Auction[] = [
   },
 ];
 
-const INITIAL_BIDS: Bid[] = [
+const INITIAL_BIDS: Bid[] = [];
+const OLD_INITIAL_BIDS: any[] = [
   {
     id: 1,
     auctionId: 1, // Macbook
@@ -675,7 +549,8 @@ const INITIAL_BIDS: Bid[] = [
   },
 ];
 
-const INITIAL_CHATS: ChatRoom[] = [
+const INITIAL_CHATS: ChatRoom[] = [];
+const OLD_INITIAL_CHATS: any[] = [
   {
     id: 1,
     buyerId: 1,
@@ -691,7 +566,8 @@ const INITIAL_CHATS: ChatRoom[] = [
   },
 ];
 
-const INITIAL_MESSAGES: Message[] = [
+const INITIAL_MESSAGES: Message[] = [];
+const OLD_INITIAL_MESSAGES: any[] = [
   {
     id: 1,
     roomId: 1,
@@ -708,7 +584,8 @@ const INITIAL_MESSAGES: Message[] = [
   },
 ];
 
-const INITIAL_REVIEWS: Review[] = [
+const INITIAL_REVIEWS: Review[] = [];
+const OLD_INITIAL_REVIEWS: any[] = [
   {
     id: 1,
     orderId: 9001,
@@ -735,7 +612,8 @@ const INITIAL_REVIEWS: Review[] = [
   },
 ];
 
-const INITIAL_VERIFICATIONS: IdentityVerification[] = [
+const INITIAL_VERIFICATIONS: IdentityVerification[] = [];
+const OLD_INITIAL_VERIFICATIONS: any[] = [
   {
     id: 1,
     userId: 2,
@@ -763,7 +641,8 @@ const INITIAL_VERIFICATIONS: IdentityVerification[] = [
   },
 ];
 
-const INITIAL_ORDERS: Order[] = [
+const INITIAL_ORDERS: Order[] = [];
+const OLD_INITIAL_ORDERS: any[] = [
   {
     id: 2001,
     orderNumber: 'GS-2026-000001',
@@ -814,7 +693,8 @@ const INITIAL_ORDERS: Order[] = [
   },
 ];
 
-const INITIAL_ESCROWS: Escrow[] = [
+const INITIAL_ESCROWS: Escrow[] = [];
+const OLD_INITIAL_ESCROWS: any[] = [
   {
     id: 1,
     orderId: 2001,
@@ -831,7 +711,8 @@ const INITIAL_ESCROWS: Escrow[] = [
   },
 ];
 
-const INITIAL_DISPUTES: Dispute[] = [
+const INITIAL_DISPUTES: Dispute[] = [];
+const OLD_INITIAL_DISPUTES: any[] = [
   {
     id: 1,
     orderId: 2002,
@@ -845,7 +726,8 @@ const INITIAL_DISPUTES: Dispute[] = [
   },
 ];
 
-const INITIAL_NOTIFICATIONS: Notification[] = [
+const INITIAL_NOTIFICATIONS: Notification[] = [];
+const OLD_INITIAL_NOTIFICATIONS: any[] = [
   {
     id: 1,
     userId: 1,
@@ -875,13 +757,15 @@ const INITIAL_NOTIFICATIONS: Notification[] = [
   },
 ];
 
-const INITIAL_GOODPOINTS: GoodPointsTransaction[] = [
+const INITIAL_GOODPOINTS: GoodPointsTransaction[] = [];
+const OLD_INITIAL_GOODPOINTS: any[] = [
   { id: 1, userId: 1, points: 100, reason: 'NIN Profile Verification Bonus', createdAt: '2026-07-01T09:00:00Z' },
   { id: 2, userId: 1, points: 50, reason: 'Referees (Fatima Abubakar) First Successful Sale', createdAt: '2026-07-05T14:05:00Z' },
   { id: 3, userId: 1, points: 200, reason: 'Earned on High-quality Product Review Submission', createdAt: '2026-07-05T14:00:00Z' },
 ];
 
-const INITIAL_REFERRALS: Referral[] = [
+const INITIAL_REFERRALS: Referral[] = [];
+const OLD_INITIAL_REFERRALS: any[] = [
   {
     id: 1,
     referrerId: 1,
@@ -956,24 +840,9 @@ const INITIAL_SAFEMEET_LOCATIONS: SafeMeetLocation[] = [
 
 const INITIAL_SAFEMEET_MEETUPS: SafeMeetMeetup[] = [];
 
-const INITIAL_FOLLOWERS: FollowerRelation[] = [
-  { id: 1, followerId: 1, followedUserId: 2, createdAt: '2026-07-05T09:00:00Z' },
-  { id: 2, followerId: 1, followedBusinessId: 1, createdAt: '2026-07-06T10:00:00Z' }
-];
+const INITIAL_FOLLOWERS: FollowerRelation[] = [];
 
-const INITIAL_BUNDLES: ProductBundle[] = [
-  {
-    id: 301,
-    sellerId: 3,
-    title: 'Complete Apple Gadget Elite Bundle',
-    description: 'Get our Grade A++ UK used iPhone 15 Pro Max plus a secure matching leather MagSafe Case, high-speed 20W charger, and tempered screen protector. All backed by GoodSale Escrow.',
-    productIds: [101],
-    price: 1380000,
-    discountPercentage: 8,
-    quantity: 5,
-    createdAt: '2026-07-10T11:00:00Z'
-  }
-];
+const INITIAL_BUNDLES: ProductBundle[] = [];
 
 // Unified DB State interface
 export interface GoodSaleDBState {
@@ -1029,7 +898,7 @@ export function getDBState(): GoodSaleDBState {
       safeMeetMeetups: INITIAL_SAFEMEET_MEETUPS,
       followerRelations: INITIAL_FOLLOWERS,
       productBundles: INITIAL_BUNDLES,
-      currentUser: INITIAL_USERS[0], // Defaults to Hamza (Buyer)
+      currentUser: INITIAL_USERS[0] || null, // Defaults to GUEST/null if empty
     };
   }
 
@@ -1072,7 +941,7 @@ export function getDBState(): GoodSaleDBState {
     safeMeetMeetups: INITIAL_SAFEMEET_MEETUPS,
     followerRelations: INITIAL_FOLLOWERS,
     productBundles: INITIAL_BUNDLES,
-    currentUser: INITIAL_USERS[0], // Starts as Hamza (Buyer)
+    currentUser: INITIAL_USERS[0] || null, // Starts as GUEST/null if empty
   };
 
   saveDBState(initial);
@@ -1085,6 +954,13 @@ export function saveDBState(state: GoodSaleDBState) {
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify(state));
       window.dispatchEvent(new CustomEvent(STORE_CHANGE_EVENT));
+
+      // Sync to standard durable server database
+      fetch('/api/db', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state }),
+      }).catch(err => console.error('Failed to sync state to server database:', err));
     } catch (e) {
       console.error('Failed to save state to localStorage:', e);
     }
@@ -2009,6 +1885,35 @@ export const dbOperations = {
     saveDBState(state);
   },
 
+  toggleNotificationRead(notificationId: number) {
+    const state = getDBState();
+    const notif = state.notifications.find(n => n.id === notificationId);
+    if (notif) {
+      notif.isRead = !notif.isRead;
+    }
+    saveDBState(state);
+  },
+
+  deleteNotification(notificationId: number) {
+    const state = getDBState();
+    state.notifications = state.notifications.filter(n => n.id !== notificationId);
+    saveDBState(state);
+  },
+
+  createCustomNotification(userId: number, title: string, message: string, type: Notification['type']) {
+    const state = getDBState();
+    state.notifications.push({
+      id: state.notifications.length + 1,
+      userId,
+      title,
+      message,
+      type,
+      isRead: false,
+      createdAt: new Date().toISOString(),
+    });
+    saveDBState(state);
+  },
+
   claimDailyReward() {
     const state = getDBState();
     if (!state.currentUser) return { error: 'Please login first' };
@@ -2253,6 +2158,297 @@ export const dbOperations = {
     }
   },
 
+  closeAuction(auctionId: number) {
+    const state = getDBState();
+    const auction = state.auctions.find((a) => a.id === auctionId);
+    if (!auction || !auction.isActive) return null;
+
+    auction.isActive = false;
+
+    const product = state.products.find((p) => p.id === auction.productId);
+    if (!product) {
+      saveDBState(state);
+      return null;
+    }
+
+    const bidsForAuction = state.bids.filter((b) => b.auctionId === auctionId).sort((a, b) => b.amount - a.amount);
+    
+    if (bidsForAuction.length === 0) {
+      saveDBState(state);
+      return { success: true, winner: null };
+    }
+
+    const winningBid = bidsForAuction[0];
+    const winnerId = winningBid.userId;
+    const winnerUser = state.users.find((u) => u.id === winnerId);
+
+    // Create a pending order for the winner to pay
+    const orderNumber = `GS-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
+    const deliveryPin = Math.floor(100000 + Math.random() * 900000).toString();
+    const deliveryFee = 5000; // standard delivery
+    const taxAmount = Math.round(winningBid.amount * 0.015);
+    const totalAmount = winningBid.amount + deliveryFee + taxAmount;
+
+    const newOrder: Order = {
+      id: Math.max(...state.orders.map((o) => o.id), 2000) + 1,
+      orderNumber,
+      buyerId: winnerId,
+      sellerId: product.sellerId,
+      productId: product.id,
+      productTitle: product.title,
+      productImage: product.images[0],
+      totalAmount,
+      discountAmount: 0,
+      deliveryFee,
+      taxAmount,
+      paymentMethod: 'ESCROW_WALLET',
+      deliveryMethod: 'GOODSALE_PARTNER',
+      deliveryAddress: 'Main Delivery Address (Won in Auction)',
+      deliveryCity: 'Lagos',
+      deliveryState: 'Lagos State',
+      deliveryPin,
+      qrCodeToken: `QR-GS-${orderNumber}`,
+      status: OrderStatus.PENDING, // Pending payment!
+      goodPointsUsed: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Add order
+    state.orders.unshift(newOrder);
+
+    // Reduce product quantity
+    product.quantity = Math.max(0, product.quantity - 1);
+    if (product.quantity <= 0) {
+      product.stockStatus = 'OUT_OF_STOCK';
+    }
+
+    // Notify Buyer
+    state.notifications.push({
+      id: state.notifications.length + 1,
+      userId: winnerId,
+      title: '🏆 You Won the Auction!',
+      message: `Congratulations! Your bid of ₦${winningBid.amount.toLocaleString()} on "${product.title}" won the auction! A secure pending escrow order (${orderNumber}) has been generated for you to make your payment deposit.`,
+      type: 'ORDER',
+      isRead: false,
+      createdAt: new Date().toISOString(),
+    });
+
+    // Notify Seller
+    state.notifications.push({
+      id: state.notifications.length + 1,
+      userId: product.sellerId,
+      title: 'Auction Completed successfully!',
+      message: `Your auction for "${product.title}" has closed. The winning bid is ₦${winningBid.amount.toLocaleString()} by @${winningBid.username}. Secure pending escrow order ${orderNumber} has been generated.`,
+      type: 'ORDER',
+      isRead: false,
+      createdAt: new Date().toISOString(),
+    });
+
+    saveDBState(state);
+    return { success: true, winner: winnerUser, order: newOrder };
+  },
+
+  payPendingOrder(orderId: number) {
+    const state = getDBState();
+    const order = state.orders.find(o => o.id === orderId);
+    if (!order) return null;
+
+    order.status = OrderStatus.PAID_ESCROW;
+    order.updatedAt = new Date().toISOString();
+
+    // Add to Escrow Fund Ledger
+    let escrow = state.escrows.find(e => e.orderId === orderId);
+    if (!escrow) {
+      state.escrows.push({
+        id: state.escrows.length + 1,
+        orderId: order.id,
+        heldAmount: order.totalAmount - order.deliveryFee - order.taxAmount,
+        isReleased: false,
+        isRefunded: false,
+      });
+    }
+
+    // Add notification for Buyer
+    state.notifications.push({
+      id: state.notifications.length + 1,
+      userId: order.buyerId,
+      title: 'Escrow Secured Successfully!',
+      message: `Your payment of ₦${order.totalAmount.toLocaleString()} is locked securely in GoodSale Escrow. Your Delivery verification PIN is: ${order.deliveryPin}. Verify and reveal this ONLY to the courier/seller once you have inspected the physical product!`,
+      type: 'ORDER',
+      isRead: false,
+      createdAt: new Date().toISOString(),
+    });
+
+    // Add notification for Seller
+    state.notifications.push({
+      id: state.notifications.length + 1,
+      userId: order.sellerId,
+      title: 'Escrow Payment Received!',
+      message: `The buyer completed the payment of ₦${order.totalAmount.toLocaleString()} for order ${order.orderNumber}. Please prepare for delivery!`,
+      type: 'ORDER',
+      isRead: false,
+      createdAt: new Date().toISOString(),
+    });
+
+    saveDBState(state);
+    return order;
+  },
+
+  sendNegotiationOffer(roomId: number, productId: number, amount: number) {
+    const state = getDBState();
+    if (!state.currentUser) return null;
+
+    const newMsg: Message = {
+      id: state.messages.length + 1,
+      roomId,
+      senderId: state.currentUser.id,
+      messageText: `🤝 PROPOSED NEGOTIATION OFFER: ₦${amount.toLocaleString()}. I would like to purchase via GoodSale Escrow!`,
+      offerDetails: {
+        amount,
+        productId,
+        status: 'PENDING',
+        proposedBy: state.currentUser.id,
+      },
+      createdAt: new Date().toISOString(),
+    };
+
+    state.messages.push(newMsg);
+    
+    const room = state.chatRooms.find(r => r.id === roomId);
+    if (room) {
+      room.lastMessage = `🤝 Propose: ₦${amount.toLocaleString()}`;
+      room.lastMessageTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    saveDBState(state);
+    return newMsg;
+  },
+
+  updateOfferStatus(messageId: number, status: 'PENDING' | 'ACCEPTED' | 'COUNTERED' | 'DECLINED', counterAmount?: number, updaterId?: number) {
+    const state = getDBState();
+    const message = state.messages.find(m => m.id === messageId);
+    if (!message || !message.offerDetails) return null;
+
+    message.offerDetails.status = status;
+    if (counterAmount !== undefined) {
+      message.offerDetails.counterAmount = counterAmount;
+    }
+    if (updaterId !== undefined) {
+      message.offerDetails.proposedBy = updaterId;
+    }
+
+    if (status === 'ACCEPTED') {
+      const activeAmount = message.offerDetails.counterAmount || message.offerDetails.amount;
+      const product = state.products.find(p => p.id === message.offerDetails!.productId);
+      if (product) {
+        const orderNumber = `GS-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
+        const deliveryPin = Math.floor(100000 + Math.random() * 900000).toString();
+        const deliveryFee = 5000; // standard delivery
+        const taxAmount = Math.round(activeAmount * 0.015);
+        const totalAmount = activeAmount + deliveryFee + taxAmount;
+
+        const buyerId = message.senderId === product.sellerId ? (state.chatRooms.find(r => r.id === message.roomId)?.buyerId || 0) : message.senderId;
+
+        const newOrder: Order = {
+          id: Math.max(...state.orders.map((o) => o.id), 2000) + 1,
+          orderNumber,
+          buyerId,
+          sellerId: product.sellerId,
+          productId: product.id,
+          productTitle: product.title,
+          productImage: product.images[0],
+          totalAmount,
+          discountAmount: 0,
+          deliveryFee,
+          taxAmount,
+          paymentMethod: 'PAYSTACK_ESCROW',
+          deliveryMethod: 'GOODSALE_PARTNER',
+          deliveryAddress: 'Main Delivery Address (Negotiated Deal)',
+          deliveryCity: 'Lagos',
+          deliveryState: 'Lagos State',
+          deliveryPin,
+          qrCodeToken: `QR-GS-${orderNumber}`,
+          status: OrderStatus.PAID_ESCROW, // Automatically active escrow order
+          goodPointsUsed: 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        state.orders.unshift(newOrder);
+
+        state.escrows.push({
+          id: state.escrows.length + 1,
+          orderId: newOrder.id,
+          heldAmount: activeAmount,
+          isReleased: false,
+          isRefunded: false,
+        });
+
+        product.quantity = Math.max(0, product.quantity - 1);
+        if (product.quantity <= 0) {
+          product.stockStatus = 'OUT_OF_STOCK';
+        }
+
+        // Notify Buyer & Seller
+        state.notifications.push({
+          id: state.notifications.length + 1,
+          userId: buyerId,
+          title: '🤝 Negotiated Deal Accepted!',
+          message: `Your negotiation offer of ₦${activeAmount.toLocaleString()} has been accepted. A secure escrow order (${orderNumber}) has been generated and activated!`,
+          type: 'ORDER',
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        });
+
+        state.notifications.push({
+          id: state.notifications.length + 1,
+          userId: product.sellerId,
+          title: 'Negotiation Deal Settled & Escrow Locked',
+          message: `The offer of ₦${activeAmount.toLocaleString()} has been concluded. Escrow order ${orderNumber} is now active.`,
+          type: 'ORDER',
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        });
+        
+        // Post receipt message in chat
+        state.messages.push({
+          id: state.messages.length + 1,
+          roomId: message.roomId,
+          senderId: updaterId || product.sellerId,
+          messageText: `🎉 NEGOTIATED OFFER ACCEPTED! Secure Escrow contract ${orderNumber} generated successfully for ₦${activeAmount.toLocaleString()}. Funds are safe inside the GoodSale Escrow vault.`,
+          createdAt: new Date().toISOString(),
+        });
+      }
+    } else if (status === 'COUNTERED') {
+      state.messages.push({
+        id: state.messages.length + 1,
+        roomId: message.roomId,
+        senderId: updaterId || message.senderId,
+        messageText: `🤝 COUNTER OFFER SUBMITTED: ₦${counterAmount?.toLocaleString()}. Do you accept?`,
+        offerDetails: {
+          amount: message.offerDetails.amount,
+          productId: message.offerDetails.productId,
+          status: 'PENDING',
+          counterAmount: counterAmount,
+          proposedBy: updaterId || message.senderId,
+        },
+        createdAt: new Date().toISOString(),
+      });
+    } else if (status === 'DECLINED') {
+      state.messages.push({
+        id: state.messages.length + 1,
+        roomId: message.roomId,
+        senderId: updaterId || message.senderId,
+        messageText: `❌ Offer was declined by trading partner.`,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    saveDBState(state);
+    return message;
+  },
+
   createBundle(sellerId: number, title: string, description: string, productIds: number[], price: number, discountPercentage: number, quantity: number) {
     const state = getDBState();
     const newId = Math.max(...state.productBundles.map(b => b.id), 300) + 1;
@@ -2296,12 +2492,22 @@ export function useDBState(): GoodSaleDBState {
       safeMeetMeetups: INITIAL_SAFEMEET_MEETUPS,
       followerRelations: INITIAL_FOLLOWERS,
       productBundles: INITIAL_BUNDLES,
-      currentUser: INITIAL_USERS[0],
+      currentUser: INITIAL_USERS[0] || null,
     };
   });
 
   useEffect(() => {
     setDb(getDBState());
+
+    // Pull from standard durable server database on load
+    fetch('/api/db')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.state) {
+          saveDBState(data.state);
+        }
+      })
+      .catch(err => console.error('Failed to pull server database state:', err));
 
     const handleStateChange = () => {
       setDb(getDBState());

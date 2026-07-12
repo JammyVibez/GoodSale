@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Search, ShoppingCart, Bell, User as UserIcon, Shield, RefreshCw, 
   MapPin, Award, Store, Sun, Moon, Laptop, LogIn, ChevronDown, CheckCircle, Sparkles,
-  Menu, X
+  Menu, X, Gavel, Package, Eye, EyeOff, Trash, Zap
 } from 'lucide-react';
 import { User, UserRole, getDBState, saveDBState, dbOperations, useDBState } from '../lib/store';
 import Logo from './LogoIcon';
@@ -33,6 +33,29 @@ export default function Header({
   const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'system'>('dark');
   const [showThemeMenu, setShowThemeMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [notifFilter, setNotifFilter] = useState<'all' | 'unread'>('all');
+
+  const handleSimulateAlert = (type: 'BID' | 'SAFEMEET' | 'ESCROW') => {
+    if (!user) {
+      alert("Please join or sign in to experience the real-time notification hub alerts!");
+      return;
+    }
+    
+    let title = "";
+    let message = "";
+    if (type === 'BID') {
+      title = "⚠️ Outbid Alert!";
+      message = "You have been outbid on 'MacBook Pro M3 Max'! Quick, update your bid to stay in the lead!";
+    } else if (type === 'SAFEMEET') {
+      title = "🤝 SafeMeet™ Proposal Received";
+      message = "Seller Chidi has proposed Mega Plaza SafeMeet Cafe on Sunday at 2:00 PM under platform police surveillance.";
+    } else {
+      title = "📦 Escrow Package Dispatched";
+      message = "Hurray! GoodSale Courier has picked up your iPhone 15 Pro Max from Fatima's hub. Track physical transit pin.";
+    }
+
+    dbOperations.createCustomNotification(user.id, title, message, type);
+  };
 
   // Initialize theme from localStorage on mount (safe for SSR)
   useEffect(() => {
@@ -185,40 +208,178 @@ export default function Header({
               </button>
 
               {showNotifications && (
-                <div id="notifications-tray" className="absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl shadow-2xl z-50 py-2">
-                  <div className="px-4 py-2 border-b border-gray-200 dark:border-slate-800 flex justify-between items-center">
-                    <span className="font-semibold text-sm text-slate-900 dark:text-white">Notifications</span>
+                <div id="notifications-tray" className="absolute right-0 mt-3 w-96 max-h-[500px] overflow-y-auto bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl shadow-2xl z-50 flex flex-col animate-slide-in">
+                  
+                  {/* Header */}
+                  <div className="px-4 py-3 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center bg-gray-50/50 dark:bg-slate-950/20">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-sm text-slate-900 dark:text-white font-sans">Notification Hub</span>
+                      {unreadNotifications.length > 0 && (
+                        <span className="px-2 py-0.5 text-[10px] font-black bg-red-500/10 text-red-500 dark:text-red-400 rounded-full">
+                          {unreadNotifications.length} New
+                        </span>
+                      )}
+                    </div>
                     {unreadNotifications.length > 0 && (
                       <button 
                         onClick={handleClearNotifications}
-                        className="text-[11px] text-emerald-500 hover:underline font-medium"
+                        className="text-[11px] text-emerald-600 hover:text-emerald-500 dark:text-emerald-400 font-extrabold hover:underline"
                       >
-                        Mark read
+                        Mark all read
                       </button>
                     )}
                   </div>
-                  <div className="divide-y divide-gray-100 dark:divide-slate-800">
-                    {db.notifications.filter(n => n.userId === user?.id).length === 0 ? (
-                      <div className="p-6 text-center text-xs text-slate-400 dark:text-slate-500">
-                        No notifications yet
+
+                  {/* Filters Tab Panel */}
+                  <div className="px-4 py-2 border-b border-gray-100 dark:border-slate-800 flex gap-2 bg-white dark:bg-slate-900">
+                    <button
+                      onClick={() => setNotifFilter('all')}
+                      className={`px-3 py-1 text-[10px] font-black uppercase tracking-wider rounded-md border transition-all cursor-pointer ${
+                        notifFilter === 'all'
+                          ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 border-slate-900 dark:border-slate-100'
+                          : 'bg-transparent text-slate-500 dark:text-slate-400 border-gray-200 dark:border-slate-800 hover:text-slate-700'
+                      }`}
+                    >
+                      All ({db.notifications.filter(n => n.userId === user?.id).length})
+                    </button>
+                    <button
+                      onClick={() => setNotifFilter('unread')}
+                      className={`px-3 py-1 text-[10px] font-black uppercase tracking-wider rounded-md border transition-all cursor-pointer ${
+                        notifFilter === 'unread'
+                          ? 'bg-emerald-500 text-white border-emerald-500'
+                          : 'bg-transparent text-slate-500 dark:text-slate-400 border-gray-200 dark:border-slate-800 hover:text-emerald-500'
+                      }`}
+                    >
+                      Unread ({unreadNotifications.length})
+                    </button>
+                  </div>
+
+                  {/* Notification List Container */}
+                  <div className="divide-y divide-gray-100 dark:divide-slate-850 max-h-64 overflow-y-auto flex-1">
+                    {db.notifications.filter(n => n.userId === user?.id && (notifFilter === 'all' || !n.isRead)).length === 0 ? (
+                      <div className="p-8 text-center text-slate-400 dark:text-slate-500 space-y-2">
+                        <Bell className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-700 animate-bounce" />
+                        <p className="text-xs font-medium font-sans text-slate-800 dark:text-slate-200">No {notifFilter === 'unread' ? 'unread' : ''} notifications</p>
+                        <p className="text-[10px] text-slate-400 leading-relaxed font-sans">
+                          Your safe trading updates, bids, and escrow dispatches will appear here.
+                        </p>
                       </div>
                     ) : (
                       db.notifications
-                        .filter(n => n.userId === user?.id)
-                        .slice(0, 10)
-                        .map((notif) => (
-                          <div key={notif.id} className={`p-3 text-xs ${notif.isRead ? 'opacity-70' : 'bg-emerald-50/20 dark:bg-emerald-500/5'}`}>
-                            <div className="flex items-start justify-between gap-1 mb-1">
-                              <span className="font-semibold text-slate-900 dark:text-slate-200">{notif.title}</span>
-                              <span className="text-[9px] text-gray-400 dark:text-slate-500 font-mono">
-                                {notif.createdAt ? new Date(notif.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                              </span>
+                        .filter(n => n.userId === user?.id && (notifFilter === 'all' || !n.isRead))
+                        .map((notif) => {
+                          // Icon selector based on type
+                          let IconComp = Bell;
+                          let iconBg = "bg-purple-500/10 text-purple-600 dark:text-purple-400";
+                          if (notif.type === 'BID') {
+                            IconComp = Gavel;
+                            iconBg = "bg-amber-500/10 text-amber-600 dark:text-amber-400";
+                          } else if (notif.type === 'SAFEMEET') {
+                            IconComp = Shield;
+                            iconBg = "bg-blue-500/10 text-blue-600 dark:text-blue-400";
+                          } else if (notif.type === 'ESCROW') {
+                            IconComp = Package;
+                            iconBg = "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
+                          } else if (notif.type === 'POINTS') {
+                            IconComp = Award;
+                            iconBg = "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400";
+                          }
+
+                          return (
+                            <div 
+                              key={notif.id} 
+                              className={`p-3.5 flex items-start gap-3 transition-colors relative group ${
+                                notif.isRead 
+                                  ? 'opacity-75 hover:opacity-100 bg-white dark:bg-slate-900' 
+                                  : 'bg-emerald-50/10 dark:bg-emerald-500/[0.02] hover:bg-emerald-50/20 dark:hover:bg-emerald-500/[0.04]'
+                              }`}
+                            >
+                              {/* Unread dot */}
+                              {!notif.isRead && (
+                                <span className="absolute top-4 left-1.5 w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                              )}
+
+                              {/* Icon category */}
+                              <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${iconBg}`}>
+                                <IconComp className="w-4 h-4" />
+                              </div>
+
+                              {/* Content text */}
+                              <div className="flex-1 min-w-0 pr-8">
+                                <div className="flex items-baseline justify-between gap-2 mb-0.5">
+                                  <h5 className="font-extrabold text-slate-900 dark:text-slate-100 text-xs truncate font-sans">
+                                    {notif.title}
+                                  </h5>
+                                  <span className="text-[9px] text-gray-400 dark:text-slate-500 font-mono shrink-0">
+                                    {notif.createdAt ? new Date(notif.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                                  </span>
+                                </div>
+                                <p className="text-slate-600 dark:text-slate-400 text-[11px] leading-relaxed break-words font-sans">
+                                  {notif.message}
+                                </p>
+                              </div>
+
+                              {/* Hover actions */}
+                              <div className="absolute right-2 top-3.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={() => dbOperations.toggleNotificationRead(notif.id)}
+                                  className="p-1 rounded bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white cursor-pointer"
+                                  title={notif.isRead ? "Mark as Unread" : "Mark as Read"}
+                                >
+                                  {notif.isRead ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                </button>
+                                <button
+                                  onClick={() => dbOperations.deleteNotification(notif.id)}
+                                  className="p-1 rounded bg-red-500/10 hover:bg-red-500/20 text-red-500 dark:text-red-400 cursor-pointer"
+                                  title="Delete notification"
+                                >
+                                  <Trash className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </div>
-                            <p className="text-slate-600 dark:text-slate-400 leading-relaxed text-[11px]">{notif.message}</p>
-                          </div>
-                        ))
+                          );
+                        })
                     )}
                   </div>
+
+                  {/* Real-time Simulator Panel */}
+                  {user && (
+                    <div className="p-3.5 bg-gray-50 dark:bg-slate-950 border-t border-gray-100 dark:border-slate-850 rounded-b-2xl">
+                      <div className="flex items-center gap-1 mb-2">
+                        <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500/15 animate-pulse" />
+                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 font-sans">
+                          Real-Time Alerts Simulator
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        <button
+                          onClick={() => handleSimulateAlert('BID')}
+                          className="py-1.5 px-2 bg-white dark:bg-slate-900 border border-amber-500/20 hover:bg-amber-500/5 hover:border-amber-500 text-[10px] font-bold rounded-lg text-amber-600 dark:text-amber-400 transition-all cursor-pointer flex flex-col items-center gap-1 text-center font-sans"
+                          title="Simulate Gavel Outbid Alert"
+                        >
+                          <Gavel className="w-3.5 h-3.5 text-amber-500" />
+                          <span>Outbid Bid</span>
+                        </button>
+                        <button
+                          onClick={() => handleSimulateAlert('SAFEMEET')}
+                          className="py-1.5 px-2 bg-white dark:bg-slate-900 border border-blue-500/20 hover:bg-blue-500/5 hover:border-blue-500 text-[10px] font-bold rounded-lg text-blue-600 dark:text-blue-400 transition-all cursor-pointer flex flex-col items-center gap-1 text-center font-sans"
+                          title="Simulate SafeMeet Proposal Alert"
+                        >
+                          <Shield className="w-3.5 h-3.5 text-blue-500" />
+                          <span>SafeMeet™</span>
+                        </button>
+                        <button
+                          onClick={() => handleSimulateAlert('ESCROW')}
+                          className="py-1.5 px-2 bg-white dark:bg-slate-900 border border-emerald-500/20 hover:bg-emerald-500/5 hover:border-emerald-500 text-[10px] font-bold rounded-lg text-emerald-600 dark:text-emerald-400 transition-all cursor-pointer flex flex-col items-center gap-1 text-center font-sans"
+                          title="Simulate Escrow Dispatch Alert"
+                        >
+                          <Package className="w-3.5 h-3.5 text-emerald-500" />
+                          <span>Escrow Sent</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                 </div>
               )}
             </div>

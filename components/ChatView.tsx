@@ -46,6 +46,26 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
     return () => window.removeEventListener('goodsale_db_state_change', handleStateChange);
   }, []);
 
+  // Standard Real-time background sync to simulate standard real-time message relays
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetch('/api/db')
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && data.state) {
+            const currentString = JSON.stringify(getDBState().messages);
+            const incomingString = JSON.stringify(data.state.messages);
+            if (currentString !== incomingString) {
+              saveDBState(data.state);
+            }
+          }
+        })
+        .catch(err => console.error('Real-time chat relay sync error:', err));
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   // Set active room to initialRoomId if passed from details view
   useEffect(() => {
     if (initialRoomId) {
@@ -402,6 +422,118 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
                             </div>
                           </div>
                         )}
+
+                        {/* 6. Structured Negotiation Contract Offer Bubble */}
+                        {msg.offerDetails && (
+                          <div className="mt-2.5 border border-amber-500/30 bg-amber-500/5 dark:bg-slate-950 rounded-2xl p-4 shadow-sm max-w-xs text-left text-slate-800 dark:text-slate-100">
+                            <div className="flex items-center gap-1.5 pb-2 border-b border-amber-500/15 mb-2.5">
+                              <div className="w-7 h-7 rounded bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0">
+                                <Shield className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                              </div>
+                              <div>
+                                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-extrabold uppercase tracking-wider block font-sans">
+                                  {msg.offerDetails.counterAmount ? 'COUNTER NEGOTIATION' : 'ESCROW NEGOTIATION'}
+                                </span>
+                                <span className="text-[8px] text-gray-400 font-mono block uppercase">
+                                  STATUS: {msg.offerDetails.status}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="space-y-2 text-[11px]">
+                              {msg.offerDetails.counterAmount ? (
+                                <>
+                                  <div className="flex justify-between">
+                                    <span className="text-gray-400">Original Price:</span>
+                                    <span className="font-mono text-gray-400 line-through">₦{msg.offerDetails.amount.toLocaleString()}</span>
+                                  </div>
+                                  <div className="flex justify-between font-bold text-sm">
+                                    <span className="text-amber-600 dark:text-amber-400">Counter Offer:</span>
+                                    <span className="font-mono text-amber-600 dark:text-amber-400">₦{msg.offerDetails.counterAmount.toLocaleString()}</span>
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="flex justify-between font-bold text-sm">
+                                  <span className="text-amber-600 dark:text-amber-400">Proposed Deal:</span>
+                                  <span className="font-mono text-amber-600 dark:text-amber-400">₦{msg.offerDetails.amount.toLocaleString()}</span>
+                                </div>
+                              )}
+                              
+                              <div className="flex justify-between text-[10px]">
+                                <span className="text-gray-400">Proposed By:</span>
+                                <span className="font-semibold text-slate-600 dark:text-slate-300">
+                                  {msg.offerDetails.proposedBy === user.id ? 'You' : `@${partner?.username || 'partner'}`}
+                                </span>
+                              </div>
+                            </div>
+
+                            {msg.offerDetails.status === 'PENDING' && (
+                              <div className="mt-4 space-y-2">
+                                {msg.offerDetails.proposedBy !== user.id ? (
+                                  <>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <button
+                                        onClick={() => {
+                                          dbOperations.updateOfferStatus(msg.id, 'ACCEPTED', undefined, user.id);
+                                          setDb(getDBState());
+                                        }}
+                                        className="py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-sans font-bold text-[10px] uppercase tracking-wider rounded-xl cursor-pointer text-center border-0"
+                                      >
+                                        Accept Offer
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          const counterStr = prompt('Enter your counter offer amount (₦):');
+                                          if (counterStr) {
+                                            const amt = parseInt(counterStr.replace(/[^0-9]/g, ''), 10);
+                                            if (amt > 0) {
+                                              dbOperations.updateOfferStatus(msg.id, 'COUNTERED', amt, user.id);
+                                              setDb(getDBState());
+                                            }
+                                          }
+                                        }}
+                                        className="py-2 bg-amber-500 hover:bg-amber-600 text-white font-sans font-bold text-[10px] uppercase tracking-wider rounded-xl cursor-pointer text-center border-0"
+                                      >
+                                        Counter Offer
+                                      </button>
+                                    </div>
+                                    <button
+                                      onClick={() => {
+                                        dbOperations.updateOfferStatus(msg.id, 'DECLINED', undefined, user.id);
+                                        setDb(getDBState());
+                                      }}
+                                      className="w-full py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 font-sans font-bold text-[9px] uppercase tracking-wider rounded-lg cursor-pointer text-center border-0"
+                                    >
+                                      Decline Offer
+                                    </button>
+                                  </>
+                                ) : (
+                                  <div className="p-2 bg-slate-100 dark:bg-slate-800 rounded-xl text-center text-gray-500 text-[10px]">
+                                    Awaiting partner&apos;s decision...
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {msg.offerDetails.status === 'ACCEPTED' && (
+                              <div className="mt-3 p-2 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-xl text-center text-[10px] font-bold">
+                                ✓ OFFER ACCEPTED & SECURED
+                              </div>
+                            )}
+
+                            {msg.offerDetails.status === 'DECLINED' && (
+                              <div className="mt-3 p-2 bg-red-500/10 text-red-500 rounded-xl text-center text-[10px] font-bold">
+                                ❌ OFFER DECLINED
+                              </div>
+                            )}
+
+                            {msg.offerDetails.status === 'COUNTERED' && (
+                              <div className="mt-3 p-2 bg-amber-500/10 text-amber-500 rounded-xl text-center text-[10px] font-bold">
+                                🔄 COUNTERED
+                              </div>
+                            )}
+                          </div>
+                        )}
                         
                         <div className="flex justify-end items-center gap-1 text-[9px] mt-1.5 opacity-65 font-mono">
                           <span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
@@ -465,6 +597,29 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
                   >
                     <Package className="w-3.5 h-3.5 text-amber-500" />
                     Share Product
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      if (!activeRoomId) return;
+                      if (!chatProduct) {
+                        alert('This conversation thread does not have a linked product catalog SKU to negotiate.');
+                        return;
+                      }
+                      const offerStr = prompt(`Negotiate purchase for "${chatProduct.title}" via secure Escrow.\nCatalog Price: ₦${chatProduct.price.toLocaleString()}\nEnter your custom offer amount (₦):`);
+                      if (offerStr) {
+                        const amt = parseInt(offerStr.replace(/[^0-9]/g, ''), 10);
+                        if (amt > 0) {
+                          dbOperations.sendNegotiationOffer(activeRoomId, chatProduct.id, amt);
+                          setDb(getDBState());
+                        }
+                      }
+                    }}
+                    className="px-2.5 py-1.5 bg-white dark:bg-slate-800 hover:border-emerald-500 border border-amber-500/30 rounded-xl text-[10px] text-amber-600 dark:text-amber-400 font-bold flex items-center gap-1 transition-all shrink-0"
+                    title="Propose custom price negotiation via secure Escrow"
+                  >
+                    <Shield className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                    Make Custom Offer
                   </button>
                 </div>
 

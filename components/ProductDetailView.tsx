@@ -54,6 +54,10 @@ export default function ProductDetailView({
   const [showThresholdForm, setShowThresholdForm] = useState(false);
   const [priceAlertsList, setPriceAlertsList] = useState<{productId: number, threshold: number}[]>([]);
 
+  // Auction countdown states
+  const [timeLeft, setTimeLeft] = useState<string>('');
+  const [isAuctionEnded, setIsAuctionEnded] = useState<boolean>(false);
+
   // Comments, Q&A, and Reviews States
   const [newCommentText, setNewCommentText] = useState('');
   const [newCommentRating, setNewCommentRating] = useState(5); // 0 means just question/comment, 1-5 means rating review
@@ -142,6 +146,58 @@ export default function ProductDetailView({
       return () => clearTimeout(timer);
     }
   }, [productId, auction, currentHighestBid]);
+
+  // Live ticking countdown timer for active auctions
+  useEffect(() => {
+    if (!product || !product.isAuction || !auction) return;
+
+    const updateTimer = () => {
+      const latestDB = getDBState();
+      const latestAuction = latestDB.auctions.find(a => a.id === auction.id);
+      
+      if (!latestAuction) {
+        return;
+      }
+
+      if (!latestAuction.isActive) {
+        setIsAuctionEnded(true);
+        setTimeLeft('CLOSED');
+        return;
+      }
+
+      const endMs = new Date(latestAuction.endsAt).getTime();
+      const nowMs = Date.now();
+      const diff = endMs - nowMs;
+
+      if (diff <= 0) {
+        setIsAuctionEnded(true);
+        setTimeLeft('CLOSED');
+        
+        // Trigger auction closure in DB!
+        const closeRes = dbOperations.closeAuction(latestAuction.id);
+        if (closeRes) {
+          setDb(getDBState()); // Sync state
+        }
+      } else {
+        const hours = Math.floor(diff / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+        const hStr = hours.toString().padStart(2, '0');
+        const mStr = minutes.toString().padStart(2, '0');
+        const sStr = seconds.toString().padStart(2, '0');
+
+        setTimeLeft(`${hStr}h : ${mStr}m : ${sStr}s`);
+        setIsAuctionEnded(false);
+      }
+    };
+
+    // Run immediately then every second
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+
+    return () => clearInterval(interval);
+  }, [productId, auction]);
 
   if (!product) {
     return (
@@ -473,11 +529,24 @@ export default function ProductDetailView({
                   </div>
                 </div>
               ) : (
-                <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-2xl">
-                  <div className="flex justify-between items-center mb-3">
+                <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-2xl space-y-4">
+                  {/* Live Countdown Timer */}
+                  <div className="flex items-center justify-between p-3 bg-slate-900 text-white rounded-xl border border-amber-500/30 shadow-md">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-amber-500 animate-pulse" />
+                      <span className="text-[10px] font-mono tracking-widest uppercase font-extrabold text-amber-400">
+                        {auction?.isActive ? 'AUCTION COUNTDOWN' : 'AUCTION STATUS'}
+                      </span>
+                    </div>
+                    <div className="font-mono text-xs font-black tracking-widest text-amber-400">
+                      {auction?.isActive ? (timeLeft || 'Calculating...') : 'CLOSED'}
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center">
                     <div>
                       <span className="text-[10px] text-amber-500 uppercase tracking-widest font-bold flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5" /> Current Top Bid
+                        <Zap className="w-3.5 h-3.5" /> {auction?.isActive ? 'Current Top Bid' : 'Winning Bid'}
                       </span>
                       <span className="font-sans font-extrabold text-2xl text-slate-900 dark:text-white block mt-1">
                         ₦{currentHighestBid.toLocaleString()}
@@ -489,26 +558,75 @@ export default function ProductDetailView({
                     </div>
                   </div>
 
-                  {/* Bidding interactive form */}
-                  <div className="space-y-3">
-                    <div className="flex gap-2">
-                      <input
-                        type="number"
-                        value={customBidAmount}
-                        onChange={(e) => setCustomBidAmount(e.target.value)}
-                        placeholder="Enter bid amount (₦)"
-                        className="flex-1 px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-800 dark:text-white"
-                      />
-                      <button
-                        onClick={handlePlaceBid}
-                        className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer"
-                      >
-                        Place Bid
-                      </button>
+                  {auction?.isActive ? (
+                    <>
+                      {/* Bidding interactive form */}
+                      <div className="space-y-3">
+                        <div className="flex gap-2">
+                          <input
+                            type="number"
+                            value={customBidAmount}
+                            onChange={(e) => setCustomBidAmount(e.target.value)}
+                            placeholder="Enter bid amount (₦)"
+                            className="flex-1 px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-800 dark:text-white"
+                          />
+                          <button
+                            onClick={handlePlaceBid}
+                            className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer shrink-0"
+                          >
+                            Place Bid
+                          </button>
+                        </div>
+                        {bidError && <p className="text-[11px] font-bold text-red-500">{bidError}</p>}
+                        {bidSuccess && <p className="text-[11px] font-bold text-emerald-500 flex items-center gap-1">✓ Bid Placed Successfully!</p>}
+                      </div>
+
+                      {/* Fast-Forward Simulator */}
+                      <div className="pt-1 flex justify-end">
+                        <button
+                          onClick={() => {
+                            if (auction) {
+                              const closeRes = dbOperations.closeAuction(auction.id);
+                              if (closeRes) {
+                                setDb(getDBState());
+                                alert('Success! Auction force-closed and pending escrow order generated.');
+                              }
+                            }
+                          }}
+                          className="px-2 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-500 text-[9px] font-mono uppercase tracking-widest border border-red-500/25 rounded-lg cursor-pointer"
+                          title="Simulate timer hitting 0 immediately"
+                        >
+                          ⚡ Simulate Fast-Forward End
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-center">
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-extrabold uppercase tracking-widest block mb-1">
+                        🏆 Auction Concluded
+                      </span>
+                      {bids.length > 0 ? (
+                        <div className="space-y-2 mt-1">
+                          <p className="text-xs font-bold text-slate-800 dark:text-white">
+                            Winner: <span className="text-emerald-500">@{bids[0].username}</span> with top bid of <span className="font-mono text-emerald-600 dark:text-emerald-400">₦{bids[0].amount.toLocaleString()}</span>!
+                          </p>
+                          <p className="text-[10px] text-gray-400 leading-normal">
+                            A pending escrow order has been automatically generated for @{bids[0].username} to complete deposit.
+                          </p>
+                          {db.currentUser?.id === bids[0].userId && (
+                            <button
+                              onClick={() => onNavigate('profile')}
+                              className="mt-1.5 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer inline-block"
+                            >
+                              Go to My Purchases & Pay
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-400 mt-1">Closed with no active bids.</p>
+                      )}
                     </div>
-                    {bidError && <p className="text-[11px] font-bold text-red-500">{bidError}</p>}
-                    {bidSuccess && <p className="text-[11px] font-bold text-emerald-500 flex items-center gap-1">✓ Bid Placed Successfully!</p>}
-                  </div>
+                  )}
                 </div>
               )}
 

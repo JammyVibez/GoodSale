@@ -9,6 +9,7 @@ import {
 import { 
   getDBState, saveDBState, dbOperations, Product, Order, OrderStatus 
 } from '../lib/store';
+import PaystackPayment from './PaystackPayment';
 
 interface CartCheckoutViewProps {
   onBack: () => void;
@@ -49,6 +50,7 @@ export default function CartCheckoutView({
   // Dispute state
   const [showDisputeFormOrderId, setShowDisputeFormOrderId] = useState<number | null>(null);
   const [disputeReason, setDisputeReason] = useState('');
+  const [showPaystackModal, setShowPaystackModal] = useState(false);
 
   useEffect(() => {
     const handleStateChange = () => {
@@ -397,7 +399,7 @@ export default function CartCheckoutView({
               </div>
 
               <button
-                onClick={handlePayIntoEscrow}
+                onClick={() => setShowPaystackModal(true)}
                 className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-sans font-extrabold text-xs rounded-xl transition-all shadow-lg shadow-emerald-500/20 cursor-pointer flex items-center justify-center gap-1.5"
               >
                 <Shield className="w-4 h-4 text-amber-300" />
@@ -652,6 +654,18 @@ export default function CartCheckoutView({
             )}
 
           </div>
+        )}
+
+        {showPaystackModal && (
+          <PaystackPayment 
+            email={user.email} 
+            amount={totalDue} 
+            onSuccess={(ref) => {
+              setShowPaystackModal(false);
+              handlePayIntoEscrow();
+            }} 
+            onCancel={() => setShowPaystackModal(false)} 
+          />
         )}
 
       </div>

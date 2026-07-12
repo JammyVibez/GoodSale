@@ -11,6 +11,7 @@ import {
 import { 
   Product, ProductCondition, getDBState, saveDBState, dbOperations, UserRole, OrderStatus, Order, Escrow
 } from '../lib/store';
+import LiveSafeMeetMap from './LiveSafeMeetMap';
 
 export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void }) {
   const [db, setDb] = useState(getDBState());
@@ -1035,35 +1036,13 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                                   </div>
                                 </div>
 
-                                {/* Stylized visual SVG map coordinates */}
-                                <div className="h-40 rounded-xl bg-slate-950 mt-1 border border-slate-800 relative overflow-hidden flex items-center justify-center">
-                                  <div className="absolute inset-0 opacity-15 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:16px_16px]" />
-                                  
-                                  {/* Center Spot */}
-                                  <div className="absolute top-[50%] left-[50%] -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
-                                    <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center border border-emerald-500 animate-ping absolute" />
-                                    <div className="w-8 h-8 rounded-full bg-emerald-500/30 flex items-center justify-center border border-emerald-500 relative">
-                                      <Shield className="w-4 h-4 text-emerald-400" />
-                                    </div>
-                                    <span className="text-[8px] text-emerald-400 font-black mt-1 uppercase tracking-wider font-mono">SafeZone</span>
-                                  </div>
-
-                                  {/* Seller Marker */}
-                                  <div className="absolute top-[25%] left-[25%] flex flex-col items-center">
-                                    <div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse" />
-                                    <span className="text-[7px] text-blue-400 font-black font-mono">My Marker</span>
-                                  </div>
-
-                                  {/* Buyer Marker */}
-                                  <div className="absolute bottom-[25%] right-[25%] flex flex-col items-center">
-                                    <div className="w-3 h-3 rounded-full bg-orange-500 animate-pulse" />
-                                    <span className="text-[7px] text-orange-400 font-black font-mono">Buyer Marker</span>
-                                  </div>
-
-                                  <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                                    <line x1="25%" y1="25%" x2="50%" y2="50%" stroke="#3b82f6" strokeWidth="1" strokeDasharray="4 4" />
-                                    <line x1="75%" y1="75%" x2="50%" y2="50%" stroke="#f97316" strokeWidth="1" strokeDasharray="4 4" />
-                                  </svg>
+                                {/* Interactive Google Map Visualizer */}
+                                <div className="mt-1">
+                                  <LiveSafeMeetMap 
+                                    location={selectedLoc} 
+                                    buyerArrived={meetup.buyerConfirmedArrival} 
+                                    sellerArrived={meetup.sellerConfirmedArrival} 
+                                  />
                                 </div>
                               </div>
 

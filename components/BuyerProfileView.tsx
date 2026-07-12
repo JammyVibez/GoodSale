@@ -8,6 +8,7 @@ import {
   Download, Check, FileText
 } from 'lucide-react';
 import { useDBState, dbOperations, getDBState, saveDBState, OrderStatus, Order } from '../lib/store';
+import LiveSafeMeetMap from './LiveSafeMeetMap';
 
 interface BuyerProfileViewProps {
   onBack?: () => void;
@@ -462,10 +463,29 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                               <CheckCircle className="w-3.5 h-3.5" />
                               Payment successfully released. Deal concluded.
                             </span>
+                          ) : order.status === OrderStatus.PENDING ? (
+                            <span className="text-amber-600 dark:text-amber-500 font-bold flex items-center gap-1 animate-pulse">
+                              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                              Awaiting Escrow Deposit payment.
+                            </span>
                           ) : (
                             <span>Funds are safe in local escrow vault.</span>
                           )}
                         </div>
+
+                        {order.status === OrderStatus.PENDING && (
+                          <button
+                            onClick={() => {
+                              dbOperations.payPendingOrder(order.id);
+                              window.dispatchEvent(new Event('goodsale_db_state_change'));
+                              alert(`Escrow deposit of ₦${order.totalAmount.toLocaleString()} completed successfully! Your funds are now locked in secure escrow, and the seller has been notified to ship the item.`);
+                            }}
+                            className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-display font-black text-[10px] uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+                          >
+                            <Shield className="w-3.5 h-3.5" />
+                            Complete Escrow Deposit (Pay Now)
+                          </button>
+                        )}
 
                         {/* PIN Verification trigger */}
                         {(order.status === OrderStatus.SHIPPED || order.status === OrderStatus.OUT_FOR_DELIVERY || order.status === OrderStatus.PAID_ESCROW) && (
@@ -720,43 +740,13 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                                     </div>
                                   </div>
 
-                                  {/* Stylized custom SVG map visualization representing routing vectors */}
-                                  <div className="h-40 rounded-xl bg-slate-950 mt-3 border border-slate-800 relative overflow-hidden flex items-center justify-center">
-                                    <div className="absolute inset-0 opacity-15 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:16px_16px]" />
-                                    
-                                    {/* Center target safe meet spot */}
-                                    <div className="absolute top-[50%] left-[50%] -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
-                                      <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center border border-emerald-500 animate-ping absolute" />
-                                      <div className="w-8 h-8 rounded-full bg-emerald-500/30 flex items-center justify-center border border-emerald-500 relative">
-                                        <Shield className="w-4 h-4 text-emerald-400" />
-                                      </div>
-                                      <span className="text-[8px] text-emerald-400 font-black mt-1 uppercase tracking-wider font-mono">SafeZone</span>
-                                    </div>
-
-                                    {/* Seller Marker */}
-                                    <div className="absolute top-[25%] left-[25%] flex flex-col items-center">
-                                      <div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse" />
-                                      <span className="text-[7px] text-blue-400 font-black font-mono">Seller Marker</span>
-                                    </div>
-
-                                    {/* Buyer Marker */}
-                                    <div className="absolute bottom-[25%] right-[25%] flex flex-col items-center">
-                                      <div className="w-3 h-3 rounded-full bg-orange-500 animate-pulse" />
-                                      <span className="text-[7px] text-orange-400 font-black font-mono">My Marker</span>
-                                    </div>
-
-                                    {/* Vector trails */}
-                                    <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                                      {/* Trail lines */}
-                                      <line x1="25%" y1="25%" x2="50%" y2="50%" stroke="#3b82f6" strokeWidth="1" strokeDasharray="4 4" />
-                                      <line x1="75%" y1="75%" x2="50%" y2="50%" stroke="#f97316" strokeWidth="1" strokeDasharray="4 4" />
-                                    </svg>
-
-                                    {/* Proximity information layout */}
-                                    <div className="absolute bottom-2 left-3 text-[8px] font-mono text-slate-400 space-y-0.5 bg-black/60 p-1.5 rounded border border-slate-800">
-                                      <p>📏 Radius: Within 25 meters</p>
-                                      <p>🔒 Handshake: Encrypted hold</p>
-                                    </div>
+                                  {/* Interactive Google Map Visualizer */}
+                                  <div className="mt-3">
+                                    <LiveSafeMeetMap 
+                                      location={selectedLoc} 
+                                      buyerArrived={meetup.buyerConfirmedArrival} 
+                                      sellerArrived={meetup.sellerConfirmedArrival} 
+                                    />
                                   </div>
                                 </div>
 
