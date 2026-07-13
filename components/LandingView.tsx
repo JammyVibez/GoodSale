@@ -35,6 +35,7 @@ export default function LandingView({
   onAddToCart,
 }: LandingViewProps) {
   const db = useDBState();
+  const [activeMainTab, setActiveMainTab] = useState<'marketplace' | 'flash_sale' | 'auction'>('marketplace');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedCity, setSelectedCity] = useState<string | null>(null);
   const [onlyVerified, setOnlyVerified] = useState<boolean>(false);
@@ -251,8 +252,58 @@ export default function LandingView({
           </div>
         </div>
 
-        {/* 2. JUMIA-STYLE INTERACTIVE PRODUCT CATEGORIES */}
-        <section id="categories-section" className="mb-10 bg-white dark:bg-slate-900 border border-gray-150 dark:border-slate-800/80 p-6 sm:p-8 rounded-[32px] shadow-sm">
+        {/* PREMIUM MAIN VIEW TABS (MARKETPLACE, FLASH SALE, AUCTION) */}
+        <div className="w-full bg-white dark:bg-slate-900 border border-gray-150 dark:border-slate-800/85 rounded-3xl p-2 mb-8 flex gap-2 shadow-sm sticky top-16 z-20 backdrop-blur-md bg-white/95 dark:bg-slate-900/95 transition-all">
+          <button
+            onClick={() => setActiveMainTab('marketplace')}
+            className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl font-sans font-extrabold text-xs sm:text-sm uppercase tracking-wider transition-all cursor-pointer ${
+              activeMainTab === 'marketplace'
+                ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/20 scale-[1.02]'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-slate-800'
+            }`}
+          >
+            <span>🛒</span>
+            <span>Marketplace Deals</span>
+            <span className={`ml-1 px-1.5 py-0.5 rounded-md text-[10px] ${activeMainTab === 'marketplace' ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-slate-800 text-slate-500'}`}>
+              {db.products.filter(p => !p.isAuction).length}
+            </span>
+          </button>
+          
+          <button
+            onClick={() => setActiveMainTab('flash_sale')}
+            className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl font-sans font-extrabold text-xs sm:text-sm uppercase tracking-wider transition-all cursor-pointer ${
+              activeMainTab === 'flash_sale'
+                ? 'bg-gradient-to-r from-red-500 to-orange-500 text-white shadow-lg shadow-red-500/20 scale-[1.02]'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-slate-800'
+            }`}
+          >
+            <span>⚡</span>
+            <span>Flash Sales</span>
+            <span className={`ml-1 px-1.5 py-0.5 rounded-md text-[10px] ${activeMainTab === 'flash_sale' ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-slate-800 text-slate-500'}`}>
+              {Math.min(db.products.filter(p => !p.isAuction).length, 4)} Active
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveMainTab('auction')}
+            className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl font-sans font-extrabold text-xs sm:text-sm uppercase tracking-wider transition-all cursor-pointer ${
+              activeMainTab === 'auction'
+                ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-white shadow-lg shadow-amber-500/20 scale-[1.02]'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-slate-800'
+            }`}
+          >
+            <span>🔨</span>
+            <span>Auction Room</span>
+            <span className={`ml-1 px-1.5 py-0.5 rounded-md text-[10px] ${activeMainTab === 'auction' ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-slate-800 text-slate-500'}`}>
+              {db.products.filter(p => p.isAuction).length}
+            </span>
+          </button>
+        </div>
+
+        {activeMainTab === 'marketplace' && (
+          <>
+            {/* 2. JUMIA-STYLE INTERACTIVE PRODUCT CATEGORIES */}
+            <section id="categories-section" className="mb-10 bg-white dark:bg-slate-900 border border-gray-150 dark:border-slate-800/80 p-6 sm:p-8 rounded-[32px] shadow-sm">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="font-display font-black text-xl text-slate-900 dark:text-white flex items-center gap-2">
@@ -329,9 +380,12 @@ export default function LandingView({
             })}
           </div>
         </section>
+      </>
+    )}
 
-        {/* 3. REDESIGNED JUMIA-STYLE ACTIVE FLASH SALES */}
-        <section id="flash-sales-section" className="mb-10 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 p-6 rounded-[32px] shadow-sm relative overflow-hidden">
+        {activeMainTab === 'flash_sale' && (
+          /* 3. REDESIGNED JUMIA-STYLE ACTIVE FLASH SALES */
+          <section id="flash-sales-section" className="mb-10 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 p-6 rounded-[32px] shadow-sm relative overflow-hidden">
           
           <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-red-500 via-orange-500 to-amber-500" />
           
@@ -426,9 +480,11 @@ export default function LandingView({
             })}
           </div>
         </section>
- 
-        {/* 4. PREMIUM REDESIGNED LIVE AUCTION BIDDING ZONE */}
-        <section id="auctions-section" className="mb-10 bg-slate-950 text-white rounded-[32px] p-6 border border-amber-500/20 shadow-xl relative overflow-hidden">
+        )}
+
+        {activeMainTab === 'auction' && (
+          /* 4. PREMIUM REDESIGNED LIVE AUCTION BIDDING ZONE */
+          <section id="auctions-section" className="mb-10 bg-slate-950 text-white rounded-[32px] p-6 border border-amber-500/20 shadow-xl relative overflow-hidden">
           
           {/* Subtle live golden radial background */}
           <div className="absolute top-0 right-0 w-80 h-80 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
@@ -562,9 +618,12 @@ export default function LandingView({
             })}
           </div>
         </section>
+        )}
 
-        {/* Live Handshake Event Hub & Online Traders */}
-        <section className="mb-10 grid grid-cols-1 md:grid-cols-3 gap-6">
+        {activeMainTab === 'marketplace' && (
+          <>
+            {/* Live Handshake Event Hub & Online Traders */}
+            <section className="mb-10 grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* A. Dynamic Scrolling Activity Feed */}
           <div className="md:col-span-2 bg-slate-900 border border-slate-800 text-white rounded-3xl p-6 relative overflow-hidden flex flex-col justify-between shadow-lg">
             <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
@@ -887,6 +946,8 @@ export default function LandingView({
             ))}
           </div>
         </section>
+      </>
+    )}
 
       </div>
     </div>

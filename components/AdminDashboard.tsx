@@ -4,7 +4,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
   ShieldAlert, ShieldCheck, FileCheck, CheckCircle2, XCircle, 
-  RefreshCw, Scale, DollarSign, Wallet, ClipboardList 
+  RefreshCw, Scale, DollarSign, Wallet, ClipboardList,
+  Database, Server, Copy, Check, ExternalLink, AlertTriangle
 } from 'lucide-react';
 import { 
   getDBState, saveDBState, dbOperations, User, UserRole, VerificationStatus 
@@ -12,8 +13,17 @@ import {
 
 export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void }) {
   const [db, setDb] = useState(getDBState());
-  const [activeTab, setActiveTab] = useState<'verifications' | 'escrows_disputes'>('verifications');
+  const [activeTab, setActiveTab] = useState<'verifications' | 'escrows_disputes' | 'supabase_setup'>('verifications');
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  
+  // Supabase testing state
+  const [isTestingSupabase, setIsTestingSupabase] = useState(false);
+  const [supabaseStatus, setSupabaseStatus] = useState<{
+    dbCheck: 'unchecked' | 'success' | 'failed';
+    storageCheck: 'unchecked' | 'success' | 'failed';
+    errorMessage?: string;
+  }>({ dbCheck: 'unchecked', storageCheck: 'unchecked' });
+  const [copiedText, setCopiedText] = useState<string | null>(null);
 
   useEffect(() => {
     const handleStateChange = () => {
@@ -24,6 +34,48 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
   }, []);
 
   const currentUser = db.currentUser;
+
+  const handleCopyText = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedText(label);
+    setTimeout(() => setCopiedText(null), 2000);
+  };
+
+  const testSupabaseIntegration = async () => {
+    setIsTestingSupabase(true);
+    setSupabaseStatus({ dbCheck: 'unchecked', storageCheck: 'unchecked' });
+    try {
+      const res = await fetch('/api/db', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: getDBState() }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSupabaseStatus({
+          dbCheck: data.supabaseDb ? 'success' : 'failed',
+          storageCheck: data.supabaseStorage ? 'success' : 'failed',
+          errorMessage: (!data.supabaseDb || !data.supabaseStorage) 
+            ? 'Synchronization completed but one or more components reported failures. Ensure the required database table and storage bucket have been created in your Supabase project.'
+            : undefined
+        });
+      } else {
+        setSupabaseStatus({
+          dbCheck: 'failed',
+          storageCheck: 'failed',
+          errorMessage: data.error || 'Server error testing connection.'
+        });
+      }
+    } catch (err: any) {
+      setSupabaseStatus({
+        dbCheck: 'failed',
+        storageCheck: 'failed',
+        errorMessage: err.message || 'Network error.'
+      });
+    } finally {
+      setIsTestingSupabase(false);
+    }
+  };
 
   // Render role/auth guard
   if (!currentUser) {
@@ -132,18 +184,26 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
             </p>
           </div>
 
-          <div className="flex gap-2 bg-gray-100 dark:bg-slate-900 p-1 rounded-xl">
+          <div className="flex flex-wrap gap-2 bg-gray-100 dark:bg-slate-900 p-1 rounded-xl">
             <button
               onClick={() => setActiveTab('verifications')}
-              className={`px-4 py-2 rounded-lg text-xs font-sans font-bold transition-all ${activeTab === 'verifications' ? 'bg-emerald-500 text-white shadow' : 'text-slate-700 dark:text-slate-400 hover:text-slate-950'}`}
+              className={`px-3 py-2 rounded-lg text-xs font-sans font-bold transition-all cursor-pointer ${activeTab === 'verifications' ? 'bg-emerald-500 text-white shadow' : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'}`}
             >
               ID Verification Queue ({pendingVerifications.length})
             </button>
             <button
               onClick={() => setActiveTab('escrows_disputes')}
-              className={`px-4 py-2 rounded-lg text-xs font-sans font-bold transition-all ${activeTab === 'escrows_disputes' ? 'bg-emerald-500 text-white shadow' : 'text-slate-700 dark:text-slate-400 hover:text-slate-950'}`}
+              className={`px-3 py-2 rounded-lg text-xs font-sans font-bold transition-all cursor-pointer ${activeTab === 'escrows_disputes' ? 'bg-emerald-500 text-white shadow' : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'}`}
             >
               Dispute Resolution ({activeDisputes.length})
+            </button>
+            <button
+              id="admin-supabase-tab"
+              onClick={() => setActiveTab('supabase_setup')}
+              className={`px-3 py-2 rounded-lg text-xs font-sans font-bold transition-all cursor-pointer flex items-center gap-1.5 ${activeTab === 'supabase_setup' ? 'bg-emerald-500 text-white shadow' : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'}`}
+            >
+              <Database className="w-3.5 h-3.5" />
+              Supabase Status
             </button>
           </div>
         </div>
@@ -323,6 +383,189 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
                 })}
               </div>
             )}
+
+          </div>
+        )}
+
+        {/* TAB 3: Supabase Integration & Setup */}
+        {activeTab === 'supabase_setup' && (
+          <div className="space-y-6">
+            
+            <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm">
+              <div className="flex items-start gap-4">
+                <div className="p-3 bg-indigo-500/10 rounded-xl text-indigo-500">
+                  <Database className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-sans font-extrabold text-base text-slate-900 dark:text-white">Supabase Cloud Sync Status</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-2xl leading-relaxed">
+                    This platform automatically attempts to back up and synchronize all local database and identification media uploads to your Supabase project in real-time. If tables or storage buckets are missing, sync warnings may appear.
+                  </p>
+                </div>
+              </div>
+
+              {/* Real-time Status Check Panel */}
+              <div className="mt-6 p-5 bg-slate-50 dark:bg-slate-950/40 rounded-2xl border border-gray-200 dark:border-slate-800/80 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-gray-400 uppercase font-black tracking-widest block">Environment Variables Check</span>
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="font-mono text-xs font-bold text-slate-700 dark:text-slate-300">
+                        NEXT_PUBLIC_SUPABASE_URL & ANON_KEY are present
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={testSupabaseIntegration}
+                    disabled={isTestingSupabase}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl cursor-pointer disabled:opacity-50 transition-all flex items-center gap-2 animate-none"
+                  >
+                    {isTestingSupabase ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                    {isTestingSupabase ? 'Testing Connection...' : 'Test Connection & Sync Now'}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                  <div className="p-4 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                        <Server className="w-4 h-4 text-emerald-500" />
+                        Database Table (`market_state`)
+                      </span>
+                      {supabaseStatus.dbCheck === 'success' && (
+                        <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold rounded-md">CONNECTED</span>
+                      )}
+                      {supabaseStatus.dbCheck === 'failed' && (
+                        <span className="px-2 py-0.5 bg-red-500/10 text-red-600 dark:text-red-400 text-[10px] font-bold rounded-md">MISSING TABLE</span>
+                      )}
+                      {supabaseStatus.dbCheck === 'unchecked' && (
+                        <span className="px-2 py-0.5 bg-gray-100 dark:bg-slate-800 text-slate-400 text-[10px] font-bold rounded-md">UNCHECKED</span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Stores marketplace orders, escrows, users, and disputes JSON payload under id=1.
+                    </p>
+                  </div>
+
+                  <div className="p-4 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                        <Database className="w-4 h-4 text-emerald-500" />
+                        Storage Bucket (`goodsale-data`)
+                      </span>
+                      {supabaseStatus.storageCheck === 'success' && (
+                        <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold rounded-md">CONNECTED</span>
+                      )}
+                      {supabaseStatus.storageCheck === 'failed' && (
+                        <span className="px-2 py-0.5 bg-red-500/10 text-red-600 dark:text-red-400 text-[10px] font-bold rounded-md">MISSING BUCKET</span>
+                      )}
+                      {supabaseStatus.storageCheck === 'unchecked' && (
+                        <span className="px-2 py-0.5 bg-gray-100 dark:bg-slate-800 text-slate-400 text-[10px] font-bold rounded-md">UNCHECKED</span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Stores fallback database backup JSON file (`database.json`) and media upload backups.
+                    </p>
+                  </div>
+                </div>
+
+                {supabaseStatus.errorMessage && (
+                  <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl text-xs flex items-start gap-2 leading-relaxed">
+                    <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                    <span>{supabaseStatus.errorMessage}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Quick Setup Instructions SQL Card */}
+            <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-6">
+              <div className="space-y-1.5">
+                <span className="px-2.5 py-0.5 bg-indigo-500/10 text-indigo-500 text-[10px] font-bold uppercase rounded-md tracking-wider">Self-Healing Tutorial</span>
+                <h3 className="font-sans font-black text-lg text-slate-900 dark:text-white">How to Set Up Your Supabase Instance</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Follow these 2 simple steps to provision the required database table and media storage buckets in your Supabase Dashboard:
+                </p>
+              </div>
+
+              {/* Step 1 */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center font-bold text-[10px] font-mono">1</span>
+                  <h4 className="font-bold text-xs text-slate-900 dark:text-white">Create the `market_state` Database Table</h4>
+                </div>
+                <p className="text-[11px] text-slate-500 pl-7 leading-relaxed">
+                  Go to the <strong>SQL Editor</strong> tab in your Supabase Dashboard, click <strong>&quot;New query&quot;</strong>, paste the query below, and click <strong>&quot;Run&quot;</strong>:
+                </p>
+
+                <div className="pl-7 relative">
+                  <pre className="p-4 bg-slate-950 text-emerald-400 font-mono text-[10px] rounded-xl overflow-x-auto border border-slate-800">
+{`-- SQL to create the marketplace state database table
+create table if not exists public.market_state (
+  id bigint primary key,
+  state jsonb not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Enable row-level security for table
+alter table public.market_state enable row level security;
+
+-- Create open RLS access policies for our anonymous client
+create policy "Allow public read/write access to market_state"
+  on public.market_state for all
+  using (true)
+  with check (true);`}
+                  </pre>
+                  <button
+                    onClick={() => handleCopyText(`create table if not exists public.market_state (
+  id bigint primary key,
+  state jsonb not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table public.market_state enable row level security;
+
+create policy "Allow public read/write access to market_state"
+  on public.market_state for all
+  using (true)
+  with check (true);`, 'sql')}
+                    className="absolute top-3 right-3 p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[9px] font-bold cursor-pointer flex items-center gap-1 transition-all"
+                  >
+                    {copiedText === 'sql' ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                    {copiedText === 'sql' ? 'Copied' : 'Copy SQL'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Step 2 */}
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center font-bold text-[10px] font-mono">2</span>
+                  <h4 className="font-bold text-xs text-slate-900 dark:text-white">Create Storage Buckets</h4>
+                </div>
+                <p className="text-[11px] text-slate-500 pl-7 leading-relaxed">
+                  Go to the <strong>Storage</strong> tab in your Supabase Dashboard, create the following two buckets, and toggle them to <strong>&quot;Public&quot;</strong>:
+                </p>
+                
+                <ul className="pl-12 list-disc text-[11px] text-slate-500 space-y-1.5 leading-relaxed">
+                  <li>
+                    <strong className="text-slate-850 dark:text-slate-300 font-mono text-xs">goodsale-data</strong>
+                    <span className="block text-[10px] text-gray-400">Stores fallback marketplace database backups in `database.json`.</span>
+                  </li>
+                  <li>
+                    <strong className="text-slate-850 dark:text-slate-300 font-mono text-xs">government-ids</strong>
+                    <span className="block text-[10px] text-gray-400">Stores uploaded identity verification documents securely.</span>
+                  </li>
+                </ul>
+
+                <p className="text-[11px] text-slate-400 pl-7 italic">
+                  Note: Make sure to click &quot;New bucket&quot;, name it exactly as stated above, and set the public toggle to active so your users can load their ID documents and verified flags successfully.
+                </p>
+              </div>
+
+            </div>
 
           </div>
         )}

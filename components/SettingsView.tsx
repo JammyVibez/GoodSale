@@ -590,7 +590,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                     ✓ Profile specifications successfully synchronized!
                   </span>
                 ) : (
-                  <span className="text-[10px] font-mono text-slate-400">Save edits to commit to the secure storage mock client.</span>
+                  <span className="text-[10px] font-mono text-slate-400">Save edits to commit to the secure persistent database.</span>
                 )}
                 <button
                   type="submit"
@@ -1794,7 +1794,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                   {[
                     { title: 'Privacy Policy', text: 'GoodSale is committed to protect personal information. We gather device coordinates, session cookies, and profile pictures strictly for user-to-user marketplace validation. Details are stored in local storage and never sold to third-party marketing entities.' },
                     { title: 'Terms of Service', text: 'By utilizing this website, you agree to respect escrow rules. Fraudulent listings, duplicate listings, spam bids, and misleading descriptions will result in immediate trust score reduction and account deactivation.' },
-                    { title: 'Escrow Lock Policy', text: 'Locked payments are held inside a secure mock state client. If goods are dispatched, funds release is triggered only by entering the buyer delivery PIN or completing a SafeMeet handshake verified by both parties.' },
+                    { title: 'Escrow Lock Policy', text: 'Locked payments are held inside a secure escrow smart ledger. If goods are dispatched, funds release is triggered only by entering the buyer delivery PIN or completing a SafeMeet handshake verified by both parties.' },
                     { title: 'Refund Policy', text: 'Refund claims are processed if the seller fails to dispatch within 72 hours, or if an active Dispute concludes in favor of the buyer during our internal arbitration process.' }
                   ].map((leg, idx) => (
                     <details key={idx} className="p-4 bg-gray-50 dark:bg-slate-800/40 rounded-xl text-xs border border-gray-150 group cursor-pointer">

@@ -86,23 +86,40 @@ export async function POST(req: NextRequest) {
         if (!dbError) {
           supabasePersistedDb = true;
         } else {
-          console.warn("Supabase db upsert failed, table may not exist:", dbError.message);
+          console.warn("[Diagnostic] Supabase db upsert failed (table might need creation in SQL editor):", dbError.message);
         }
 
         // Upload/Overwrite state file in "goodsale-data" Storage bucket
         const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
-        const { error: storageError } = await supabase
+        let { error: storageError } = await supabase
           .storage
           .from("goodsale-data")
           .upload("database.json", blob, { upsert: true });
 
+        // Self-healing: If bucket doesn't exist, try creating it automatically
+        if (storageError && (storageError.message?.includes("not found") || storageError.message?.includes("Bucket"))) {
+          try {
+            console.log("[Self-Healing] Attempting to auto-create 'goodsale-data' bucket...");
+            const { error: createError } = await supabase.storage.createBucket("goodsale-data", { public: true });
+            if (!createError) {
+              const retryRes = await supabase
+                .storage
+                .from("goodsale-data")
+                .upload("database.json", blob, { upsert: true });
+              storageError = retryRes.error;
+            }
+          } catch (bucketCreateErr: any) {
+            console.warn("[Self-Healing] Could not auto-create storage bucket:", bucketCreateErr.message);
+          }
+        }
+
         if (!storageError) {
           supabasePersistedStorage = true;
         } else {
-          console.warn("Supabase storage upload failed, bucket may not exist:", storageError.message);
+          console.warn("[Diagnostic] Supabase storage upload failed (bucket might need public activation):", storageError.message);
         }
       } catch (err: any) {
-        console.warn("Failed to synchronize with Supabase services:", err.message);
+        console.warn("[Diagnostic] Failed to synchronize with Supabase services:", err.message);
       }
     }
 

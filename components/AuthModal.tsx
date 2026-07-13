@@ -13,13 +13,20 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  initialMode?: 'login' | 'register';
 }
 
 type AuthMode = 'login' | 'register' | 'forgot_password' | 'reset_password_otp' | 'new_password' | 'otp_verify' | 'onboarding';
 
-export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
+export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: AuthModalProps) {
   const db = useDBState();
   const [mode, setMode] = useState<AuthMode>('login');
+
+  useEffect(() => {
+    if (isOpen && initialMode) {
+      setMode(initialMode);
+    }
+  }, [isOpen, initialMode]);
   
   // Real-time Field feedback
   const [errorMsg, setErrorMsg] = useState('');
@@ -647,6 +654,25 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                   )}
                 </button>
               </form>
+
+              <div className="relative flex py-2 items-center">
+                <div className="flex-grow border-t border-gray-150 dark:border-slate-800"></div>
+                <span className="flex-shrink mx-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase font-mono tracking-widest">Or hop in directly</span>
+                <div className="flex-grow border-t border-gray-150 dark:border-slate-800"></div>
+              </div>
+
+              {/* Guest Quick Login Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  dbOperations.loginAsGuest();
+                  onClose();
+                }}
+                className="w-full py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 font-sans font-extrabold text-xs uppercase tracking-wider rounded-xl cursor-pointer flex items-center justify-center gap-2 transition-all border border-gray-200 dark:border-slate-700"
+              >
+                <span>🚀</span>
+                <span>Hop in as Guest (One-Click)</span>
+              </button>
 
               {/* JWT Session Manager Panel */}
               <div className="bg-slate-50 dark:bg-slate-950 rounded-2xl p-4 border border-gray-150 dark:border-slate-850 space-y-3">

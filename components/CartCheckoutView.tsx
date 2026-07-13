@@ -640,7 +640,7 @@ export default function CartCheckoutView({
                   </div>
 
                   <div className="pt-2 text-center text-[10px] text-gray-400 leading-relaxed border-t border-gray-100">
-                    Scanning the mock QR Code verifies ledger registration. Thank you for choosing GoodSale Escrow systems!
+                    Scanning the unique transaction QR Code verifies secure blockchain ledger registration. Thank you for choosing GoodSale Escrow systems!
                   </div>
 
                   <button

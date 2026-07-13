@@ -16,12 +16,14 @@ import SellerProfileView from '../components/SellerProfileView';
 import SettingsView from '../components/SettingsView';
 import BuyerProfileView from '../components/BuyerProfileView';
 import AuthModal from '../components/AuthModal';
+import BottomNavigation from '../components/BottomNavigation';
 import { getDBState, useDBState } from '../lib/store';
 
 export default function Home() {
   const db = useDBState();
   const [currentView, setCurrentView] = useState<string>('landing');
   const [isAuthModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
   const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   
@@ -110,7 +112,7 @@ export default function Home() {
   };
 
   return (
-    <div className="bg-gray-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-h-screen transition-colors duration-300">
+    <div className="bg-gray-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-h-screen pb-[68px] md:pb-0 transition-colors duration-300">
       
       {/* Header element */}
       <Header
@@ -119,7 +121,10 @@ export default function Home() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         cartCount={cart.length}
-        onOpenAuth={() => setAuthModalOpen(true)}
+        onOpenAuth={(mode?: 'login' | 'register') => {
+          setAuthModalMode(mode || 'login');
+          setAuthModalOpen(true);
+        }}
       />
 
       {/* Floating active Toast notification banner */}
@@ -210,7 +215,20 @@ export default function Home() {
       </footer>
 
       {/* Persistent Secure Auth Modal Portal */}
-      <AuthModal isOpen={isAuthModalOpen} onClose={() => setAuthModalOpen(false)} />
+      <AuthModal isOpen={isAuthModalOpen} initialMode={authModalMode} onClose={() => setAuthModalOpen(false)} />
+
+      {/* Persistent Bottom Navigation (Mobile Native Feel) */}
+      <BottomNavigation
+        currentView={currentView}
+        onNavigate={handleNavigate}
+        cartCount={cart.length}
+        onOpenAuth={(mode?: 'login' | 'register') => {
+          setAuthModalMode(mode || 'login');
+          setAuthModalOpen(true);
+        }}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+      />
 
     </div>
   );

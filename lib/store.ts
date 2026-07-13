@@ -356,14 +356,150 @@ export interface ProductBundle {
 }
 
 // Initial Mock Datasets representing the Nigerian Local Context
-const INITIAL_USERS: User[] = [];
+const INITIAL_USERS: User[] = [
+  {
+    id: 1,
+    fullName: 'Hamza Aliyu',
+    username: 'hamzadev',
+    email: 'hamza@goodsale.ng',
+    phoneNumber: '+2348030001111',
+    role: UserRole.BUYER,
+    referralCode: 'GS-HAMZA-83',
+    trustScore: 98,
+    sellerLevel: 'BRONZE',
+    goodPoints: 340,
+  },
+  {
+    id: 2,
+    fullName: 'Fatima Abubakar',
+    username: 'fatima_deals',
+    email: 'fatima@goodsale.ng',
+    phoneNumber: '+2348051112222',
+    role: UserRole.VERIFIED_SELLER,
+    referralCode: 'GS-FATIMA-42',
+    trustScore: 100,
+    sellerLevel: 'GOLD',
+    goodPoints: 1200,
+  },
+  {
+    id: 3,
+    fullName: 'Chidi Anozie',
+    username: 'chidi_deals',
+    email: 'chidi@goodsale.ng',
+    phoneNumber: '+2348122223333',
+    role: UserRole.SELLER,
+    referralCode: 'GS-CHIDI-19',
+    trustScore: 92,
+    sellerLevel: 'BRONZE',
+    goodPoints: 150,
+  },
+  {
+    id: 4,
+    fullName: 'Sandra Edet',
+    username: 'sandra_hub',
+    email: 'sandra@goodsale.ng',
+    phoneNumber: '+2349033334444',
+    role: UserRole.VERIFIED_BUSINESS,
+    referralCode: 'GS-SANDRA-76',
+    trustScore: 99,
+    sellerLevel: 'PLATINUM',
+    goodPoints: 4500,
+  }
+];
 
-const INITIAL_PROFILES: Profile[] = [];
+const INITIAL_PROFILES: Profile[] = [
+  {
+    userId: 1,
+    photoUrl: 'https://picsum.photos/seed/hamza/200',
+    coverUrl: 'https://picsum.photos/seed/hamza_cover/800/300',
+    bio: 'Professional UI Engineer and secure escrow enthusiast in Yaba, Lagos.',
+    address: '24 Herbert Macaulay Way, Yaba',
+    city: 'Yaba',
+    state: 'Lagos',
+    deliveryPreference: 'GOODSALE_PARTNER',
+    pushEnabled: true,
+    emailEnabled: true,
+    smsEnabled: true,
+  },
+  {
+    userId: 2,
+    photoUrl: 'https://picsum.photos/seed/fatima/200',
+    coverUrl: 'https://picsum.photos/seed/fatima_cover/800/300',
+    bio: 'Certified Apple Vendor. Grade A UK Used iPhones & premium accessories under escrow.',
+    address: 'Block B, Suite 12, Wuse Zone 5',
+    city: 'Wuse',
+    state: 'Abuja',
+    deliveryPreference: 'SELF_MANAGED',
+    pushEnabled: true,
+    emailEnabled: true,
+    smsEnabled: false,
+  },
+  {
+    userId: 3,
+    photoUrl: 'https://picsum.photos/seed/chidi/200',
+    coverUrl: 'https://picsum.photos/seed/chidi_cover/800/300',
+    bio: 'Gadget reseller. Quick delivery across Lagos.',
+    address: '15 Computer Village, Ikeja',
+    city: 'Ikeja',
+    state: 'Lagos',
+    deliveryPreference: 'GOODSALE_PARTNER',
+    pushEnabled: true,
+    emailEnabled: false,
+    smsEnabled: false,
+  },
+  {
+    userId: 4,
+    photoUrl: 'https://picsum.photos/seed/sandra/200',
+    coverUrl: 'https://picsum.photos/seed/sandra_cover/800/300',
+    bio: 'Official Sandra Hub enterprise store. Vetted high-end laptops & workplace gear.',
+    address: '42 Ademola Adetokunbo Crescent, Wuse II',
+    city: 'Wuse II',
+    state: 'Abuja',
+    deliveryPreference: 'GOODSALE_PARTNER',
+    pushEnabled: true,
+    emailEnabled: true,
+    smsEnabled: true,
+  }
+];
 
-const INITIAL_BUSINESSES: Business[] = [];
+const INITIAL_BUSINESSES: Business[] = [
+  {
+    id: 1,
+    ownerId: 2,
+    name: 'Fatima Gadget Emporium',
+    logoUrl: 'https://picsum.photos/seed/fatimalogo/150',
+    bannerUrl: 'https://picsum.photos/seed/fatimabanner/1000/400',
+    description: 'Premier certified merchant specializing in authentic Grade A++ UK-used Apple devices, chargers, and premium protections.',
+    openingHours: '8:00 AM - 6:00 PM',
+    address: 'Block B, Suite 12, Wuse Zone 5',
+    city: 'Wuse',
+    state: 'Abuja',
+    isVerified: true,
+    trustScore: 100,
+    rating: 4.9,
+    reviewsCount: 148,
+    followers: 1205,
+  },
+  {
+    id: 2,
+    ownerId: 4,
+    name: 'Sandra Hub Tech Store',
+    logoUrl: 'https://picsum.photos/seed/sandralogo/150',
+    bannerUrl: 'https://picsum.photos/seed/sandrabanner/1000/400',
+    description: 'Vetted premium enterprise computer store supplying original factory sealed laptops, workstation monitors, and ergonomic setups.',
+    openingHours: '9:00 AM - 7:00 PM',
+    address: '42 Ademola Adetokunbo Crescent, Wuse II',
+    city: 'Wuse II',
+    state: 'Abuja',
+    isVerified: true,
+    trustScore: 99,
+    rating: 4.8,
+    reviewsCount: 312,
+    followers: 3480,
+  }
+];
 
-const INITIAL_PRODUCTS: Product[] = [];
-const OLD_INITIAL_PRODUCTS: any[] = [
+const INITIAL_PRODUCTS: Product[] = [
   {
     id: 101,
     sellerId: 3,
@@ -505,8 +641,7 @@ const OLD_INITIAL_PRODUCTS: any[] = [
   }
 ];
 
-const INITIAL_AUCTIONS: Auction[] = [];
-const OLD_INITIAL_AUCTIONS: any[] = [
+const INITIAL_AUCTIONS: Auction[] = [
   {
     id: 1,
     productId: 102, // MacBook
@@ -527,8 +662,7 @@ const OLD_INITIAL_AUCTIONS: any[] = [
   },
 ];
 
-const INITIAL_BIDS: Bid[] = [];
-const OLD_INITIAL_BIDS: any[] = [
+const INITIAL_BIDS: Bid[] = [
   {
     id: 1,
     auctionId: 1, // Macbook
@@ -549,8 +683,7 @@ const OLD_INITIAL_BIDS: any[] = [
   },
 ];
 
-const INITIAL_CHATS: ChatRoom[] = [];
-const OLD_INITIAL_CHATS: any[] = [
+const INITIAL_CHATS: ChatRoom[] = [
   {
     id: 1,
     buyerId: 1,
@@ -566,8 +699,7 @@ const OLD_INITIAL_CHATS: any[] = [
   },
 ];
 
-const INITIAL_MESSAGES: Message[] = [];
-const OLD_INITIAL_MESSAGES: any[] = [
+const INITIAL_MESSAGES: Message[] = [
   {
     id: 1,
     roomId: 1,
@@ -584,8 +716,7 @@ const OLD_INITIAL_MESSAGES: any[] = [
   },
 ];
 
-const INITIAL_REVIEWS: Review[] = [];
-const OLD_INITIAL_REVIEWS: any[] = [
+const INITIAL_REVIEWS: Review[] = [
   {
     id: 1,
     orderId: 9001,
@@ -612,8 +743,7 @@ const OLD_INITIAL_REVIEWS: any[] = [
   },
 ];
 
-const INITIAL_VERIFICATIONS: IdentityVerification[] = [];
-const OLD_INITIAL_VERIFICATIONS: any[] = [
+const INITIAL_VERIFICATIONS: IdentityVerification[] = [
   {
     id: 1,
     userId: 2,
@@ -641,8 +771,7 @@ const OLD_INITIAL_VERIFICATIONS: any[] = [
   },
 ];
 
-const INITIAL_ORDERS: Order[] = [];
-const OLD_INITIAL_ORDERS: any[] = [
+const INITIAL_ORDERS: Order[] = [
   {
     id: 2001,
     orderNumber: 'GS-2026-000001',
@@ -693,8 +822,7 @@ const OLD_INITIAL_ORDERS: any[] = [
   },
 ];
 
-const INITIAL_ESCROWS: Escrow[] = [];
-const OLD_INITIAL_ESCROWS: any[] = [
+const INITIAL_ESCROWS: Escrow[] = [
   {
     id: 1,
     orderId: 2001,
@@ -711,8 +839,7 @@ const OLD_INITIAL_ESCROWS: any[] = [
   },
 ];
 
-const INITIAL_DISPUTES: Dispute[] = [];
-const OLD_INITIAL_DISPUTES: any[] = [
+const INITIAL_DISPUTES: Dispute[] = [
   {
     id: 1,
     orderId: 2002,
@@ -726,8 +853,7 @@ const OLD_INITIAL_DISPUTES: any[] = [
   },
 ];
 
-const INITIAL_NOTIFICATIONS: Notification[] = [];
-const OLD_INITIAL_NOTIFICATIONS: any[] = [
+const INITIAL_NOTIFICATIONS: Notification[] = [
   {
     id: 1,
     userId: 1,
@@ -757,15 +883,13 @@ const OLD_INITIAL_NOTIFICATIONS: any[] = [
   },
 ];
 
-const INITIAL_GOODPOINTS: GoodPointsTransaction[] = [];
-const OLD_INITIAL_GOODPOINTS: any[] = [
+const INITIAL_GOODPOINTS: GoodPointsTransaction[] = [
   { id: 1, userId: 1, points: 100, reason: 'NIN Profile Verification Bonus', createdAt: '2026-07-01T09:00:00Z' },
   { id: 2, userId: 1, points: 50, reason: 'Referees (Fatima Abubakar) First Successful Sale', createdAt: '2026-07-05T14:05:00Z' },
   { id: 3, userId: 1, points: 200, reason: 'Earned on High-quality Product Review Submission', createdAt: '2026-07-05T14:00:00Z' },
 ];
 
-const INITIAL_REFERRALS: Referral[] = [];
-const OLD_INITIAL_REFERRALS: any[] = [
+const INITIAL_REFERRALS: Referral[] = [
   {
     id: 1,
     referrerId: 1,
@@ -898,7 +1022,7 @@ export function getDBState(): GoodSaleDBState {
       safeMeetMeetups: INITIAL_SAFEMEET_MEETUPS,
       followerRelations: INITIAL_FOLLOWERS,
       productBundles: INITIAL_BUNDLES,
-      currentUser: INITIAL_USERS[0] || null, // Defaults to GUEST/null if empty
+      currentUser: null, // Defaults to GUEST/null if empty
     };
   }
 
@@ -913,6 +1037,11 @@ export function getDBState(): GoodSaleDBState {
       if (!dbInstance!.safeMeetMeetups) dbInstance!.safeMeetMeetups = [];
       if (!dbInstance!.followerRelations) dbInstance!.followerRelations = INITIAL_FOLLOWERS;
       if (!dbInstance!.productBundles) dbInstance!.productBundles = INITIAL_BUNDLES;
+      // Force logout of mock users on load to satisfy "logout all mock users"
+      if (dbInstance!.currentUser && dbInstance!.currentUser.id <= 4) {
+        dbInstance!.currentUser = null;
+        localStorage.setItem(STORE_KEY, JSON.stringify(dbInstance));
+      }
       return dbInstance!;
     }
   } catch (e) {
@@ -941,7 +1070,7 @@ export function getDBState(): GoodSaleDBState {
     safeMeetMeetups: INITIAL_SAFEMEET_MEETUPS,
     followerRelations: INITIAL_FOLLOWERS,
     productBundles: INITIAL_BUNDLES,
-    currentUser: INITIAL_USERS[0] || null, // Starts as GUEST/null if empty
+    currentUser: null, // Starts as GUEST/null if empty
   };
 
   saveDBState(initial);
@@ -1071,6 +1200,54 @@ export const dbOperations = {
 
       saveDBState(state);
     }
+  },
+
+  loginAsGuest() {
+    const state = getDBState();
+    let guestUser = state.users.find(u => u.username === 'guest_trader');
+    if (!guestUser) {
+      const newId = Math.max(...state.users.map((u) => u.id), 0) + 1;
+      const refCode = `GS-GUEST-${Math.floor(100 + Math.random() * 900)}`;
+      guestUser = {
+        id: newId,
+        fullName: 'Guest Trader',
+        username: 'guest_trader',
+        email: 'guest@goodsale.ng',
+        phoneNumber: '+2348000000000',
+        role: UserRole.BUYER,
+        referralCode: refCode,
+        trustScore: 100,
+        sellerLevel: 'BRONZE',
+        goodPoints: 100,
+      };
+
+      const newProfile = {
+        userId: newId,
+        photoUrl: 'https://picsum.photos/seed/guest_avatar/200',
+        coverUrl: 'https://picsum.photos/seed/guest_cover/800/300',
+        bio: 'Proud GoodSale Guest Trader exploring secure escrow deals.',
+        address: '12 Joel Ogunnaike Street, GRA Ikeja',
+        city: 'Ikeja',
+        state: 'Lagos',
+        deliveryPreference: 'GOODSALE_PARTNER',
+        pushEnabled: true,
+        emailEnabled: true,
+        smsEnabled: false,
+      };
+
+      state.users.push(guestUser);
+      state.profiles.push(newProfile);
+    }
+    
+    state.currentUser = guestUser;
+    saveDBState(state);
+    return guestUser;
+  },
+
+  logout() {
+    const state = getDBState();
+    state.currentUser = null;
+    saveDBState(state);
   },
 
   updateCurrentUserRole(role: UserRole) {
@@ -1607,7 +1784,7 @@ export const dbOperations = {
   },
 
   // Submit User Verification (BVN/NIN simulation)
-  submitVerification(docType: DocumentType, docNum: string) {
+  submitVerification(docType: DocumentType, docNum: string, docImageUrl?: string) {
     const state = getDBState();
     if (!state.currentUser) return;
 
@@ -1620,7 +1797,7 @@ export const dbOperations = {
       fullName: state.currentUser.fullName,
       documentType: docType,
       documentNumber: docNum,
-      documentImageUrl: 'https://picsum.photos/seed/verification_doc/400/250',
+      documentImageUrl: docImageUrl || 'https://picsum.photos/seed/verification_doc/400/250',
       selfieImageUrl: state.profiles.find(p => p.userId === state.currentUser!.id)?.photoUrl || 'https://picsum.photos/seed/selfie/200/200',
       proofOfAddressUrl: 'https://picsum.photos/seed/utility/400/500',
       status: VerificationStatus.PENDING,
@@ -1628,6 +1805,44 @@ export const dbOperations = {
     };
 
     state.verifications.push(newVer);
+    saveDBState(state);
+  },
+
+  verifyUserImmediately(userId: number, role: UserRole) {
+    const state = getDBState();
+    const user = state.users.find(u => u.id === userId);
+    if (user) {
+      user.role = role;
+      if (state.currentUser && state.currentUser.id === userId) {
+        state.currentUser.role = role;
+      }
+      user.trustScore = 100;
+      user.goodPoints += 200;
+
+      // Update business if exists
+      const biz = state.businesses.find(b => b.ownerId === userId);
+      if (biz) biz.isVerified = true;
+
+      // Add points transaction
+      state.goodPoints.push({
+        id: state.goodPoints.length + 1,
+        userId: user.id,
+        points: 200,
+        reason: 'Identity verification approved reward',
+        createdAt: new Date().toISOString(),
+      });
+
+      // Send verification notification
+      state.notifications.push({
+        id: state.notifications.length + 1,
+        userId: user.id,
+        title: 'Identity Verification Approved!',
+        message: 'Congratulations! Your identity has been verified. You received a gold trust badge, search ranking boost, and 200 GoodPoints!',
+        type: 'VERIFICATION',
+        isRead: false,
+        createdAt: new Date().toISOString()
+      });
+    }
     saveDBState(state);
   },
 

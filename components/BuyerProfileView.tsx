@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { 
   User, Shield, Award, MapPin, CheckCircle, Package, Clock, AlertTriangle, 
   ChevronRight, Calendar, Star, HelpCircle, ArrowLeft, Key, ThumbsUp, CreditCard,
-  Download, Check, FileText
+  Download, Check, FileText, Compass, Sliders, MessageSquare
 } from 'lucide-react';
 import { useDBState, dbOperations, getDBState, saveDBState, OrderStatus, Order } from '../lib/store';
 import LiveSafeMeetMap from './LiveSafeMeetMap';
@@ -839,6 +839,103 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
         {/* Right Side Column: reviews written list & stats */}
         <div className="space-y-6">
           
+          {/* Quick Settings & Navigation Center */}
+          <div className="bg-white dark:bg-slate-900 border border-gray-150 dark:border-slate-800 p-6 rounded-[32px] shadow-sm space-y-4">
+            <div>
+              <h3 className="font-display font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
+                <Compass className="w-5 h-5 text-[#e00000]" />
+                Navigation Center
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-1 font-sans">Quickly navigate across the platform&apos;s key features.</p>
+            </div>
+
+            <div className="space-y-2.5">
+              {/* 1. Settings Link */}
+              <button
+                type="button"
+                onClick={() => onNavigate?.('settings')}
+                className="w-full text-left p-3 rounded-2xl bg-slate-50 hover:bg-slate-100/80 dark:bg-slate-800/30 dark:hover:bg-slate-850/50 border border-gray-100 dark:border-slate-800/80 transition-all flex items-center gap-3 group cursor-pointer"
+              >
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <Sliders className="w-4.5 h-4.5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="block text-xs font-bold text-slate-850 dark:text-white group-hover:text-indigo-500 transition-colors">Settings & Safety</span>
+                  <span className="block text-[10px] text-slate-400 dark:text-slate-500 truncate">Configure credentials, security, and alerts.</span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+              </button>
+
+              {/* 2. Chat Link */}
+              <button
+                type="button"
+                onClick={() => onNavigate?.('chats')}
+                className="w-full text-left p-3 rounded-2xl bg-slate-50 hover:bg-slate-100/80 dark:bg-slate-800/30 dark:hover:bg-slate-850/50 border border-gray-100 dark:border-slate-800/80 transition-all flex items-center gap-3 group cursor-pointer"
+              >
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <MessageSquare className="w-4.5 h-4.5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="block text-xs font-bold text-slate-850 dark:text-white group-hover:text-emerald-500 transition-colors">Chats & Negotiations</span>
+                  <span className="block text-[10px] text-slate-400 dark:text-slate-500 truncate">Open secure private messenger inbox.</span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+              </button>
+
+              {/* 3. Loyalty Link */}
+              <button
+                type="button"
+                onClick={() => onNavigate?.('loyalty')}
+                className="w-full text-left p-3 rounded-2xl bg-slate-50 hover:bg-slate-100/80 dark:bg-slate-800/30 dark:hover:bg-slate-850/50 border border-gray-100 dark:border-slate-800/80 transition-all flex items-center gap-3 group cursor-pointer"
+              >
+                <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <Award className="w-4.5 h-4.5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="block text-xs font-bold text-slate-850 dark:text-white group-hover:text-amber-500 transition-colors">GoodPoints Hub (GP)</span>
+                  <span className="block text-[10px] text-slate-400 dark:text-slate-500 truncate">Claim rewards and check loyalty ledger.</span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+              </button>
+
+              {/* 4. Seller Hub (conditional) */}
+              {currentUser && ['SELLER', 'VERIFIED_SELLER', 'BUSINESS', 'VERIFIED_BUSINESS'].includes(currentUser.role) && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate?.('dashboard')}
+                  className="w-full text-left p-3 rounded-2xl bg-slate-50 hover:bg-slate-100/80 dark:bg-slate-800/30 dark:hover:bg-slate-850/50 border border-gray-100 dark:border-slate-800/80 transition-all flex items-center gap-3 group cursor-pointer"
+                >
+                  <div className="w-9 h-9 rounded-xl bg-orange-500/10 text-orange-500 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                    <User className="w-4.5 h-4.5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className="block text-xs font-bold text-slate-850 dark:text-white group-hover:text-orange-500 transition-colors">Go to Merchant Hub</span>
+                    <span className="block text-[10px] text-slate-400 dark:text-slate-500 truncate">Manage listings, orders, and sales metrics.</span>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                </button>
+              )}
+
+              {/* 5. Admin Panel (conditional) */}
+              {currentUser && ['ADMIN', 'SUPER_ADMIN'].includes(currentUser.role) && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate?.('admin')}
+                  className="w-full text-left p-3 rounded-2xl bg-slate-50 hover:bg-slate-100/80 dark:bg-slate-800/30 dark:hover:bg-slate-850/50 border border-gray-100 dark:border-slate-800/80 transition-all flex items-center gap-3 group cursor-pointer"
+                >
+                  <div className="w-9 h-9 rounded-xl bg-red-500/10 text-red-500 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                    <Shield className="w-4.5 h-4.5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className="block text-xs font-bold text-slate-850 dark:text-white group-hover:text-red-500 transition-colors">Platform Administration</span>
+                    <span className="block text-[10px] text-slate-400 dark:text-slate-500 truncate">Moderate disputes, check IDs, and monitor health.</span>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* Credit Account Info Card */}
           <div className="bg-slate-900 text-white p-6 rounded-3xl border border-slate-800 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
