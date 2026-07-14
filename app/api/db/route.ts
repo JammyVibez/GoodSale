@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
         if (!dbError) {
           supabasePersistedDb = true;
         } else {
-          console.warn("[Diagnostic] Supabase db upsert failed (table might need creation in SQL editor):", dbError.message);
+          console.log("Supabase db upsert skipped (table might need creation in SQL editor):", dbError.message);
         }
 
         // Upload/Overwrite state file in "goodsale-data" Storage bucket
@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
         // Self-healing: If bucket doesn't exist, try creating it automatically
         if (storageError && (storageError.message?.includes("not found") || storageError.message?.includes("Bucket"))) {
           try {
-            console.log("[Self-Healing] Attempting to auto-create 'goodsale-data' bucket...");
+            console.log("Attempting to auto-create 'goodsale-data' bucket...");
             const { error: createError } = await supabase.storage.createBucket("goodsale-data", { public: true });
             if (!createError) {
               const retryRes = await supabase
@@ -109,17 +109,17 @@ export async function POST(req: NextRequest) {
               storageError = retryRes.error;
             }
           } catch (bucketCreateErr: any) {
-            console.warn("[Self-Healing] Could not auto-create storage bucket:", bucketCreateErr.message);
+            console.log("Could not auto-create storage bucket:", bucketCreateErr.message);
           }
         }
 
         if (!storageError) {
           supabasePersistedStorage = true;
         } else {
-          console.warn("[Diagnostic] Supabase storage upload failed (bucket might need public activation):", storageError.message);
+          console.log("Supabase storage upload skipped (bucket might need public activation):", storageError.message);
         }
       } catch (err: any) {
-        console.warn("[Diagnostic] Failed to synchronize with Supabase services:", err.message);
+        console.log("Failed to synchronize with Supabase services:", err.message);
       }
     }
 
