@@ -253,48 +253,52 @@ export default function LandingView({
         </div>
 
         {/* PREMIUM MAIN VIEW TABS (MARKETPLACE, FLASH SALE, AUCTION) */}
-        <div className="w-full bg-white dark:bg-slate-900 border border-gray-150 dark:border-slate-800/85 rounded-3xl p-2 mb-8 flex gap-2 shadow-sm sticky top-16 z-20 backdrop-blur-md bg-white/95 dark:bg-slate-900/95 transition-all">
+        <div className="w-full bg-white dark:bg-slate-900 border border-gray-150 dark:border-slate-800/85 rounded-3xl p-1.5 sm:p-2 mb-6 sm:mb-8 flex gap-1 sm:gap-2 shadow-sm sticky top-[106px] md:top-16 z-20 backdrop-blur-md bg-white/95 dark:bg-slate-900/95 transition-all">
           <button
             onClick={() => setActiveMainTab('marketplace')}
-            className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl font-sans font-extrabold text-xs sm:text-sm uppercase tracking-wider transition-all cursor-pointer ${
+            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 py-2.5 sm:py-3.5 rounded-2xl font-sans font-extrabold text-[10px] sm:text-xs md:text-sm uppercase tracking-wide sm:tracking-wider transition-all cursor-pointer ${
               activeMainTab === 'marketplace'
-                ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/20 scale-[1.02]'
+                ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/20 scale-[1.01]'
                 : 'text-slate-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-slate-800'
             }`}
           >
             <span>🛒</span>
-            <span>Marketplace Deals</span>
-            <span className={`ml-1 px-1.5 py-0.5 rounded-md text-[10px] ${activeMainTab === 'marketplace' ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-slate-800 text-slate-500'}`}>
+            <span className="hidden sm:inline">Marketplace Deals</span>
+            <span className="inline sm:hidden">Marketplace</span>
+            <span className={`ml-1 px-1 sm:px-1.5 py-0.5 rounded-md text-[8px] sm:text-[10px] ${activeMainTab === 'marketplace' ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-slate-800 text-slate-500'}`}>
               {db.products.filter(p => !p.isAuction).length}
             </span>
           </button>
           
           <button
             onClick={() => setActiveMainTab('flash_sale')}
-            className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl font-sans font-extrabold text-xs sm:text-sm uppercase tracking-wider transition-all cursor-pointer ${
+            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 py-2.5 sm:py-3.5 rounded-2xl font-sans font-extrabold text-[10px] sm:text-xs md:text-sm uppercase tracking-wide sm:tracking-wider transition-all cursor-pointer ${
               activeMainTab === 'flash_sale'
-                ? 'bg-gradient-to-r from-red-500 to-orange-500 text-white shadow-lg shadow-red-500/20 scale-[1.02]'
+                ? 'bg-gradient-to-r from-red-500 to-orange-500 text-white shadow-lg shadow-red-500/20 scale-[1.01]'
                 : 'text-slate-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-slate-800'
             }`}
           >
             <span>⚡</span>
-            <span>Flash Sales</span>
-            <span className={`ml-1 px-1.5 py-0.5 rounded-md text-[10px] ${activeMainTab === 'flash_sale' ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-slate-800 text-slate-500'}`}>
-              {Math.min(db.products.filter(p => !p.isAuction).length, 4)} Active
+            <span className="hidden xs:inline">Flash Sales</span>
+            <span className="inline xs:hidden">Flash</span>
+            <span className={`ml-1 px-1 sm:px-1.5 py-0.5 rounded-md text-[8px] sm:text-[10px] ${activeMainTab === 'flash_sale' ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-slate-800 text-slate-500'}`}>
+              {Math.min(db.products.filter(p => !p.isAuction).length, 4)}
+              <span className="hidden sm:inline"> Active</span>
             </span>
           </button>
 
           <button
             onClick={() => setActiveMainTab('auction')}
-            className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl font-sans font-extrabold text-xs sm:text-sm uppercase tracking-wider transition-all cursor-pointer ${
+            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 py-2.5 sm:py-3.5 rounded-2xl font-sans font-extrabold text-[10px] sm:text-xs md:text-sm uppercase tracking-wide sm:tracking-wider transition-all cursor-pointer ${
               activeMainTab === 'auction'
-                ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-white shadow-lg shadow-amber-500/20 scale-[1.02]'
+                ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-white shadow-lg shadow-amber-500/20 scale-[1.01]'
                 : 'text-slate-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-slate-800'
             }`}
           >
             <span>🔨</span>
-            <span>Auction Room</span>
-            <span className={`ml-1 px-1.5 py-0.5 rounded-md text-[10px] ${activeMainTab === 'auction' ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-slate-800 text-slate-500'}`}>
+            <span className="hidden sm:inline">Auction Room</span>
+            <span className="inline sm:hidden">Auctions</span>
+            <span className={`ml-1 px-1 sm:px-1.5 py-0.5 rounded-md text-[8px] sm:text-[10px] ${activeMainTab === 'auction' ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-slate-800 text-slate-500'}`}>
               {db.products.filter(p => p.isAuction).length}
             </span>
           </button>

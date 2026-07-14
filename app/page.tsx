@@ -112,7 +112,7 @@ export default function Home() {
   };
 
   return (
-    <div className="bg-gray-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-h-screen pb-[68px] md:pb-0 transition-colors duration-300">
+    <div className="bg-gray-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-h-screen transition-colors duration-300">
       
       {/* Header element */}
       <Header
@@ -136,7 +136,7 @@ export default function Home() {
       )}
 
       {/* Core Dynamic Content Container */}
-      <main className="min-h-[calc(100vh-4rem)]">
+      <main className="min-h-[calc(100vh-4rem)] pb-[68px] md:pb-0">
         {currentView === 'landing' && (
           <LandingView
             onSelectProduct={handleSelectProduct}
@@ -207,12 +207,12 @@ export default function Home() {
         {currentView === 'buyer-profile' && (
           <BuyerProfileView onBack={handleGoBack} onNavigate={handleNavigate} onOpenAuth={() => setAuthModalOpen(true)} />
         )}
-      </main>
 
-      {/* Visual simple footer */}
-      <footer className="bg-white dark:bg-slate-900 border-t border-gray-100 dark:border-slate-800 py-6 text-center text-[10px] text-gray-400 font-mono tracking-wide">
-        © {new Date().getFullYear()} GoodSale Inc. Premium Escrow Nigerian Commerce. All rights reserved.
-      </footer>
+        {/* Visual simple footer */}
+        <footer className="bg-white dark:bg-slate-900 border-t border-gray-100 dark:border-slate-800 py-6 text-center text-[10px] text-gray-400 font-mono tracking-wide mt-auto">
+          © {new Date().getFullYear()} GoodSale Inc. Premium Escrow Nigerian Commerce. All rights reserved.
+        </footer>
+      </main>
 
       {/* Persistent Secure Auth Modal Portal */}
       <AuthModal isOpen={isAuthModalOpen} initialMode={authModalMode} onClose={() => setAuthModalOpen(false)} />
