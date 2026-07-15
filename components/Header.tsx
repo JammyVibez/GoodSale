@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Search, ShoppingCart, Bell, User as UserIcon, Shield, RefreshCw, 
   MapPin, Award, Store, Sun, Moon, Laptop, LogIn, ChevronDown, CheckCircle, Sparkles,
-  Menu, X, Gavel, Package, Eye, EyeOff, Trash, Zap, MessageSquare
+  Menu, X, Gavel, Package, Eye, EyeOff, Trash, Zap, MessageSquare, Truck, DollarSign
 } from 'lucide-react';
 import { User, UserRole, getDBState, saveDBState, dbOperations, useDBState } from '../lib/store';
 import Logo from './LogoIcon';
@@ -598,6 +598,40 @@ export default function Header({
                 </button>
               ) : null}
 
+              {/* GoodDispatch Link */}
+              {user ? (
+                <button
+                  id="dispatch-link"
+                  onClick={() => onNavigate('dispatch')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border select-none ${
+                    currentView === 'dispatch'
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10'
+                      : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-emerald-500 hover:bg-slate-100 dark:hover:bg-slate-750 border-gray-200 dark:border-slate-700'
+                  }`}
+                  title="Open GoodDispatch Delivery Network"
+                >
+                  <Truck className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>GoodDispatch™</span>
+                </button>
+              ) : null}
+
+              {/* Revenue Hub Link */}
+              {user ? (
+                <button
+                  id="revenue-link"
+                  onClick={() => onNavigate('revenue')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border select-none ${
+                    currentView === 'revenue'
+                      ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10'
+                      : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-amber-500 hover:bg-slate-100 dark:hover:bg-slate-750 border-gray-200 dark:border-slate-700'
+                  }`}
+                  title="Open Revenue Hub"
+                >
+                  <DollarSign className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Revenue Hub</span>
+                </button>
+              ) : null}
+
               {/* Sign In / Register / Logout Buttons */}
               {!user ? (
                 <div className="flex items-center gap-2">
@@ -713,7 +747,12 @@ export default function Header({
 
 
               {/* Custom Sidebar Nav Indicators for Dashboards */}
-              {user && (user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN) && (
+              {user && (
+                user.role === UserRole.ADMIN || 
+                user.role === UserRole.SUPER_ADMIN || 
+                user.email.toLowerCase() === 'lightingstar79@gmail.com' || 
+                user.email.toLowerCase() === 'admin@goodsale.ng'
+              ) && (
                 <button 
                   onClick={() => onNavigate('admin')}
                   className={`p-1.5 rounded-lg border text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${currentView === 'admin' ? 'bg-emerald-500 text-white border-emerald-500 shadow-md' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-gray-200 dark:border-slate-700 hover:bg-gray-200'}`}

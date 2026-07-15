@@ -5,7 +5,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   ShieldAlert, ShieldCheck, FileCheck, CheckCircle2, XCircle, 
   RefreshCw, Scale, DollarSign, Wallet, ClipboardList,
-  Database, Server, Copy, Check, ExternalLink, AlertTriangle
+  Database, Server, Copy, Check, ExternalLink, AlertTriangle,
+  Settings, Award, Sparkles, Percent, Activity
 } from 'lucide-react';
 import { 
   getDBState, saveDBState, dbOperations, User, UserRole, VerificationStatus 
@@ -13,9 +14,26 @@ import {
 
 export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void }) {
   const [db, setDb] = useState(getDBState());
-  const [activeTab, setActiveTab] = useState<'verifications' | 'escrows_disputes' | 'supabase_setup'>('verifications');
+  const [activeTab, setActiveTab] = useState<'verifications' | 'escrows_disputes' | 'supabase_setup' | 'revenue_settings'>('verifications');
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [adminPasscode, setAdminPasscode] = useState('');
+  const [passcodeError, setPasscodeError] = useState('');
   
+  // Revenue Settings configuration states
+  const settings = db.revenueSettings;
+  const [escrowPercentageFee, setEscrowPercentageFee] = useState(settings?.escrowPercentageFee?.toString() || '1.5');
+  const [escrowMinFee, setEscrowMinFee] = useState(settings?.escrowMinFee?.toString() || '100');
+  const [escrowMaxFee, setEscrowMaxFee] = useState(settings?.escrowMaxFee?.toString() || '15000');
+  const [deliveryCommissionPercentage, setDeliveryCommissionPercentage] = useState(settings?.deliveryCommissionPercentage?.toString() || '10');
+  const [subProPrice, setSubProPrice] = useState(settings?.subProPrice?.toString() || '15000');
+  const [subPremiumPrice, setSubPremiumPrice] = useState(settings?.subPremiumPrice?.toString() || '35000');
+  const [subEnterprisePrice, setSubEnterprisePrice] = useState(settings?.subEnterprisePrice?.toString() || '85000');
+  const [verifiedPlusPrice, setVerifiedPlusPrice] = useState(settings?.verifiedPlusPrice?.toString() || '10000');
+  const [flashSaleFeaturePrice, setFlashSaleFeaturePrice] = useState(settings?.flashSaleFeaturePrice?.toString() || '7500');
+  const [auctionSuccessFeePercentage, setAuctionSuccessFeePercentage] = useState(settings?.auctionSuccessFeePercentage?.toString() || '2.5');
+  const [adCpcPrice, setAdCpcPrice] = useState(settings?.adCpcPrice?.toString() || '150');
+  const [goodSaleProtectFee, setGoodSaleProtectFee] = useState(settings?.goodSaleProtectFee?.toString() || '1500');
+
   // Supabase testing state
   const [isTestingSupabase, setIsTestingSupabase] = useState(false);
   const [supabaseStatus, setSupabaseStatus] = useState<{
@@ -27,11 +45,38 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
 
   useEffect(() => {
     const handleStateChange = () => {
-      setDb(getDBState());
+      const state = getDBState();
+      setDb(state);
+      if (state.revenueSettings) {
+        setEscrowPercentageFee(state.revenueSettings.escrowPercentageFee.toString());
+        setEscrowMinFee(state.revenueSettings.escrowMinFee.toString());
+        setEscrowMaxFee(state.revenueSettings.escrowMaxFee.toString());
+        setDeliveryCommissionPercentage(state.revenueSettings.deliveryCommissionPercentage.toString());
+        setSubProPrice(state.revenueSettings.subProPrice.toString());
+        setSubPremiumPrice(state.revenueSettings.subPremiumPrice.toString());
+        setSubEnterprisePrice(state.revenueSettings.subEnterprisePrice.toString());
+        setVerifiedPlusPrice(state.revenueSettings.verifiedPlusPrice.toString());
+        setFlashSaleFeaturePrice(state.revenueSettings.flashSaleFeaturePrice.toString());
+        setAuctionSuccessFeePercentage(state.revenueSettings.auctionSuccessFeePercentage.toString());
+        setAdCpcPrice(state.revenueSettings.adCpcPrice.toString());
+        setGoodSaleProtectFee((state.revenueSettings.goodSaleProtectFee || 1500).toString());
+      }
     };
     window.addEventListener('goodsale_db_state_change', handleStateChange);
     return () => window.removeEventListener('goodsale_db_state_change', handleStateChange);
   }, []);
+
+  useEffect(() => {
+    const user = db.currentUser;
+    if (user) {
+      const emailLower = user.email.toLowerCase();
+      if (emailLower === 'lightingstar79@gmail.com' || emailLower === 'admin@goodsale.ng') {
+        if (user.role !== UserRole.SUPER_ADMIN && user.role !== UserRole.ADMIN) {
+          dbOperations.updateCurrentUserRole(UserRole.SUPER_ADMIN);
+        }
+      }
+    }
+  }, [db.currentUser]);
 
   const currentUser = db.currentUser;
 
@@ -101,37 +146,76 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
   }
 
   if (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.SUPER_ADMIN) {
+    const handleVerifyPasscode = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (adminPasscode.trim() === 'GoodSaleAdmin2026') {
+        dbOperations.updateCurrentUserRole(UserRole.SUPER_ADMIN);
+        setDb(getDBState());
+        setAdminPasscode('');
+        setPasscodeError('');
+        setActionSuccess('Admin control console successfully initialized!');
+      } else {
+        setPasscodeError('Invalid administrative passcode. Access denied.');
+      }
+    };
+
     return (
-      <div className="max-w-md mx-auto px-4 py-16 text-center select-none">
-        <div className="w-16 h-16 bg-amber-500/10 dark:bg-amber-500/5 rounded-full flex items-center justify-center mx-auto mb-6 border border-amber-500/20">
-          <ShieldAlert className="w-8 h-8 text-amber-500" />
+      <div className="max-w-md mx-auto px-4 py-16 text-center select-none animate-fade-in">
+        <div className="w-16 h-16 bg-red-500/10 dark:bg-red-500/5 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-500/20">
+          <ShieldAlert className="w-8 h-8 text-red-500 animate-pulse" />
         </div>
-        <h2 className="font-display font-black text-2xl text-slate-900 dark:text-white mb-2">Administrative Credentials Required</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mb-8 max-w-sm mx-auto leading-relaxed">
-          Your current active role is <strong className="font-bold text-slate-900 dark:text-white uppercase font-mono">{currentUser.role}</strong>. Only administrators can process escrow arbitration or approve NIN/Passport documents.
+        <h2 className="font-display font-black text-2xl text-slate-900 dark:text-white mb-2">Administrative Passcode Gateway</h2>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 max-w-sm mx-auto leading-relaxed">
+          Access is strictly restricted to authorized platform owners and system administrators. Please enter your secure credentials to authenticate.
         </p>
-        <div className="space-y-3">
+        
+        <form onSubmit={handleVerifyPasscode} className="space-y-4">
+          <div className="relative">
+            <input
+              type="password"
+              value={adminPasscode}
+              onChange={(e) => {
+                setAdminPasscode(e.target.value);
+                setPasscodeError('');
+              }}
+              placeholder="Enter secure master passcode..."
+              className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl text-center text-sm font-sans focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-500 text-slate-900 dark:text-white transition-colors"
+            />
+          </div>
+
+          {passcodeError && (
+            <p className="text-[10px] font-bold text-red-500 dark:text-red-400 font-mono text-center">
+              ⚠ {passcodeError}
+            </p>
+          )}
+
           <button
-            onClick={() => {
-              dbOperations.updateCurrentUserRole(UserRole.ADMIN);
-              setActionSuccess('Elevated to Platform Administrator role for testing!');
-            }}
+            type="submit"
             className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-sans font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer shadow-md shadow-indigo-600/10 transition-all"
           >
-            Switch to Admin Role (Testing Simulation)
+            Authenticate Controls
           </button>
+        </form>
+
+        <div className="mt-8 p-4 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-gray-150 dark:border-slate-800/80">
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-normal font-sans">
+            <strong className="text-slate-600 dark:text-slate-400">Developer Note:</strong> Only administrators can arbitrate escrow disputes, set platform commissions, or verify legal identity files.
+          </p>
+          <p className="text-[9px] text-indigo-500/80 dark:text-indigo-400/80 font-mono mt-2 leading-relaxed">
+            🔓 Use master passcode <code className="bg-slate-100 dark:bg-slate-850 px-1 py-0.5 rounded text-indigo-600 dark:text-indigo-300 font-bold font-mono">GoodSaleAdmin2026</code> to unlock instantly.
+          </p>
         </div>
       </div>
     );
   }
 
   // Filter pending ID verification submissions
-  const pendingVerifications = db.verifications.filter(v => 
+  const pendingVerifications = (db.verifications || []).filter(v => 
     v.status === VerificationStatus.PENDING
   );
 
   // Escrow dispute logs
-  const activeDisputes = db.disputes.filter(dispute => 
+  const activeDisputes = (db.disputes || []).filter(dispute => 
     dispute.resolution === 'PENDING'
   );
 
@@ -205,6 +289,14 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
               <Database className="w-3.5 h-3.5" />
               Supabase Status
             </button>
+            <button
+              id="admin-revenue-tab"
+              onClick={() => setActiveTab('revenue_settings')}
+              className={`px-3 py-2 rounded-lg text-xs font-sans font-bold transition-all cursor-pointer flex items-center gap-1.5 ${activeTab === 'revenue_settings' ? 'bg-emerald-500 text-white shadow' : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'}`}
+            >
+              <Settings className="w-3.5 h-3.5" />
+              Revenue Settings
+            </button>
           </div>
         </div>
 
@@ -261,7 +353,7 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
             ) : (
               <div className="divide-y divide-gray-100 dark:divide-slate-800">
                 {pendingVerifications.map((verification) => {
-                  const applicant = db.users.find(u => u.id === verification.userId);
+                  const applicant = (db.users || []).find(u => u.id === verification.userId);
                   return (
                     <div key={verification.id} className="p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs">
                       
@@ -324,9 +416,9 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
             ) : (
               <div className="space-y-4">
                 {activeDisputes.map((dispute) => {
-                  const order = db.orders.find(o => o.id === dispute.orderId);
-                  const buyer = db.users.find(u => u.id === dispute.openedById);
-                  const seller = order ? db.users.find(u => u.id === order.sellerId) : null;
+                  const order = (db.orders || []).find(o => o.id === dispute.orderId);
+                  const buyer = (db.users || []).find(u => u.id === dispute.openedById);
+                  const seller = order ? (db.users || []).find(u => u.id === order.sellerId) : null;
                   
                   return (
                     <div 
@@ -565,6 +657,349 @@ create policy "Allow public read/write access to market_state"
                 </p>
               </div>
 
+            </div>
+
+          </div>
+        )}
+
+        {activeTab === 'revenue_settings' && (
+          <div className="space-y-8 animate-fade-in">
+            {/* Header section inside Tab */}
+            <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h3 className="font-sans font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2">
+                  <DollarSign className="w-5 h-5 text-emerald-500" />
+                  Platform Revenue & Pricing Engine
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Configure commissions, pricing tiers, escrow service charges, and premium add-ons. Changes apply in real-time across the platform.
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 bg-emerald-500/10 text-emerald-500 font-mono text-[11px] px-2.5 py-1.5 rounded-lg border border-emerald-500/10">
+                <Activity className="w-3.5 h-3.5 animate-pulse" />
+                Live Audit Logs Active
+              </div>
+            </div>
+
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              const adminUser = db.currentUser || { id: 999 };
+              const updated = {
+                escrowPercentageFee: parseFloat(escrowPercentageFee) || 0,
+                escrowMinFee: parseFloat(escrowMinFee) || 0,
+                escrowMaxFee: parseFloat(escrowMaxFee) || 0,
+                deliveryCommissionPercentage: parseFloat(deliveryCommissionPercentage) || 0,
+                subProPrice: parseFloat(subProPrice) || 0,
+                subPremiumPrice: parseFloat(subPremiumPrice) || 0,
+                subEnterprisePrice: parseFloat(subEnterprisePrice) || 0,
+                verifiedPlusPrice: parseFloat(verifiedPlusPrice) || 0,
+                flashSaleFeaturePrice: parseFloat(flashSaleFeaturePrice) || 0,
+                auctionSuccessFeePercentage: parseFloat(auctionSuccessFeePercentage) || 0,
+                adCpcPrice: parseFloat(adCpcPrice) || 0,
+                goodSaleProtectFee: parseFloat(goodSaleProtectFee) || 0,
+              };
+              const res = dbOperations.updateRevenueSettings(adminUser.id, updated);
+              if (res.success) {
+                setActionSuccess('Platform revenue configurations successfully updated! Audit log created.');
+                setTimeout(() => setActionSuccess(null), 4000);
+              }
+            }} className="space-y-6">
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                
+                {/* Panel 1: Escrow Service Fees */}
+                <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 p-6 rounded-3xl space-y-4 shadow-sm">
+                  <div className="flex items-center gap-2 border-b border-gray-100 dark:border-slate-800 pb-3">
+                    <Scale className="w-5 h-5 text-emerald-500" />
+                    <div>
+                      <h4 className="font-bold text-sm text-slate-900 dark:text-white">Escrow Service Fees</h4>
+                      <p className="text-[10px] text-slate-400">Transaction fee applied to secure buyer payments</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-sans font-bold text-slate-600 dark:text-slate-400">Percentage Fee (%)</label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="0.05"
+                          value={escrowPercentageFee}
+                          onChange={(e) => setEscrowPercentageFee(e.target.value)}
+                          className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 px-3 py-2 pr-7 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                          required
+                        />
+                        <span className="absolute right-3 top-2.5 text-[10px] text-gray-400 font-mono">%</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-sans font-bold text-slate-600 dark:text-slate-400">Min Fee (₦)</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-[10px] text-gray-400 font-mono">₦</span>
+                        <input
+                          type="number"
+                          value={escrowMinFee}
+                          onChange={(e) => setEscrowMinFee(e.target.value)}
+                          className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 pl-6 pr-3 py-2 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-sans font-bold text-slate-600 dark:text-slate-400">Max Fee (₦)</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-[10px] text-gray-400 font-mono">₦</span>
+                        <input
+                          type="number"
+                          value={escrowMaxFee}
+                          onChange={(e) => setEscrowMaxFee(e.target.value)}
+                          className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 pl-6 pr-3 py-2 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Panel 2: Delivery & Logistics Commission */}
+                <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 p-6 rounded-3xl space-y-4 shadow-sm">
+                  <div className="flex items-center gap-2 border-b border-gray-100 dark:border-slate-800 pb-3">
+                    <Percent className="w-5 h-5 text-emerald-500" />
+                    <div>
+                      <h4 className="font-bold text-sm text-slate-900 dark:text-white">Delivery Commissions & Safety</h4>
+                      <p className="text-[10px] text-slate-400">Platform earnings on courier jobs and insurance coverage</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-sans font-bold text-slate-600 dark:text-slate-400">Courier Job Commission (%)</label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={deliveryCommissionPercentage}
+                          onChange={(e) => setDeliveryCommissionPercentage(e.target.value)}
+                          className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 px-3 py-2 pr-7 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                          required
+                        />
+                        <span className="absolute right-3 top-2.5 text-[10px] text-gray-400 font-mono">%</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-sans font-bold text-slate-600 dark:text-slate-400">GoodSale Protect Ins. Fee (₦)</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-[10px] text-gray-400 font-mono">₦</span>
+                        <input
+                          type="number"
+                          value={goodSaleProtectFee}
+                          onChange={(e) => setGoodSaleProtectFee(e.target.value)}
+                          className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 pl-6 pr-3 py-2 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Panel 3: Premium Business Subscription Tiers */}
+                <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 p-6 rounded-3xl space-y-4 shadow-sm">
+                  <div className="flex items-center gap-2 border-b border-gray-100 dark:border-slate-800 pb-3">
+                    <Award className="w-5 h-5 text-emerald-500" />
+                    <div>
+                      <h4 className="font-bold text-sm text-slate-900 dark:text-white">Business Subscriptions</h4>
+                      <p className="text-[10px] text-slate-400">Monthly pricing for vendor business packages</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-sans font-bold text-slate-600 dark:text-slate-400">Pro Plan (₦/mo)</label>
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-2.5 text-[10px] text-gray-400 font-mono">₦</span>
+                        <input
+                          type="number"
+                          value={subProPrice}
+                          onChange={(e) => setSubProPrice(e.target.value)}
+                          className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 pl-5 pr-2 py-2 rounded-xl text-[11px] text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-sans font-bold text-slate-600 dark:text-slate-400">Premium Plan (₦/mo)</label>
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-2.5 text-[10px] text-gray-400 font-mono">₦</span>
+                        <input
+                          type="number"
+                          value={subPremiumPrice}
+                          onChange={(e) => setSubPremiumPrice(e.target.value)}
+                          className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 pl-5 pr-2 py-2 rounded-xl text-[11px] text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-sans font-bold text-slate-600 dark:text-slate-400">Enterprise Plan (₦/mo)</label>
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-2.5 text-[10px] text-gray-400 font-mono">₦</span>
+                        <input
+                          type="number"
+                          value={subEnterprisePrice}
+                          onChange={(e) => setSubEnterprisePrice(e.target.value)}
+                          className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 pl-5 pr-2 py-2 rounded-xl text-[11px] text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Panel 4: Promoted Listings & Premium Services */}
+                <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 p-6 rounded-3xl space-y-4 shadow-sm">
+                  <div className="flex items-center gap-2 border-b border-gray-100 dark:border-slate-800 pb-3">
+                    <Sparkles className="w-5 h-5 text-emerald-500" />
+                    <div>
+                      <h4 className="font-bold text-sm text-slate-900 dark:text-white">Listing Services & Features</h4>
+                      <p className="text-[10px] text-slate-400">Fees for Verified+, Auctions, Flash sales, and Ads</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 pt-1">
+                    <div className="space-y-1.5">
+                      <label className="block text-[10px] font-sans font-bold text-slate-600 dark:text-slate-400">Verified+ Application Fee (₦)</label>
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-2.5 text-[10px] text-gray-400 font-mono">₦</span>
+                        <input
+                          type="number"
+                          value={verifiedPlusPrice}
+                          onChange={(e) => setVerifiedPlusPrice(e.target.value)}
+                          className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 pl-5 pr-2 py-2 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-[10px] font-sans font-bold text-slate-600 dark:text-slate-400">Flash Sale Promo Fee (₦)</label>
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-2.5 text-[10px] text-gray-400 font-mono">₦</span>
+                        <input
+                          type="number"
+                          value={flashSaleFeaturePrice}
+                          onChange={(e) => setFlashSaleFeaturePrice(e.target.value)}
+                          className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 pl-5 pr-2 py-2 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-[10px] font-sans font-bold text-slate-600 dark:text-slate-400">Auction Success Fee (%)</label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={auctionSuccessFeePercentage}
+                          onChange={(e) => setAuctionSuccessFeePercentage(e.target.value)}
+                          className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 px-3 py-2 pr-6 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                          required
+                        />
+                        <span className="absolute right-2.5 top-2.5 text-[10px] text-gray-400 font-mono">%</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-[10px] font-sans font-bold text-slate-600 dark:text-slate-400">Sponsored Ads CPC (₦)</label>
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-2.5 text-[10px] text-gray-400 font-mono">₦</span>
+                        <input
+                          type="number"
+                          value={adCpcPrice}
+                          onChange={(e) => setAdCpcPrice(e.target.value)}
+                          className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 pl-5 pr-2 py-2 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Action Trigger Buttons */}
+              <div className="flex justify-end pt-2">
+                <button
+                  type="submit"
+                  className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-sans font-bold text-xs rounded-xl shadow-lg hover:shadow-emerald-500/20 active:scale-[0.98] transition-all cursor-pointer flex items-center gap-2"
+                >
+                  <Check className="w-4 h-4" />
+                  Save configurations
+                </button>
+              </div>
+
+            </form>
+
+            {/* Audit Logs Stream */}
+            <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-gray-100 dark:border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <ClipboardList className="w-5 h-5 text-emerald-500" />
+                  <div>
+                    <h4 className="font-bold text-sm text-slate-900 dark:text-white">Real-Time Revenue Audit Logs</h4>
+                    <p className="text-[10px] text-slate-400">Security event stream of configuration modifications</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => {
+                    const state = getDBState();
+                    setDb({ ...state });
+                  }}
+                  className="p-1.5 bg-gray-50 dark:bg-slate-950 hover:bg-gray-100 dark:hover:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-lg text-slate-500 dark:text-slate-400 transition-all cursor-pointer"
+                  title="Force Refresh Log Stream"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="max-h-60 overflow-y-auto rounded-2xl border border-gray-100 dark:border-slate-800/60 bg-gray-50/50 dark:bg-slate-950/40 p-4 divide-y divide-gray-100 dark:divide-slate-800/40 space-y-3.5">
+                {db.auditLogs.filter(log => log.entityType === 'REVENUE_SETTINGS').length === 0 ? (
+                  <div className="text-center py-8 text-xs text-gray-400 font-sans italic">
+                    No settings changes logged yet. Modify the pricing engine above to generate an audit log.
+                  </div>
+                ) : (
+                  db.auditLogs
+                    .filter(log => log.entityType === 'REVENUE_SETTINGS')
+                    .slice()
+                    .reverse()
+                    .map((log) => (
+                      <div key={log.id} className="pt-3 first:pt-0 flex items-start gap-3">
+                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 mt-1 flex-shrink-0 animate-ping" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-mono text-[10px] font-bold text-slate-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-850 px-1.5 py-0.5 rounded">
+                              {log.action}
+                            </span>
+                            <span className="text-[9px] text-gray-400 font-mono">
+                              {new Date(log.createdAt).toLocaleTimeString()} {new Date(log.createdAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 leading-normal font-sans font-medium">
+                            {log.details}
+                          </p>
+                          <p className="text-[10px] text-gray-400 mt-0.5 font-mono">
+                            Operator: ID #{log.userId} (Administrator)
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                )}
+              </div>
             </div>
 
           </div>

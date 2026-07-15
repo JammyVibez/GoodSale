@@ -166,6 +166,10 @@ export interface Order {
   goodPointsUsed: number;
   createdAt: string;
   updatedAt: string;
+  selectedPartnerId?: number;
+  serviceType?: 'ECONOMY' | 'STANDARD' | 'EXPRESS';
+  hasGoodSaleProtect?: boolean;
+  protectFee?: number;
 }
 
 export interface Escrow {
@@ -352,6 +356,174 @@ export interface ProductBundle {
   price: number;
   discountPercentage: number;
   quantity: number;
+  createdAt: string;
+}
+
+// ==========================================
+// GOODDISPATCH™ DELIVERY NETWORK TYPES & ENUMS
+// ==========================================
+
+export enum DeliveryVehicleType {
+  BICYCLE = 'BICYCLE',
+  MOTORCYCLE = 'MOTORCYCLE',
+  CAR = 'CAR',
+  VAN = 'VAN',
+  TRUCK = 'TRUCK',
+  KEKE = 'KEKE',
+  LOGISTICS = 'LOGISTICS',
+  FLEET = 'FLEET',
+}
+
+export enum DeliveryJobStatus {
+  PENDING = 'PENDING',
+  ACCEPTED = 'ACCEPTED',
+  PICKED_UP = 'PICKED_UP',
+  IN_TRANSIT = 'IN_TRANSIT',
+  ARRIVED = 'ARRIVED',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
+}
+
+export interface DeliveryPartner {
+  id: number;
+  userId: number;
+  fullName: string;
+  phone: string;
+  email: string;
+  vehicleType: DeliveryVehicleType;
+  brand: string;
+  model: string;
+  plateNumber: string;
+  color: string;
+  year: number;
+  capacity: string;
+  photoUrl: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  isAvailable: boolean;
+  trustScore: number;
+  rating: number;
+  completedDeliveries: number;
+  acceptanceRate: number;
+  activeDeliveriesCount: number;
+  address: string;
+  state: string;
+  city: string;
+  nin: string;
+  selfieUrl: string;
+  licenseUrl?: string;
+  createdAt: string;
+}
+
+export interface DeliveryJob {
+  id: number;
+  orderId: number;
+  partnerId?: number;
+  status: DeliveryJobStatus;
+  serviceType: 'ECONOMY' | 'STANDARD' | 'EXPRESS';
+  deliveryFee: number;
+  platformCommission: number;
+  courierEarnings: number;
+  estPickupTime: string;
+  estDeliveryTime: string;
+  currentLat?: number;
+  currentLng?: number;
+  currentSpeed?: number;
+  pin: string;
+  sosTriggered?: boolean;
+  incidentReport?: string;
+  trackingHistory: { status: string; time: string; note: string }[];
+  createdAt: string;
+}
+
+// ==========================================
+// GOODSALE REVENUE SYSTEM TYPES
+// ==========================================
+
+export interface RevenueSettings {
+  escrowPercentageFee: number;
+  escrowMinFee: number;
+  escrowMaxFee: number;
+  deliveryCommissionPercentage: number;
+  featured3DaysPrice: number;
+  featured7DaysPrice: number;
+  featured14DaysPrice: number;
+  featured30DaysPrice: number;
+  subProPrice: number;
+  subPremiumPrice: number;
+  subEnterprisePrice: number;
+  verifiedPlusPrice: number;
+  flashSaleFeaturePrice: number;
+  auctionSuccessFeePercentage: number;
+  adCpcPrice: number;
+  goodSaleProtectFee: number;
+}
+
+export interface SponsoredAd {
+  id: number;
+  sellerId: number;
+  type: 'PRODUCT' | 'BUSINESS' | 'BANNER_HOME' | 'BANNER_CATEGORY';
+  targetId: number;
+  bannerUrl?: string;
+  title: string;
+  status: 'ACTIVE' | 'PAUSED' | 'COMPLETED';
+  budget: number;
+  spent: number;
+  clicks: number;
+  impressions: number;
+  createdAt: string;
+}
+
+export interface FeaturedListing {
+  id: number;
+  productId: number;
+  sellerId: number;
+  durationDays: number;
+  expiresAt: string;
+  status: 'ACTIVE' | 'EXPIRED';
+  createdAt: string;
+}
+
+export interface Wallet {
+  id: number;
+  userId: number;
+  balance: number;
+  bankName?: string;
+  bankAccountName?: string;
+  bankAccountNumber?: string;
+}
+
+export interface WalletTransaction {
+  id: number;
+  walletId: number;
+  amount: number;
+  type: 'CREDIT_SALE' | 'CREDIT_DELIVERY' | 'DEBIT_WITHDRAWAL' | 'DEBIT_FEES' | 'DEBIT_SUBCRIPTION' | 'DEBIT_AD' | 'DEBIT_PROTECT';
+  description: string;
+  status: 'PENDING' | 'COMPLETED' | 'FAILED';
+  createdAt: string;
+}
+
+export interface AuditLog {
+  id: number;
+  userId: number;
+  action: string;
+  entityType: string;
+  entityId: number;
+  details: string;
+  createdAt: string;
+}
+
+export interface BusinessSubscription {
+  id: number;
+  userId: number;
+  plan: 'FREE' | 'PRO' | 'PREMIUM' | 'ENTERPRISE';
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface VerifiedPlusSubscription {
+  id: number;
+  userId: number;
+  expiresAt: string;
   createdAt: string;
 }
 
@@ -968,6 +1140,140 @@ const INITIAL_FOLLOWERS: FollowerRelation[] = [];
 
 const INITIAL_BUNDLES: ProductBundle[] = [];
 
+const INITIAL_DELIVERY_PARTNERS: DeliveryPartner[] = [
+  {
+    id: 1,
+    userId: 2, // Fatima (just linking a user for mock relation)
+    fullName: 'Dele Coker',
+    phone: '+2348031112222',
+    email: 'dele.coker@gooddispatch.ng',
+    vehicleType: DeliveryVehicleType.MOTORCYCLE,
+    brand: 'Honda',
+    model: 'CG 125',
+    plateNumber: 'LND-492-AA',
+    color: 'Red',
+    year: 2024,
+    capacity: '15kg Courier Box',
+    photoUrl: 'https://picsum.photos/seed/dele/200',
+    status: 'APPROVED',
+    isAvailable: true,
+    trustScore: 98,
+    rating: 4.9,
+    completedDeliveries: 142,
+    acceptanceRate: 96,
+    activeDeliveriesCount: 0,
+    address: '12 Herbert Macaulay Way',
+    city: 'Yaba',
+    state: 'Lagos',
+    nin: '12345678901',
+    selfieUrl: 'https://picsum.photos/seed/deleselfie/200',
+    createdAt: '2026-07-01T10:00:00Z',
+  },
+  {
+    id: 2,
+    userId: 3, // Chidi
+    fullName: 'Amina Bello',
+    phone: '+2348053334444',
+    email: 'amina.bello@gooddispatch.ng',
+    vehicleType: DeliveryVehicleType.BICYCLE,
+    brand: 'Trek',
+    model: 'FX 2 Disc',
+    plateNumber: 'N/A',
+    color: 'Silver',
+    year: 2025,
+    capacity: '5kg Backpack',
+    photoUrl: 'https://picsum.photos/seed/amina/200',
+    status: 'APPROVED',
+    isAvailable: true,
+    trustScore: 95,
+    rating: 4.8,
+    completedDeliveries: 56,
+    acceptanceRate: 92,
+    activeDeliveriesCount: 0,
+    address: 'Block B, Suite 12, Wuse II',
+    city: 'Wuse',
+    state: 'Abuja',
+    nin: '98765432109',
+    selfieUrl: 'https://picsum.photos/seed/aminaselfie/200',
+    createdAt: '2026-07-02T11:00:00Z',
+  },
+  {
+    id: 3,
+    userId: 1, // Hamza
+    fullName: 'Emeka Obi',
+    phone: '+2348125556666',
+    email: 'emeka.obi@gooddispatch.ng',
+    vehicleType: DeliveryVehicleType.CAR,
+    brand: 'Toyota',
+    model: 'Corolla',
+    plateNumber: 'ABC-123-XY',
+    color: 'Black',
+    year: 2021,
+    capacity: '100kg Trunk',
+    photoUrl: 'https://picsum.photos/seed/emeka/200',
+    status: 'APPROVED',
+    isAvailable: true,
+    trustScore: 100,
+    rating: 4.95,
+    completedDeliveries: 210,
+    acceptanceRate: 98,
+    activeDeliveriesCount: 0,
+    address: '15 Computer Village',
+    city: 'Ikeja',
+    state: 'Lagos',
+    nin: '45678901234',
+    selfieUrl: 'https://picsum.photos/seed/emekaselfie/200',
+    createdAt: '2026-07-03T12:00:00Z',
+  },
+  {
+    id: 4,
+    userId: 4, // Sandra
+    fullName: 'Kelechi Dispatch',
+    phone: '+2349036667777',
+    email: 'kelechi@gooddispatch.ng',
+    vehicleType: DeliveryVehicleType.KEKE,
+    brand: 'TVS',
+    model: 'King',
+    plateNumber: 'IKJ-582-ZZ',
+    color: 'Yellow',
+    year: 2023,
+    capacity: '200kg Cabin',
+    photoUrl: 'https://picsum.photos/seed/keke/200',
+    status: 'APPROVED',
+    isAvailable: true,
+    trustScore: 92,
+    rating: 4.75,
+    completedDeliveries: 95,
+    acceptanceRate: 88,
+    activeDeliveriesCount: 0,
+    address: '22 Allen Avenue',
+    city: 'Ikeja',
+    state: 'Lagos',
+    nin: '56789012345',
+    selfieUrl: 'https://picsum.photos/seed/kekeselfie/200',
+    createdAt: '2026-07-04T09:00:00Z',
+  }
+];
+
+const INITIAL_REVENUE_SETTINGS: RevenueSettings = {
+  escrowPercentageFee: 1.5,
+  escrowMinFee: 100,
+  escrowMaxFee: 15000,
+  deliveryCommissionPercentage: 10,
+  featured3DaysPrice: 2500,
+  featured7DaysPrice: 5000,
+  featured14DaysPrice: 9000,
+  featured30DaysPrice: 18000,
+  subProPrice: 15000,
+  subPremiumPrice: 35000,
+  subEnterprisePrice: 85000,
+  verifiedPlusPrice: 10000,
+  flashSaleFeaturePrice: 7500,
+  auctionSuccessFeePercentage: 2.5,
+  adCpcPrice: 150,
+  goodSaleProtectFee: 1500,
+};
+
 // Unified DB State interface
 export interface GoodSaleDBState {
   users: User[];
@@ -990,6 +1296,16 @@ export interface GoodSaleDBState {
   safeMeetMeetups: SafeMeetMeetup[];
   followerRelations: FollowerRelation[];
   productBundles: ProductBundle[];
+  deliveryPartners: DeliveryPartner[];
+  deliveryJobs: DeliveryJob[];
+  revenueSettings: RevenueSettings;
+  sponsoredAds: SponsoredAd[];
+  featuredListings: FeaturedListing[];
+  wallets: Wallet[];
+  walletTransactions: WalletTransaction[];
+  auditLogs: AuditLog[];
+  businessSubscriptions: BusinessSubscription[];
+  verifiedPlusSubscriptions: VerifiedPlusSubscription[];
   currentUser: User | null;
 }
 
@@ -1022,6 +1338,16 @@ export function getDBState(): GoodSaleDBState {
       safeMeetMeetups: INITIAL_SAFEMEET_MEETUPS,
       followerRelations: INITIAL_FOLLOWERS,
       productBundles: INITIAL_BUNDLES,
+      deliveryPartners: INITIAL_DELIVERY_PARTNERS,
+      deliveryJobs: [],
+      revenueSettings: INITIAL_REVENUE_SETTINGS,
+      sponsoredAds: [],
+      featuredListings: [],
+      wallets: [],
+      walletTransactions: [],
+      auditLogs: [],
+      businessSubscriptions: [],
+      verifiedPlusSubscriptions: [],
       currentUser: null, // Defaults to GUEST/null if empty
     };
   }
@@ -1032,16 +1358,57 @@ export function getDBState(): GoodSaleDBState {
     const raw = localStorage.getItem(STORE_KEY);
     if (raw) {
       dbInstance = JSON.parse(raw);
+      // Ensure all core arrays exist to prevent runtime crashes due to older browser local storage states
+      if (!dbInstance!.users) dbInstance!.users = INITIAL_USERS;
+      if (!dbInstance!.profiles) dbInstance!.profiles = INITIAL_PROFILES;
+      if (!dbInstance!.businesses) dbInstance!.businesses = INITIAL_BUSINESSES;
+      if (!dbInstance!.products) dbInstance!.products = INITIAL_PRODUCTS;
+      if (!dbInstance!.auctions) dbInstance!.auctions = INITIAL_AUCTIONS;
+      if (!dbInstance!.bids) dbInstance!.bids = INITIAL_BIDS;
+      if (!dbInstance!.orders) dbInstance!.orders = INITIAL_ORDERS;
+      if (!dbInstance!.escrows) dbInstance!.escrows = INITIAL_ESCROWS;
+      if (!dbInstance!.disputes) dbInstance!.disputes = INITIAL_DISPUTES;
+      if (!dbInstance!.chatRooms) dbInstance!.chatRooms = INITIAL_CHATS;
+      if (!dbInstance!.messages) dbInstance!.messages = INITIAL_MESSAGES;
+      if (!dbInstance!.reviews) dbInstance!.reviews = INITIAL_REVIEWS;
+      if (!dbInstance!.verifications) dbInstance!.verifications = INITIAL_VERIFICATIONS;
+      if (!dbInstance!.goodPoints) dbInstance!.goodPoints = INITIAL_GOODPOINTS;
+      if (!dbInstance!.referrals) dbInstance!.referrals = INITIAL_REFERRALS;
+      if (!dbInstance!.notifications) dbInstance!.notifications = INITIAL_NOTIFICATIONS;
+
       // Ensure new arrays are initialized in existing stores
       if (!dbInstance!.safeMeetLocations) dbInstance!.safeMeetLocations = INITIAL_SAFEMEET_LOCATIONS;
       if (!dbInstance!.safeMeetMeetups) dbInstance!.safeMeetMeetups = [];
       if (!dbInstance!.followerRelations) dbInstance!.followerRelations = INITIAL_FOLLOWERS;
       if (!dbInstance!.productBundles) dbInstance!.productBundles = INITIAL_BUNDLES;
+      if (!dbInstance!.deliveryPartners) dbInstance!.deliveryPartners = INITIAL_DELIVERY_PARTNERS;
+      if (!dbInstance!.deliveryJobs) dbInstance!.deliveryJobs = [];
+      if (!dbInstance!.revenueSettings) dbInstance!.revenueSettings = INITIAL_REVENUE_SETTINGS;
+      if (!dbInstance!.sponsoredAds) dbInstance!.sponsoredAds = [];
+      if (!dbInstance!.featuredListings) dbInstance!.featuredListings = [];
+      if (!dbInstance!.wallets) dbInstance!.wallets = [];
+      if (!dbInstance!.walletTransactions) dbInstance!.walletTransactions = [];
+      if (!dbInstance!.auditLogs) dbInstance!.auditLogs = [];
+      if (!dbInstance!.businessSubscriptions) dbInstance!.businessSubscriptions = [];
+      if (!dbInstance!.verifiedPlusSubscriptions) dbInstance!.verifiedPlusSubscriptions = [];
       // Force logout of mock users on load to satisfy "logout all mock users"
       if (dbInstance!.currentUser && dbInstance!.currentUser.id <= 4) {
         dbInstance!.currentUser = null;
-        localStorage.setItem(STORE_KEY, JSON.stringify(dbInstance));
       }
+      // Auto-elevate owner and admin accounts
+      if (dbInstance!.currentUser) {
+        const emailLower = dbInstance!.currentUser.email.toLowerCase();
+        if (emailLower === 'lightingstar79@gmail.com' || emailLower === 'admin@goodsale.ng') {
+          dbInstance!.currentUser.role = UserRole.SUPER_ADMIN;
+        }
+      }
+      dbInstance!.users.forEach(u => {
+        const emailLower = u.email.toLowerCase();
+        if (emailLower === 'lightingstar79@gmail.com' || emailLower === 'admin@goodsale.ng') {
+          u.role = UserRole.SUPER_ADMIN;
+        }
+      });
+      localStorage.setItem(STORE_KEY, JSON.stringify(dbInstance));
       return dbInstance!;
     }
   } catch (e) {
@@ -1070,6 +1437,16 @@ export function getDBState(): GoodSaleDBState {
     safeMeetMeetups: INITIAL_SAFEMEET_MEETUPS,
     followerRelations: INITIAL_FOLLOWERS,
     productBundles: INITIAL_BUNDLES,
+    deliveryPartners: INITIAL_DELIVERY_PARTNERS,
+    deliveryJobs: [],
+    revenueSettings: INITIAL_REVENUE_SETTINGS,
+    sponsoredAds: [],
+    featuredListings: [],
+    wallets: [],
+    walletTransactions: [],
+    auditLogs: [],
+    businessSubscriptions: [],
+    verifiedPlusSubscriptions: [],
     currentUser: null, // Starts as GUEST/null if empty
   };
 
@@ -1104,13 +1481,18 @@ export const dbOperations = {
     const newId = Math.max(...state.users.map((u) => u.id), 0) + 1;
     const refCode = `GS-${username.toUpperCase()}-${Math.floor(10 + Math.random() * 90)}`;
 
+    const emailLower = email.trim().toLowerCase();
+    const resolvedRole = (emailLower === 'lightingstar79@gmail.com' || emailLower === 'admin@goodsale.ng')
+      ? UserRole.SUPER_ADMIN
+      : (role || UserRole.BUYER);
+
     const newUser: User = {
       id: newId,
       fullName,
       username,
       email,
       phoneNumber,
-      role: role || UserRole.BUYER,
+      role: resolvedRole,
       referralCode: refCode,
       trustScore: 100,
       sellerLevel: 'BRONZE',
@@ -1172,6 +1554,10 @@ export const dbOperations = {
     const state = getDBState();
     const user = state.users.find((u) => u.id === userId);
     if (user) {
+      const emailLower = user.email.toLowerCase();
+      if (emailLower === 'lightingstar79@gmail.com' || emailLower === 'admin@goodsale.ng') {
+        user.role = UserRole.SUPER_ADMIN;
+      }
       state.currentUser = user;
       // Daily Login Points check
       const lastLoginPoints = state.goodPoints.filter(p => p.userId === userId && p.reason.includes('Daily Login'));
@@ -1447,7 +1833,18 @@ export const dbOperations = {
   },
 
   // Escrow Orders
-  placeOrder(productId: number, deliveryAddress: string, deliveryCity: string, deliveryState: string, paymentMethod: string, deliveryMethod: string, usePoints: boolean = false) {
+  placeOrder(
+    productId: number, 
+    deliveryAddress: string, 
+    deliveryCity: string, 
+    deliveryState: string, 
+    paymentMethod: string, 
+    deliveryMethod: string, 
+    usePoints: boolean = false,
+    selectedPartnerId?: number,
+    serviceType: 'ECONOMY' | 'STANDARD' | 'EXPRESS' = 'STANDARD',
+    hasGoodSaleProtect: boolean = false
+  ) {
     const state = getDBState();
     if (!state.currentUser) return null;
 
@@ -1457,8 +1854,19 @@ export const dbOperations = {
     const orderNumber = `GS-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
     const deliveryPin = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digit release pin
 
-    const deliveryFee = deliveryMethod === 'GOODSALE_PARTNER' ? 10000 : deliveryMethod === 'THIRD_PARTY_COURIER' ? 12000 : product.pickupAvailable ? 0 : 5000;
+    let deliveryFee = 5000;
+    if (deliveryMethod === 'GOODSALE_PARTNER') {
+      if (serviceType === 'EXPRESS') deliveryFee = 10000;
+      else if (serviceType === 'ECONOMY') deliveryFee = 3500;
+      else deliveryFee = 6000; // Standard
+    } else if (deliveryMethod === 'THIRD_PARTY_COURIER') {
+      deliveryFee = 12000;
+    } else if (product.pickupAvailable && deliveryMethod === 'PICKUP') {
+      deliveryFee = 0;
+    }
+
     const taxAmount = Math.round(product.price * 0.015); // 1.5% commission/VAT
+    const protectFee = hasGoodSaleProtect ? (state.revenueSettings?.goodSaleProtectFee || 1500) : 0;
 
     let pointsDiscount = 0;
     let pointsUsed = 0;
@@ -1479,7 +1887,7 @@ export const dbOperations = {
       });
     }
 
-    const totalAmount = product.price + deliveryFee + taxAmount - pointsDiscount;
+    const totalAmount = product.price + deliveryFee + taxAmount + protectFee - pointsDiscount;
 
     const newOrder: Order = {
       id: Math.max(...state.orders.map((o) => o.id), 2000) + 1,
@@ -1504,6 +1912,10 @@ export const dbOperations = {
       goodPointsUsed: pointsUsed,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      selectedPartnerId,
+      serviceType,
+      hasGoodSaleProtect,
+      protectFee,
     };
 
     // Add order
@@ -1522,6 +1934,65 @@ export const dbOperations = {
     product.quantity -= 1;
     if (product.quantity <= 0) {
       product.stockStatus = 'OUT_OF_STOCK';
+    }
+
+    // Auto-create Delivery Job if using GoodDispatch network
+    if (deliveryMethod === 'GOODSALE_PARTNER') {
+      const commissionPercent = state.revenueSettings.deliveryCommissionPercentage;
+      const commission = Math.round(deliveryFee * (commissionPercent / 100));
+      const earnings = deliveryFee - commission;
+      const pin = deliveryPin.slice(0, 4); // 4-digit driver pin
+
+      const newJob: DeliveryJob = {
+        id: Math.max(...state.deliveryJobs.map(j => j.id), 0) + 1,
+        orderId: newOrder.id,
+        partnerId: selectedPartnerId,
+        status: selectedPartnerId ? DeliveryJobStatus.ACCEPTED : DeliveryJobStatus.PENDING,
+        serviceType,
+        deliveryFee,
+        platformCommission: commission,
+        courierEarnings: earnings,
+        estPickupTime: '15-30 mins',
+        estDeliveryTime: serviceType === 'EXPRESS' ? '1 hr' : serviceType === 'STANDARD' ? '3 hrs' : 'Same Day',
+        pin,
+        trackingHistory: [
+          { status: 'PENDING', time: new Date().toISOString(), note: 'Delivery job initiated on checkout' }
+        ],
+        createdAt: new Date().toISOString(),
+      };
+
+      if (selectedPartnerId) {
+        const partner = state.deliveryPartners.find(p => p.id === selectedPartnerId);
+        if (partner) {
+          partner.activeDeliveriesCount += 1;
+          newJob.trackingHistory.push({
+            status: 'ACCEPTED',
+            time: new Date().toISOString(),
+            note: `Assigned automatically: Courier ${partner.fullName} matches buyer marketplace selection.`
+          });
+          newOrder.status = OrderStatus.OUT_FOR_DELIVERY;
+        }
+      }
+
+      state.deliveryJobs.push(newJob);
+    }
+
+    // Create a transaction record for GoodSale Protect if activated
+    if (hasGoodSaleProtect && protectFee > 0) {
+      let wallet = state.wallets.find(w => w.userId === state.currentUser!.id);
+      if (!wallet) {
+        wallet = { id: state.wallets.length + 1, userId: state.currentUser.id, balance: 0 };
+        state.wallets.push(wallet);
+      }
+      state.walletTransactions.push({
+        id: state.walletTransactions.length + 1,
+        walletId: wallet.id,
+        amount: -protectFee,
+        type: 'DEBIT_PROTECT',
+        description: `Purchased optional GoodSale Protect™ for Order ${orderNumber}`,
+        status: 'COMPLETED',
+        createdAt: new Date().toISOString()
+      });
     }
 
     // Notify Buyer
@@ -2664,6 +3135,644 @@ export const dbOperations = {
     return message;
   },
 
+  registerDeliveryPartner(partnerData: any) {
+    const state = getDBState();
+    const newId = Math.max(...state.deliveryPartners.map(p => p.id), 0) + 1;
+    const partner: DeliveryPartner = {
+      id: newId,
+      userId: partnerData.userId,
+      fullName: partnerData.fullName,
+      phone: partnerData.phone,
+      email: partnerData.email,
+      vehicleType: partnerData.vehicleType,
+      brand: partnerData.brand,
+      model: partnerData.model,
+      plateNumber: partnerData.plateNumber,
+      color: partnerData.color,
+      year: partnerData.year,
+      capacity: partnerData.capacity,
+      photoUrl: partnerData.photoUrl || 'https://picsum.photos/seed/delivery_avatar/200',
+      status: 'PENDING',
+      isAvailable: false,
+      trustScore: 80,
+      rating: 0,
+      completedDeliveries: 0,
+      acceptanceRate: 100,
+      activeDeliveriesCount: 0,
+      address: partnerData.address,
+      state: partnerData.state,
+      city: partnerData.city,
+      nin: partnerData.nin,
+      selfieUrl: partnerData.selfieUrl || 'https://picsum.photos/seed/selfie/200',
+      licenseUrl: partnerData.licenseUrl,
+      createdAt: new Date().toISOString(),
+    };
+    state.deliveryPartners.push(partner);
+    
+    state.auditLogs.push({
+      id: state.auditLogs.length + 1,
+      userId: partnerData.userId,
+      action: 'REGISTER_DELIVERY_PARTNER',
+      entityType: 'deliveryPartners',
+      entityId: newId,
+      details: `Registered as ${partnerData.vehicleType} partner. Under review.`,
+      createdAt: new Date().toISOString(),
+    });
+
+    saveDBState(state);
+    return partner;
+  },
+
+  approveDeliveryPartner(partnerId: number) {
+    const state = getDBState();
+    const partner = state.deliveryPartners.find(p => p.id === partnerId);
+    if (!partner) return null;
+
+    partner.status = 'APPROVED';
+    partner.isAvailable = true;
+
+    state.notifications.push({
+      id: state.notifications.length + 1,
+      userId: partner.userId,
+      title: '🚚 Delivery Partner Approved!',
+      message: 'Congratulations! Your GoodDispatch™ Delivery Partner application has been approved. Your courier dashboard is now unlocked and you can set yourself to active.',
+      type: 'VERIFICATION',
+      isRead: false,
+      createdAt: new Date().toISOString(),
+    });
+
+    state.auditLogs.push({
+      id: state.auditLogs.length + 1,
+      userId: state.currentUser?.id || 0,
+      action: 'APPROVE_DELIVERY_PARTNER',
+      entityType: 'deliveryPartners',
+      entityId: partnerId,
+      details: `Approved delivery partner: ${partner.fullName}`,
+      createdAt: new Date().toISOString(),
+    });
+
+    saveDBState(state);
+    return partner;
+  },
+
+  togglePartnerAvailability(userId: number, isAvailable: boolean) {
+    const state = getDBState();
+    const partner = state.deliveryPartners.find(p => p.userId === userId);
+    if (!partner) return null;
+
+    partner.isAvailable = isAvailable;
+    saveDBState(state);
+    return partner;
+  },
+
+  createDeliveryJob(orderId: number, serviceType: 'ECONOMY' | 'STANDARD' | 'EXPRESS', deliveryFee: number) {
+    const state = getDBState();
+    const existing = state.deliveryJobs.find(j => j.orderId === orderId);
+    if (existing) return existing;
+
+    const commissionPercent = state.revenueSettings.deliveryCommissionPercentage;
+    const commission = Math.round(deliveryFee * (commissionPercent / 100));
+    const earnings = deliveryFee - commission;
+    const pin = Math.floor(1000 + Math.random() * 9000).toString();
+
+    const newJob: DeliveryJob = {
+      id: Math.max(...state.deliveryJobs.map(j => j.id), 0) + 1,
+      orderId,
+      status: DeliveryJobStatus.PENDING,
+      serviceType,
+      deliveryFee,
+      platformCommission: commission,
+      courierEarnings: earnings,
+      estPickupTime: '30 mins',
+      estDeliveryTime: serviceType === 'EXPRESS' ? '1 hr' : serviceType === 'STANDARD' ? '3 hrs' : 'Same Day',
+      pin,
+      trackingHistory: [
+        { status: 'PENDING', time: new Date().toISOString(), note: 'Delivery request initiated by customer' }
+      ],
+      createdAt: new Date().toISOString(),
+    };
+
+    state.deliveryJobs.push(newJob);
+    saveDBState(state);
+    return newJob;
+  },
+
+  acceptDeliveryJob(jobId: number, partnerId: number) {
+    const state = getDBState();
+    const job = state.deliveryJobs.find(j => j.id === jobId);
+    const partner = state.deliveryPartners.find(p => p.id === partnerId);
+    if (!job || !partner) return null;
+
+    job.partnerId = partnerId;
+    job.status = DeliveryJobStatus.ACCEPTED;
+    job.trackingHistory.push({
+      status: 'ACCEPTED',
+      time: new Date().toISOString(),
+      note: `Delivery partner ${partner.fullName} accepted the request.`
+    });
+
+    partner.activeDeliveriesCount += 1;
+
+    const order = state.orders.find(o => o.id === job.orderId);
+    if (order) {
+      order.status = OrderStatus.OUT_FOR_DELIVERY;
+      state.notifications.push({
+        id: state.notifications.length + 1,
+        userId: order.buyerId,
+        title: '🚚 Dispatch Rider Assigned!',
+        message: `${partner.fullName} (${partner.vehicleType}) has been assigned to your order ${order.orderNumber}. ETA: ${job.estDeliveryTime}.`,
+        type: 'ORDER',
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    saveDBState(state);
+    return job;
+  },
+
+  updateDeliveryJobStatus(jobId: number, status: DeliveryJobStatus, currentLoc?: { lat: number; lng: number; speed: number }) {
+    const state = getDBState();
+    const job = state.deliveryJobs.find(j => j.id === jobId);
+    if (!job) return null;
+
+    job.status = status;
+    if (currentLoc) {
+      job.currentLat = currentLoc.lat;
+      job.currentLng = currentLoc.lng;
+      job.currentSpeed = currentLoc.speed;
+    }
+
+    let note = '';
+    if (status === DeliveryJobStatus.PICKED_UP) {
+      note = 'Package picked up from seller location.';
+    } else if (status === DeliveryJobStatus.IN_TRANSIT) {
+      note = 'Package is currently in transit to destination.';
+    }
+
+    job.trackingHistory.push({
+      status,
+      time: new Date().toISOString(),
+      note
+    });
+
+    saveDBState(state);
+    return job;
+  },
+
+  completeDeliveryJobWithPin(jobId: number, pin: string) {
+    const state = getDBState();
+    const job = state.deliveryJobs.find(j => j.id === jobId);
+    if (!job) return { success: false, message: 'Job not found' };
+
+    if (job.pin !== pin) {
+      return { success: false, message: 'Invalid delivery pin code. Please verify with buyer.' };
+    }
+
+    job.status = DeliveryJobStatus.COMPLETED;
+    job.trackingHistory.push({
+      status: 'COMPLETED',
+      time: new Date().toISOString(),
+      note: 'Delivery successfully completed and verified by PIN verification.'
+    });
+
+    const partner = state.deliveryPartners.find(p => p.id === job.partnerId);
+    if (partner) {
+      partner.activeDeliveriesCount = Math.max(0, partner.activeDeliveriesCount - 1);
+      partner.completedDeliveries += 1;
+      
+      let wallet = state.wallets.find(w => w.userId === partner.userId);
+      if (!wallet) {
+        wallet = { id: state.wallets.length + 1, userId: partner.userId, balance: 0 };
+        state.wallets.push(wallet);
+      }
+      wallet.balance += job.courierEarnings;
+
+      state.walletTransactions.push({
+        id: state.walletTransactions.length + 1,
+        walletId: wallet.id,
+        amount: job.courierEarnings,
+        type: 'CREDIT_DELIVERY',
+        description: `Earnings for delivery job #${job.id} (Order #${job.orderId})`,
+        status: 'COMPLETED',
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    const order = state.orders.find(o => o.id === job.orderId);
+    if (order) {
+      order.status = OrderStatus.DELIVERED_SUCCESS;
+      order.updatedAt = new Date().toISOString();
+
+      const escrow = state.escrows.find(e => e.orderId === order.id);
+      if (escrow && !escrow.isReleased) {
+        escrow.isReleased = true;
+
+        const settings = state.revenueSettings;
+        const product = state.products.find(p => p.id === order.productId);
+        const isAuctionItem = product ? product.isAuction : false;
+
+        const rawFee = order.totalAmount * (settings.escrowPercentageFee / 100);
+        const escrowFee = Math.max(settings.escrowMinFee, Math.min(settings.escrowMaxFee, rawFee));
+        
+        let auctionSuccessFee = 0;
+        if (isAuctionItem) {
+          auctionSuccessFee = Math.round(order.totalAmount * (settings.auctionSuccessFeePercentage / 100));
+        }
+
+        const sellerPayout = order.totalAmount - order.deliveryFee - escrowFee - auctionSuccessFee;
+
+        let sellerWallet = state.wallets.find(w => w.userId === order.sellerId);
+        if (!sellerWallet) {
+          sellerWallet = { id: state.wallets.length + 1, userId: order.sellerId, balance: 0 };
+          state.wallets.push(sellerWallet);
+        }
+        sellerWallet.balance += sellerPayout;
+
+        const feeBreakdown = isAuctionItem 
+          ? `Escrow fee: ₦${escrowFee.toLocaleString()} & Auction Success fee: ₦${auctionSuccessFee.toLocaleString()} deducted`
+          : `Escrow fee: ₦${escrowFee.toLocaleString()} deducted`;
+
+        state.walletTransactions.push({
+          id: state.walletTransactions.length + 1,
+          walletId: sellerWallet.id,
+          amount: sellerPayout,
+          type: 'CREDIT_SALE',
+          description: `Payout for order ${order.orderNumber} (${feeBreakdown})`,
+          status: 'COMPLETED',
+          createdAt: new Date().toISOString(),
+        });
+
+        state.notifications.push({
+          id: state.notifications.length + 1,
+          userId: order.sellerId,
+          title: '💰 Escrow Released - Payout Credited!',
+          message: `Delivery complete! ₦${sellerPayout.toLocaleString()} has been credited to your GoodSale Wallet after deducting escrow service fee.`,
+          type: 'ESCROW',
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      state.notifications.push({
+        id: state.notifications.length + 1,
+        userId: order.buyerId,
+        title: '🎉 Delivery Complete!',
+        message: `Your package for order ${order.orderNumber} has been successfully verified, delivered, and escrow funds released. Thank you for using GoodSale!`,
+        type: 'ORDER',
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    saveDBState(state);
+    return { success: true, job };
+  },
+
+  subscribeBusiness(userId: number, plan: 'FREE' | 'PRO' | 'PREMIUM' | 'ENTERPRISE') {
+    const state = getDBState();
+    const cost = plan === 'PRO' ? state.revenueSettings.subProPrice : plan === 'PREMIUM' ? state.revenueSettings.subPremiumPrice : plan === 'ENTERPRISE' ? state.revenueSettings.subEnterprisePrice : 0;
+    
+    if (cost > 0) {
+      let wallet = state.wallets.find(w => w.userId === userId);
+      if (!wallet || wallet.balance < cost) {
+        return { success: false, message: 'Insufficient wallet balance' };
+      }
+      wallet.balance -= cost;
+
+      state.walletTransactions.push({
+        id: state.walletTransactions.length + 1,
+        walletId: wallet.id,
+        amount: -cost,
+        type: 'DEBIT_SUBCRIPTION',
+        description: `Subscription to Business ${plan} Plan`,
+        status: 'COMPLETED',
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    const existing = state.businessSubscriptions.find(s => s.userId === userId);
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    if (existing) {
+      existing.plan = plan;
+      existing.expiresAt = expiresAt;
+    } else {
+      state.businessSubscriptions.push({
+        id: state.businessSubscriptions.length + 1,
+        userId,
+        plan,
+        expiresAt,
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    const user = state.users.find(u => u.id === userId);
+    if (user && plan !== 'FREE') {
+      user.role = UserRole.BUSINESS;
+    }
+
+    state.notifications.push({
+      id: state.notifications.length + 1,
+      userId,
+      title: '🌟 Subscription Activated!',
+      message: `Your GoodSale Business ${plan} subscription is now active until ${new Date(expiresAt).toLocaleDateString()}.`,
+      type: 'VERIFICATION',
+      isRead: false,
+      createdAt: new Date().toISOString(),
+    });
+
+    saveDBState(state);
+    return { success: true, plan };
+  },
+
+  subscribeVerifiedPlus(userId: number) {
+    const state = getDBState();
+    const cost = state.revenueSettings.verifiedPlusPrice;
+
+    let wallet = state.wallets.find(w => w.userId === userId);
+    if (!wallet || wallet.balance < cost) {
+      return { success: false, message: 'Insufficient wallet balance' };
+    }
+    wallet.balance -= cost;
+
+    state.walletTransactions.push({
+      id: state.walletTransactions.length + 1,
+      walletId: wallet.id,
+      amount: -cost,
+      type: 'DEBIT_SUBCRIPTION',
+      description: 'Activated Verified+ Premium Membership',
+      status: 'COMPLETED',
+      createdAt: new Date().toISOString(),
+    });
+
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    state.verifiedPlusSubscriptions.push({
+      id: state.verifiedPlusSubscriptions.length + 1,
+      userId,
+      expiresAt,
+      createdAt: new Date().toISOString()
+    });
+
+    const user = state.users.find(u => u.id === userId);
+    if (user) {
+      if (user.role === UserRole.SELLER) user.role = UserRole.VERIFIED_SELLER;
+      else if (user.role === UserRole.BUSINESS) user.role = UserRole.VERIFIED_BUSINESS;
+      user.trustScore = Math.min(100, user.trustScore + 10);
+    }
+
+    state.notifications.push({
+      id: state.notifications.length + 1,
+      userId,
+      title: '⚡ Verified+ Status Activated!',
+      message: 'Verified+ benefits are now unlocked! You have received a Premium verification badge, boosted search listings priority, and enhanced Trust score.',
+      type: 'VERIFICATION',
+      isRead: false,
+      createdAt: new Date().toISOString(),
+    });
+
+    saveDBState(state);
+    return { success: true };
+  },
+
+  promoteListingFeatured(productId: number, durationDays: number) {
+    const state = getDBState();
+    const product = state.products.find(p => p.id === productId);
+    if (!product) return { success: false, message: 'Product not found' };
+
+    const settings = state.revenueSettings;
+    const cost = durationDays === 3 ? settings.featured3DaysPrice : durationDays === 7 ? settings.featured7DaysPrice : durationDays === 14 ? settings.featured14DaysPrice : settings.featured30DaysPrice;
+
+    let wallet = state.wallets.find(w => w.userId === product.sellerId);
+    if (!wallet || wallet.balance < cost) {
+      return { success: false, message: 'Insufficient wallet balance. Please credit wallet.' };
+    }
+    wallet.balance -= cost;
+
+    state.walletTransactions.push({
+      id: state.walletTransactions.length + 1,
+      walletId: wallet.id,
+      amount: -cost,
+      type: 'DEBIT_FEES',
+      description: `Promoted "${product.title}" as Featured Listing for ${durationDays} Days`,
+      status: 'COMPLETED',
+      createdAt: new Date().toISOString(),
+    });
+
+    const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+    state.featuredListings.push({
+      id: state.featuredListings.length + 1,
+      productId,
+      sellerId: product.sellerId,
+      durationDays,
+      expiresAt,
+      status: 'ACTIVE',
+      createdAt: new Date().toISOString(),
+    });
+
+    state.notifications.push({
+      id: state.notifications.length + 1,
+      userId: product.sellerId,
+      title: '✨ Listing Featured successfully!',
+      message: `Your product "${product.title}" has been promoted to Featured status for ${durationDays} days and will rank higher in search results!`,
+      type: 'POINTS',
+      isRead: false,
+      createdAt: new Date().toISOString(),
+    });
+
+    saveDBState(state);
+    return { success: true };
+  },
+
+  promoteListingFlashSale(productId: number) {
+    const state = getDBState();
+    const product = state.products.find(p => p.id === productId);
+    if (!product) return { success: false, message: 'Product not found' };
+
+    const cost = state.revenueSettings.flashSaleFeaturePrice;
+    let wallet = state.wallets.find(w => w.userId === product.sellerId);
+    if (!wallet || wallet.balance < cost) {
+      return { success: false, message: 'Insufficient wallet balance.' };
+    }
+    wallet.balance -= cost;
+
+    state.walletTransactions.push({
+      id: state.walletTransactions.length + 1,
+      walletId: wallet.id,
+      amount: -cost,
+      type: 'DEBIT_FEES',
+      description: `Promoted "${product.title}" to Flash Sales`,
+      status: 'COMPLETED',
+      createdAt: new Date().toISOString(),
+    });
+
+    state.notifications.push({
+      id: state.notifications.length + 1,
+      userId: product.sellerId,
+      title: '⚡ Flash Sale Listing Confirmed!',
+      message: `Your product "${product.title}" is now officially scheduled to be featured in the next high-traffic Flash Sale block.`,
+      type: 'POINTS',
+      isRead: false,
+      createdAt: new Date().toISOString(),
+    });
+
+    saveDBState(state);
+    return { success: true };
+  },
+
+  createSponsoredAd(sellerId: number, type: 'PRODUCT' | 'BUSINESS' | 'BANNER_HOME' | 'BANNER_CATEGORY', targetId: number, title: string, budget: number, bannerUrl?: string) {
+    const state = getDBState();
+    let wallet = state.wallets.find(w => w.userId === sellerId);
+    if (!wallet || wallet.balance < budget) {
+      return { success: false, message: 'Insufficient wallet balance' };
+    }
+    wallet.balance -= budget;
+
+    state.walletTransactions.push({
+      id: state.walletTransactions.length + 1,
+      walletId: wallet.id,
+      amount: -budget,
+      type: 'DEBIT_AD',
+      description: `Created Sponsored Ad campaign: "${title}"`,
+      status: 'COMPLETED',
+      createdAt: new Date().toISOString(),
+    });
+
+    const newAd: SponsoredAd = {
+      id: Math.max(...state.sponsoredAds.map(a => a.id), 0) + 1,
+      sellerId,
+      type,
+      targetId,
+      title,
+      bannerUrl,
+      status: 'ACTIVE',
+      budget,
+      spent: 0,
+      clicks: 0,
+      impressions: 0,
+      createdAt: new Date().toISOString()
+    };
+
+    state.sponsoredAds.push(newAd);
+    saveDBState(state);
+    return { success: true, ad: newAd };
+  },
+
+  interactSponsoredAd(adId: number, actionType: 'IMPRESSION' | 'CLICK') {
+    const state = getDBState();
+    const ad = state.sponsoredAds.find(a => a.id === adId);
+    if (!ad || ad.status !== 'ACTIVE') return null;
+
+    if (actionType === 'IMPRESSION') {
+      ad.impressions += 1;
+    } else {
+      ad.clicks += 1;
+      const cpc = state.revenueSettings.adCpcPrice;
+      if (ad.spent + cpc <= ad.budget) {
+        ad.spent += cpc;
+        if (ad.spent + cpc > ad.budget) {
+          ad.status = 'COMPLETED';
+        }
+      } else {
+        ad.status = 'COMPLETED';
+      }
+    }
+
+    saveDBState(state);
+    return ad;
+  },
+
+  depositToWallet(userId: number, amount: number) {
+    const state = getDBState();
+    let wallet = state.wallets.find(w => w.userId === userId);
+    if (!wallet) {
+      wallet = { id: state.wallets.length + 1, userId, balance: 0 };
+      state.wallets.push(wallet);
+    }
+    wallet.balance += amount;
+
+    state.walletTransactions.push({
+      id: state.walletTransactions.length + 1,
+      walletId: wallet.id,
+      amount,
+      type: 'CREDIT_SALE',
+      description: `Funded wallet via online payment gateway`,
+      status: 'COMPLETED',
+      createdAt: new Date().toISOString(),
+    });
+
+    saveDBState(state);
+    return wallet;
+  },
+
+  withdrawFromWallet(userId: number, amount: number, bankDetails: { name: string, number: string, bank: string }) {
+    const state = getDBState();
+    const wallet = state.wallets.find(w => w.userId === userId);
+    if (!wallet || wallet.balance < amount) {
+      return { success: false, message: 'Insufficient balance for withdrawal' };
+    }
+
+    wallet.balance -= amount;
+    wallet.bankName = bankDetails.bank;
+    wallet.bankAccountName = bankDetails.name;
+    wallet.bankAccountNumber = bankDetails.number;
+
+    state.walletTransactions.push({
+      id: state.walletTransactions.length + 1,
+      walletId: wallet.id,
+      amount: -amount,
+      type: 'DEBIT_WITHDRAWAL',
+      description: `Withdrawal request to ${bankDetails.bank} (${bankDetails.number})`,
+      status: 'PENDING',
+      createdAt: new Date().toISOString(),
+    });
+
+    saveDBState(state);
+    return { success: true, wallet };
+  },
+
+  addAuditLog(userId: number, action: string, entityType: string, entityId: number, details: string) {
+    const state = getDBState();
+    const log: AuditLog = {
+      id: state.auditLogs.length + 1,
+      userId,
+      action,
+      entityType,
+      entityId,
+      details,
+      createdAt: new Date().toISOString(),
+    };
+    state.auditLogs.push(log);
+    saveDBState(state);
+    return log;
+  },
+
+  updateRevenueSettings(userId: number, settings: Partial<RevenueSettings>) {
+    const state = getDBState();
+    state.revenueSettings = {
+      ...state.revenueSettings,
+      ...settings
+    };
+    
+    const changedFields = Object.keys(settings).map(key => {
+      const val = (settings as any)[key];
+      return `${key} modified to ${val}`;
+    }).join(', ');
+    
+    const details = `Admin updated settings: ${changedFields}`;
+    const log: AuditLog = {
+      id: state.auditLogs.length + 1,
+      userId,
+      action: 'UPDATE_REVENUE_SETTINGS',
+      entityType: 'REVENUE_SETTINGS',
+      entityId: 1,
+      details,
+      createdAt: new Date().toISOString(),
+    };
+    state.auditLogs.push(log);
+    saveDBState(state);
+    return { success: true, settings: state.revenueSettings, log };
+  },
+
   createBundle(sellerId: number, title: string, description: string, productIds: number[], price: number, discountPercentage: number, quantity: number) {
     const state = getDBState();
     const newId = Math.max(...state.productBundles.map(b => b.id), 300) + 1;
@@ -2707,7 +3816,17 @@ export function useDBState(): GoodSaleDBState {
       safeMeetMeetups: INITIAL_SAFEMEET_MEETUPS,
       followerRelations: INITIAL_FOLLOWERS,
       productBundles: INITIAL_BUNDLES,
-      currentUser: INITIAL_USERS[0] || null,
+      deliveryPartners: INITIAL_DELIVERY_PARTNERS || [],
+      deliveryJobs: [],
+      revenueSettings: INITIAL_REVENUE_SETTINGS,
+      sponsoredAds: [],
+      featuredListings: [],
+      wallets: [],
+      walletTransactions: [],
+      auditLogs: [],
+      businessSubscriptions: [],
+      verifiedPlusSubscriptions: [],
+      currentUser: null,
     };
   });
 
@@ -2719,7 +3838,12 @@ export function useDBState(): GoodSaleDBState {
       .then(res => res.json())
       .then(data => {
         if (data.success && data.state) {
-          saveDBState(data.state);
+          const localState = getDBState();
+          const mergedState = {
+            ...data.state,
+            currentUser: localState.currentUser // Preserve current local user session
+          };
+          saveDBState(mergedState);
         }
       })
       .catch(err => console.error('Failed to pull server database state:', err));

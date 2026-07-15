@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { 
   User, Shield, Award, MapPin, CheckCircle, Package, Clock, AlertTriangle, 
   ChevronRight, Calendar, Star, HelpCircle, ArrowLeft, Key, ThumbsUp, CreditCard,
-  Download, Check, FileText, Compass, Sliders, MessageSquare
+  Download, Check, FileText, Compass, Sliders, MessageSquare, Truck, Store
 } from 'lucide-react';
 import { useDBState, dbOperations, getDBState, saveDBState, OrderStatus, Order } from '../lib/store';
 import LiveSafeMeetMap from './LiveSafeMeetMap';
@@ -337,6 +337,73 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
             </div>
           </div>
 
+        </div>
+      </div>
+
+      {/* Quick Portals & Mobile Navigation helper */}
+      <div className="mb-8 bg-slate-50 dark:bg-slate-900/50 border border-gray-150 dark:border-slate-850 p-5 rounded-[28px] space-y-4">
+        <h3 className="text-xs font-mono font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-1.5 select-none">
+          <Compass className="w-4 h-4 text-emerald-500 animate-pulse" />
+          Quick Portals & Courier Network
+        </h3>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* Dispatch Partner Dashboard */}
+          <button
+            type="button"
+            onClick={() => onNavigate?.('dispatch')}
+            className="flex items-center gap-3 p-3.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 hover:border-emerald-500 dark:hover:border-emerald-500 rounded-2xl shadow-xs text-left cursor-pointer transition-all group"
+          >
+            <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 group-hover:bg-emerald-500 group-hover:text-white transition-all">
+              <Truck className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-emerald-500 transition-colors">
+                GoodDispatch™ Network
+              </h4>
+              <p className="text-[10px] text-slate-400 mt-0.5 leading-snug">
+                Accept delivery jobs & track riders.
+              </p>
+            </div>
+          </button>
+
+          {/* Seller Hub / Dashboard */}
+          <button
+            type="button"
+            onClick={() => onNavigate?.('dashboard')}
+            className="flex items-center gap-3 p-3.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 hover:border-amber-500 dark:hover:border-amber-500 rounded-2xl shadow-xs text-left cursor-pointer transition-all group"
+          >
+            <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:bg-amber-500 group-hover:text-white transition-all">
+              <Store className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-amber-500 transition-colors">
+                Merchant Seller Hub
+              </h4>
+              <p className="text-[10px] text-slate-400 mt-0.5 leading-snug">
+                Manage your store and inventory.
+              </p>
+            </div>
+          </button>
+
+          {/* Settings panel */}
+          <button
+            type="button"
+            onClick={() => onNavigate?.('settings')}
+            className="flex items-center gap-3 p-3.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 hover:border-indigo-500 dark:hover:border-indigo-500 rounded-2xl shadow-xs text-left cursor-pointer transition-all group"
+          >
+            <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-500 group-hover:text-white transition-all">
+              <Sliders className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-indigo-500 transition-colors">
+                System Settings
+              </h4>
+              <p className="text-[10px] text-slate-400 mt-0.5 leading-snug">
+                Configure your account parameters.
+              </p>
+            </div>
+          </button>
         </div>
       </div>
 

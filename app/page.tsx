@@ -7,6 +7,8 @@ import LandingView from '../components/LandingView';
 import ProductDetailView from '../components/ProductDetailView';
 import DashboardView from '../components/DashboardView';
 import AdminDashboard from '../components/AdminDashboard';
+import DispatchDashboardView from '../components/DispatchDashboardView';
+import RevenueCenterView from '../components/RevenueCenterView';
 import ChatView from '../components/ChatView';
 import CartCheckoutView from '../components/CartCheckoutView';
 import VerificationBadgeView from '../components/VerificationBadgeView';
@@ -170,6 +172,14 @@ export default function Home() {
 
         {currentView === 'admin' && (
           <AdminDashboard onOpenAuth={() => setAuthModalOpen(true)} />
+        )}
+
+        {currentView === 'dispatch' && (
+          <DispatchDashboardView />
+        )}
+
+        {currentView === 'revenue' && (
+          <RevenueCenterView />
         )}
 
         {currentView === 'chats' && (
