@@ -6,7 +6,8 @@ import {
   ShieldAlert, ShieldCheck, FileCheck, CheckCircle2, XCircle, 
   RefreshCw, Scale, DollarSign, Wallet, ClipboardList,
   Database, Server, Copy, Check, ExternalLink, AlertTriangle,
-  Settings, Award, Sparkles, Percent, Activity
+  Settings, Award, Sparkles, Percent, Activity,
+  Shield, CreditCard, Truck, FileText, Coins
 } from 'lucide-react';
 import { 
   getDBState, saveDBState, dbOperations, User, UserRole, VerificationStatus 
@@ -33,6 +34,7 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
   const [auctionSuccessFeePercentage, setAuctionSuccessFeePercentage] = useState(settings?.auctionSuccessFeePercentage?.toString() || '2.5');
   const [adCpcPrice, setAdCpcPrice] = useState(settings?.adCpcPrice?.toString() || '150');
   const [goodSaleProtectFee, setGoodSaleProtectFee] = useState(settings?.goodSaleProtectFee?.toString() || '1500');
+  const [enabledMethods, setEnabledMethods] = useState<string[]>(db.paymentSettings?.enabledMethods || ['escrow', 'cod', 'card', 'bank', 'invoice', 'partial']);
 
   // Supabase testing state
   const [isTestingSupabase, setIsTestingSupabase] = useState(false);
@@ -60,6 +62,9 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
         setAuctionSuccessFeePercentage(state.revenueSettings.auctionSuccessFeePercentage.toString());
         setAdCpcPrice(state.revenueSettings.adCpcPrice.toString());
         setGoodSaleProtectFee((state.revenueSettings.goodSaleProtectFee || 1500).toString());
+      }
+      if (state.paymentSettings) {
+        setEnabledMethods(state.paymentSettings.enabledMethods);
       }
     };
     window.addEventListener('goodsale_db_state_change', handleStateChange);
@@ -146,63 +151,19 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
   }
 
   if (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.SUPER_ADMIN) {
-    const handleVerifyPasscode = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (adminPasscode.trim() === 'GoodSaleAdmin2026') {
-        dbOperations.updateCurrentUserRole(UserRole.SUPER_ADMIN);
-        setDb(getDBState());
-        setAdminPasscode('');
-        setPasscodeError('');
-        setActionSuccess('Admin control console successfully initialized!');
-      } else {
-        setPasscodeError('Invalid administrative passcode. Access denied.');
-      }
-    };
-
     return (
       <div className="max-w-md mx-auto px-4 py-16 text-center select-none animate-fade-in">
         <div className="w-16 h-16 bg-red-500/10 dark:bg-red-500/5 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-500/20">
-          <ShieldAlert className="w-8 h-8 text-red-500 animate-pulse" />
+          <ShieldAlert className="w-8 h-8 text-red-500" />
         </div>
-        <h2 className="font-display font-black text-2xl text-slate-900 dark:text-white mb-2">Administrative Passcode Gateway</h2>
-        <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 max-w-sm mx-auto leading-relaxed">
-          Access is strictly restricted to authorized platform owners and system administrators. Please enter your secure credentials to authenticate.
+        <h2 className="font-display font-black text-2xl text-slate-900 dark:text-white mb-2">Access Strictly Restricted</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-sm mx-auto leading-relaxed">
+          The administrative dashboard is reserved exclusively for the platform owner (<strong className="text-emerald-500 font-sans">lightingstar79@gmail.com</strong>) and designated system moderators.
         </p>
         
-        <form onSubmit={handleVerifyPasscode} className="space-y-4">
-          <div className="relative">
-            <input
-              type="password"
-              value={adminPasscode}
-              onChange={(e) => {
-                setAdminPasscode(e.target.value);
-                setPasscodeError('');
-              }}
-              placeholder="Enter secure master passcode..."
-              className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl text-center text-sm font-sans focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-500 text-slate-900 dark:text-white transition-colors"
-            />
-          </div>
-
-          {passcodeError && (
-            <p className="text-[10px] font-bold text-red-500 dark:text-red-400 font-mono text-center">
-              ⚠ {passcodeError}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-sans font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer shadow-md shadow-indigo-600/10 transition-all"
-          >
-            Authenticate Controls
-          </button>
-        </form>
-
         <div className="mt-8 p-4 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-gray-150 dark:border-slate-800/80">
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-normal font-sans">
-            <strong className="text-slate-600 dark:text-slate-400">Developer Note:</strong> Only administrators can arbitrate escrow disputes, set platform commissions, or verify legal identity files.
-          </p>
-          <p className="text-[9px] text-indigo-500/80 dark:text-indigo-400/80 font-mono mt-2 leading-relaxed">
-            🔓 Use master passcode <code className="bg-slate-100 dark:bg-slate-850 px-1 py-0.5 rounded text-indigo-600 dark:text-indigo-300 font-bold font-mono">GoodSaleAdmin2026</code> to unlock instantly.
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-normal font-sans">
+            <strong className="text-slate-600 dark:text-slate-400">Security Warning:</strong> Any unauthorized attempt to escalate administrative privileges or bypass authentication structures will flag the profile for immediate suspension.
           </p>
         </div>
       </div>
@@ -699,8 +660,9 @@ create policy "Allow public read/write access to market_state"
                 goodSaleProtectFee: parseFloat(goodSaleProtectFee) || 0,
               };
               const res = dbOperations.updateRevenueSettings(adminUser.id, updated);
-              if (res.success) {
-                setActionSuccess('Platform revenue configurations successfully updated! Audit log created.');
+              const res2 = dbOperations.updatePaymentSettings(adminUser.id, { enabledMethods });
+              if (res.success && res2.success) {
+                setActionSuccess('Platform revenue and checkout configurations successfully updated! Audit log created.');
                 setTimeout(() => setActionSuccess(null), 4000);
               }
             }} className="space-y-6">
@@ -927,6 +889,82 @@ create policy "Allow public read/write access to market_state"
                         />
                       </div>
                     </div>
+                  </div>
+                </div>
+
+                {/* Panel 5: Flexible Payment Methods & Platform Checkout Options */}
+                <div className="md:col-span-2 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 p-6 rounded-3xl space-y-6 shadow-sm">
+                  <div className="flex items-center justify-between border-b border-gray-100 dark:border-slate-800 pb-3">
+                    <div className="flex items-center gap-2">
+                      <Shield className="w-5 h-5 text-emerald-500" />
+                      <div>
+                        <h4 className="font-bold text-sm text-slate-900 dark:text-white">Checkout Payment Channels Control</h4>
+                        <p className="text-[10px] text-slate-400">Toggle active payment systems for transactions and customer orders</p>
+                      </div>
+                    </div>
+                    <div className="text-[10px] bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded-full font-bold">
+                      Platform Control
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {[
+                      { id: 'escrow', name: 'GoodSale Escrow', desc: 'Secure buyer payment lock, neutral escrow protection', icon: <Shield className="w-5 h-5 text-emerald-500" /> },
+                      { id: 'card', name: 'Credit / Debit Card', desc: 'Direct online processing with card networks', icon: <CreditCard className="w-5 h-5 text-blue-500" /> },
+                      { id: 'bank', name: 'Direct Bank Transfer', desc: 'Instant bank-to-bank manual transfers with receipts', icon: <ExternalLink className="w-5 h-5 text-purple-500" /> },
+                      { id: 'cod', name: 'Cash on Delivery (COD)', desc: 'Pay on delivery via verified courier partners', icon: <Truck className="w-5 h-5 text-gray-500" /> },
+                      { id: 'invoice', name: 'Business Invoice', desc: 'Corporate nets term invoicing (Net-30 billing)', icon: <FileText className="w-5 h-5 text-indigo-500" /> },
+                      { id: 'partial', name: 'Partial Deposit', desc: 'Allow deposit percentage payments first', icon: <Coins className="w-5 h-5 text-amber-500" /> },
+                    ].map((method) => {
+                      const isEnabled = enabledMethods.includes(method.id);
+                      return (
+                        <div 
+                          key={method.id}
+                          className={`p-4 rounded-2xl border transition-all flex flex-col justify-between h-36 ${
+                            isEnabled 
+                              ? 'border-emerald-500/30 bg-emerald-500/[0.02] dark:bg-emerald-500/[0.01]' 
+                              : 'border-gray-200 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-950/30'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="p-2 rounded-xl bg-gray-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800">
+                              {method.icon}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (method.id === 'escrow') return; // Escrow is always required for neutral safety
+                                if (isEnabled) {
+                                  setEnabledMethods(enabledMethods.filter(m => m !== method.id));
+                                } else {
+                                  setEnabledMethods([...enabledMethods, method.id]);
+                                }
+                              }}
+                              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                isEnabled ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-slate-800'
+                              } ${method.id === 'escrow' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              disabled={method.id === 'escrow'}
+                            >
+                              <span
+                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                                  isEnabled ? 'translate-x-5' : 'translate-x-0'
+                                }`}
+                              />
+                            </button>
+                          </div>
+
+                          <div className="mt-3">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-xs text-slate-800 dark:text-slate-200">{method.name}</span>
+                              {method.id === 'escrow' && (
+                                <span className="text-[8px] bg-emerald-500/20 text-emerald-500 px-1 py-0.2 rounded font-sans uppercase font-extrabold">Required</span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-slate-400 mt-1 leading-snug">{method.desc}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 

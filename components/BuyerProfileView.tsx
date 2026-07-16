@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { 
   User, Shield, Award, MapPin, CheckCircle, Package, Clock, AlertTriangle, 
   ChevronRight, Calendar, Star, HelpCircle, ArrowLeft, Key, ThumbsUp, CreditCard,
-  Download, Check, FileText, Compass, Sliders, MessageSquare, Truck, Store
+  Download, Check, FileText, Compass, Sliders, MessageSquare, Truck, Store, LogOut
 } from 'lucide-react';
 import { useDBState, dbOperations, getDBState, saveDBState, OrderStatus, Order } from '../lib/store';
 import LiveSafeMeetMap from './LiveSafeMeetMap';
@@ -1000,6 +1000,25 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                   <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
                 </button>
               )}
+
+              {/* 6. Log Out Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  dbOperations.logout();
+                  onNavigate?.('landing');
+                }}
+                className="w-full text-left p-3 rounded-2xl bg-red-500/5 hover:bg-red-500/10 border border-red-500/15 hover:border-red-500/30 transition-all flex items-center gap-3 group cursor-pointer"
+              >
+                <div className="w-9 h-9 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <LogOut className="w-4.5 h-4.5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="block text-xs font-bold text-red-650 dark:text-red-400 group-hover:text-red-500 transition-colors">Log Out Session</span>
+                  <span className="block text-[10px] text-slate-400 dark:text-slate-500 truncate font-sans">Exit current secure session and return to home page.</span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+              </button>
             </div>
           </div>
 

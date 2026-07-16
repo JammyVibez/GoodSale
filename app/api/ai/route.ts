@@ -74,6 +74,38 @@ function getHeuristicRecommendation(query: string) {
   };
 }
 
+// 1b. Security Tip Fallbacks Heuristics
+function getHeuristicSecurityTip(category: string, title: string) {
+  const cat = (category || "").toLowerCase();
+  const t = (title || "").toLowerCase();
+  let advice = "Always verify the seller's trust score and use GoodSale Escrow. Never pay directly outside of the platform to ensure your funds are protected until you physically inspect and confirm the product.";
+  let badgeTitle = "General Safety Advice";
+  let threatLevel = "LOW";
+
+  if (cat.includes("phone") || cat.includes("gadget") || cat.includes("electronic") || cat.includes("mobile") || t.includes("iphone") || t.includes("samsung")) {
+    badgeTitle = "Device Security Alert";
+    advice = "When purchasing mobile devices, always verify the screen quality and request the seller to record a brief video showing the device IMEI and battery health status. Escrow secures your funds for 48 hours so you can test all sensors and carrier locks before releasing payment.";
+    threatLevel = "MEDIUM";
+  } else if (cat.includes("comput") || cat.includes("laptop") || cat.includes("tech") || t.includes("macbook") || t.includes("dell")) {
+    badgeTitle = "Hardware Verification Tip";
+    advice = "Laptops and desktop systems are high-value tech assets. We recommend arranging delivery via verified GoodDispatch™ carriers who support physical component inspection, and ensuring you boot the system to verify RAM and processor specs match the listing description.";
+    threatLevel = "MEDIUM";
+  } else if (cat.includes("fashion") || cat.includes("cloth") || cat.includes("shoe") || t.includes("agbada") || t.includes("sneaker")) {
+    badgeTitle = "Apparel Inspection Advice";
+    advice = "To avoid sizing or material mismatch, verify dimensions with the merchant's local sizing charts before checking out. With Escrow, your payment is held securely and can be fully refunded if the size or color doesn't match your agreed terms.";
+    threatLevel = "LOW";
+  } else if (cat.includes("vehicle") || cat.includes("car") || cat.includes("transport") || cat.includes("automotive") || t.includes("toyota") || t.includes("lexus")) {
+    badgeTitle = "Automotive Compliance Warning";
+    advice = "Do not pay transport or clearance fees offline. Secure the transaction via GoodSale deposit/escrow and inspect the vehicle with a professional mechanic at a SafeMeet™ hub to confirm custom clearance and mechanical status before completing the sale.";
+    threatLevel = "HIGH";
+  }
+  return {
+    badgeTitle,
+    tip: advice,
+    threatLevel
+  };
+}
+
 // 2. Barcode Autofill Heuristics
 function getHeuristicBarcode(barcode: string) {
   const code = barcode.trim();
@@ -407,6 +439,66 @@ Evaluate their conversion stats and provide a highly motivating, strategic growt
       return NextResponse.json({
         success: true,
         insight: getHeuristicMetricsAnalysis(views, escrowHeld, productsCount)
+      });
+    }
+
+    // ACTION 5: CONTEXT-AWARE SECURITY TIP
+    if (action === "security_tip") {
+      const category = payload.category || "";
+      const title = payload.title || "";
+
+      if (!client) {
+        return NextResponse.json({
+          success: true,
+          tipData: getHeuristicSecurityTip(category, title)
+        });
+      }
+
+      try {
+        const prompt = `You are the Lead Trust & Safety Officer at GoodSale, Nigeria's premier escrow-backed peer-to-peer commerce marketplace.
+Review this product listing:
+Category: "${category}"
+Title: "${title}"
+
+Generate a context-aware security advice / security tip for a prospective buyer looking to purchase this item.
+Be highly specific to the Nigerian market conditions (e.g., meeting in Lagos, testing items safely, verifying IMEI for phones, inspect fabrics, checking vehicle customs papers, using SafeMeet™ or GoodDispatch™).
+Always emphasize how GoodSale's Escrow protects them.
+
+Provide a safety tip JSON with:
+1. "badgeTitle": A concise, catchy warning badge title (e.g., "Device Safety Alert", "High-Value Verification", "Sizing & Quality Tip")
+2. "tip": The precise advice block itself. It should be 2-3 sentences max, warm but authoritative, very realistic and practical.
+3. "threatLevel": One of "LOW", "MEDIUM", or "HIGH" depending on how risky this transaction category is typically.`;
+
+        const response = await client.models.generateContent({
+          model: "gemini-3.5-flash",
+          contents: prompt,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                badgeTitle: { type: Type.STRING },
+                tip: { type: Type.STRING },
+                threatLevel: { type: Type.STRING }
+              },
+              required: ["badgeTitle", "tip", "threatLevel"]
+            }
+          }
+        });
+
+        if (response.text) {
+          return NextResponse.json({
+            success: true,
+            tipData: JSON.parse(response.text.trim())
+          });
+        }
+      } catch (err) {
+        console.error("Gemini security_tip failed, using fallback:", err);
+      }
+
+      return NextResponse.json({
+        success: true,
+        tipData: getHeuristicSecurityTip(category, title)
       });
     }
 

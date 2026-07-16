@@ -33,6 +33,12 @@ export enum OrderStatus {
   DISPUTED = 'DISPUTED',
   REFUNDED = 'REFUNDED',
   CANCELLED = 'CANCELLED',
+  
+  // Custom Merchant Payment statuses
+  PENDING_BANK_TRANSFER = 'PENDING_BANK_TRANSFER',
+  PARTIAL_DEPOSIT_PAID = 'PARTIAL_DEPOSIT_PAID',
+  INVOICE_SENT = 'INVOICE_SENT',
+  COD_PENDING = 'COD_PENDING',
 }
 
 export enum DocumentType {
@@ -121,6 +127,9 @@ export interface Product {
   isAuction: boolean;
   viewCount: number;
   createdAt: string;
+  paymentMethods?: string[]; // e.g. ['escrow', 'cod', 'card', 'bank', 'invoice', 'partial']
+  partialPercent?: number;
+  partialRemainingDays?: number;
 }
 
 export interface Auction {
@@ -170,6 +179,15 @@ export interface Order {
   serviceType?: 'ECONOMY' | 'STANDARD' | 'EXPRESS';
   hasGoodSaleProtect?: boolean;
   protectFee?: number;
+  
+  // Custom Merchant Payment System fields
+  depositPercent?: number;
+  depositRemainingDays?: number;
+  depositAmountPaid?: number;
+  balanceRemaining?: number;
+  isBalanceSettled?: boolean;
+  bankTransferReceipt?: string;
+  invoiceTerms?: string;
 }
 
 export interface Escrow {
@@ -356,6 +374,78 @@ export interface ProductBundle {
   price: number;
   discountPercentage: number;
   quantity: number;
+  createdAt: string;
+}
+
+// ==========================================
+// GOODSALE PAYMENT & CHECKOUT SYSTEM INTERFACES
+// ==========================================
+
+export interface PaymentTransaction {
+  id: number;
+  transactionId: string;
+  orderId?: number;
+  orderNumber?: string;
+  buyerId: number;
+  sellerId: number;
+  amount: number;
+  paymentMethod: string;
+  status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'REFUNDED';
+  purpose: 'ORDER_PAYMENT' | 'ESCROW_RELEASE' | 'DEPOSIT_PAYMENT' | 'BALANCE_PAYMENT' | 'WITHDRAWAL';
+  createdAt: string;
+}
+
+export interface Invoice {
+  id: number;
+  invoiceNumber: string;
+  orderId: number;
+  buyerId: number;
+  sellerId: number;
+  businessId: number;
+  amount: number;
+  terms: string; // e.g. "Net 15", "Due on Receipt"
+  dueDate: string;
+  status: 'DRAFT' | 'SENT' | 'VIEWED' | 'PAID' | 'OVERDUE' | 'CANCELLED';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Refund {
+  id: number;
+  refundNumber: string;
+  transactionId: string;
+  orderId: number;
+  amount: number;
+  reason: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  createdAt: string;
+}
+
+export interface WithdrawalRequest {
+  id: number;
+  requestNumber: string;
+  userId: number;
+  amount: number;
+  bankName: string;
+  accountNumber: string;
+  accountName: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  createdAt: string;
+}
+
+export interface PaymentSettings {
+  enabledMethods: string[]; // e.g. ['escrow', 'cod', 'card', 'bank', 'invoice', 'partial']
+  codMaxOrderValue: number; // e.g. 500000
+  escrowFeePercentage: number; // e.g. 1.5
+  deliveryCommissionPercentage: number; // e.g. 10
+}
+
+export interface PaymentLog {
+  id: number;
+  userId?: number;
+  action: string;
+  details: string;
+  ipAddress: string;
   createdAt: string;
 }
 
@@ -1307,6 +1397,12 @@ export interface GoodSaleDBState {
   businessSubscriptions: BusinessSubscription[];
   verifiedPlusSubscriptions: VerifiedPlusSubscription[];
   currentUser: User | null;
+  transactions: PaymentTransaction[];
+  invoices: Invoice[];
+  refunds: Refund[];
+  withdrawalRequests: WithdrawalRequest[];
+  paymentSettings: PaymentSettings;
+  paymentLogs: PaymentLog[];
 }
 
 const STORE_KEY = 'goodsale_relational_database_v1';
@@ -1349,6 +1445,17 @@ export function getDBState(): GoodSaleDBState {
       businessSubscriptions: [],
       verifiedPlusSubscriptions: [],
       currentUser: null, // Defaults to GUEST/null if empty
+      transactions: [],
+      invoices: [],
+      refunds: [],
+      withdrawalRequests: [],
+      paymentSettings: {
+        enabledMethods: ['escrow', 'cod', 'card', 'bank', 'invoice', 'partial'],
+        codMaxOrderValue: 500000,
+        escrowFeePercentage: 1.5,
+        deliveryCommissionPercentage: 10
+      },
+      paymentLogs: []
     };
   }
 
@@ -1391,6 +1498,17 @@ export function getDBState(): GoodSaleDBState {
       if (!dbInstance!.auditLogs) dbInstance!.auditLogs = [];
       if (!dbInstance!.businessSubscriptions) dbInstance!.businessSubscriptions = [];
       if (!dbInstance!.verifiedPlusSubscriptions) dbInstance!.verifiedPlusSubscriptions = [];
+      if (!dbInstance!.transactions) dbInstance!.transactions = [];
+      if (!dbInstance!.invoices) dbInstance!.invoices = [];
+      if (!dbInstance!.refunds) dbInstance!.refunds = [];
+      if (!dbInstance!.withdrawalRequests) dbInstance!.withdrawalRequests = [];
+      if (!dbInstance!.paymentSettings) dbInstance!.paymentSettings = {
+        enabledMethods: ['escrow', 'cod', 'card', 'bank', 'invoice', 'partial'],
+        codMaxOrderValue: 500000,
+        escrowFeePercentage: 1.5,
+        deliveryCommissionPercentage: 10
+      };
+      if (!dbInstance!.paymentLogs) dbInstance!.paymentLogs = [];
       // Force logout of mock users on load to satisfy "logout all mock users"
       if (dbInstance!.currentUser && dbInstance!.currentUser.id <= 4) {
         dbInstance!.currentUser = null;
@@ -1448,6 +1566,17 @@ export function getDBState(): GoodSaleDBState {
     businessSubscriptions: [],
     verifiedPlusSubscriptions: [],
     currentUser: null, // Starts as GUEST/null if empty
+    transactions: [],
+    invoices: [],
+    refunds: [],
+    withdrawalRequests: [],
+    paymentSettings: {
+      enabledMethods: ['escrow', 'cod', 'card', 'bank', 'invoice', 'partial'],
+      codMaxOrderValue: 500000,
+      escrowFeePercentage: 1.5,
+      deliveryCommissionPercentage: 10
+    },
+    paymentLogs: []
   };
 
   saveDBState(initial);
@@ -1718,7 +1847,10 @@ export const dbOperations = {
     weightKg?: number,
     dimensionsCm?: string,
     isAuction: boolean = false,
-    auctionDurationHours: number = 24
+    auctionDurationHours: number = 24,
+    paymentMethods?: string[],
+    partialPercent?: number,
+    partialRemainingDays?: number
   ) {
     const state = getDBState();
     if (!state.currentUser) return;
@@ -1750,6 +1882,9 @@ export const dbOperations = {
       isAuction,
       viewCount: 0,
       createdAt: new Date().toISOString(),
+      paymentMethods: paymentMethods || ['escrow', 'card'],
+      partialPercent: partialPercent || 30,
+      partialRemainingDays: partialRemainingDays || 7
     };
 
     state.products.unshift(newProduct);
@@ -1843,7 +1978,9 @@ export const dbOperations = {
     usePoints: boolean = false,
     selectedPartnerId?: number,
     serviceType: 'ECONOMY' | 'STANDARD' | 'EXPRESS' = 'STANDARD',
-    hasGoodSaleProtect: boolean = false
+    hasGoodSaleProtect: boolean = false,
+    bankReceipt?: string,
+    invoiceTerms?: string
   ) {
     const state = getDBState();
     if (!state.currentUser) return null;
@@ -1889,6 +2026,34 @@ export const dbOperations = {
 
     const totalAmount = product.price + deliveryFee + taxAmount + protectFee - pointsDiscount;
 
+    // Determine initial order status based on payment channel chosen
+    let initialStatus = OrderStatus.PAID_ESCROW;
+    const pmLower = paymentMethod.toLowerCase();
+    if (pmLower === 'bank') {
+      initialStatus = OrderStatus.PENDING_BANK_TRANSFER;
+    } else if (pmLower === 'cod') {
+      initialStatus = OrderStatus.COD_PENDING;
+    } else if (pmLower === 'invoice') {
+      initialStatus = OrderStatus.INVOICE_SENT;
+    } else if (pmLower === 'partial') {
+      initialStatus = OrderStatus.PARTIAL_DEPOSIT_PAID;
+    }
+
+    // Set custom payment parameters
+    let depositPercent: number | undefined;
+    let depositRemainingDays: number | undefined;
+    let depositAmountPaid: number | undefined;
+    let balanceRemaining: number | undefined;
+    let isBalanceSettled: boolean | undefined;
+
+    if (pmLower === 'partial') {
+      depositPercent = product.partialPercent || 30;
+      depositRemainingDays = product.partialRemainingDays || 7;
+      depositAmountPaid = Math.round(totalAmount * (depositPercent / 100));
+      balanceRemaining = totalAmount - depositAmountPaid;
+      isBalanceSettled = false;
+    }
+
     const newOrder: Order = {
       id: Math.max(...state.orders.map((o) => o.id), 2000) + 1,
       orderNumber,
@@ -1901,14 +2066,14 @@ export const dbOperations = {
       discountAmount: pointsDiscount,
       deliveryFee,
       taxAmount,
-      paymentMethod,
+      paymentMethod: paymentMethod.toUpperCase(),
       deliveryMethod,
       deliveryAddress,
       deliveryCity,
       deliveryState,
       deliveryPin,
       qrCodeToken: `QR-GS-${orderNumber}`,
-      status: OrderStatus.PAID_ESCROW, // Escrow begins immediately paid
+      status: initialStatus,
       goodPointsUsed: pointsUsed,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -1916,19 +2081,71 @@ export const dbOperations = {
       serviceType,
       hasGoodSaleProtect,
       protectFee,
+      depositPercent,
+      depositRemainingDays,
+      depositAmountPaid,
+      balanceRemaining,
+      isBalanceSettled,
+      bankTransferReceipt: bankReceipt,
+      invoiceTerms
     };
 
     // Add order
     state.orders.unshift(newOrder);
 
-    // Add to Escrow Fund Ledger
+    // Add to Escrow Fund Ledger (if escrow/card/partial/bank, funds held)
+    const heldEscrowAmount = pmLower === 'partial' 
+      ? (depositAmountPaid || totalAmount)
+      : (pmLower === 'bank' || pmLower === 'invoice' || pmLower === 'cod') ? 0 : totalAmount;
+
     state.escrows.push({
       id: state.escrows.length + 1,
       orderId: newOrder.id,
-      heldAmount: product.price,
+      heldAmount: heldEscrowAmount,
       isReleased: false,
       isRefunded: false,
     });
+
+    // Create Payment transaction log
+    const txId = `TX-${Math.floor(100000 + Math.random() * 900000)}`;
+    const txStatus = (pmLower === 'bank' ? 'PENDING' : (pmLower === 'invoice' || pmLower === 'cod') ? 'PENDING' : 'SUCCESS') as 'PENDING' | 'REFUNDED' | 'SUCCESS' | 'FAILED';
+    state.transactions.push({
+      id: state.transactions.length + 1,
+      transactionId: txId,
+      orderId: newOrder.id,
+      buyerId: state.currentUser.id,
+      sellerId: product.sellerId,
+      amount: heldEscrowAmount || totalAmount,
+      paymentMethod: paymentMethod.toUpperCase(),
+      status: txStatus,
+      purpose: 'ORDER_PAYMENT',
+      createdAt: new Date().toISOString(),
+    });
+
+    // If Invoice payment option is chosen, create an Invoice object
+    if (pmLower === 'invoice') {
+      const days = invoiceTerms === 'Net 30' ? 30 : invoiceTerms === 'Net 60' ? 60 : 15;
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + days);
+
+      const business = state.businesses.find(b => b.ownerId === product.sellerId);
+      const businessId = business ? business.id : 0;
+
+      state.invoices.push({
+        id: state.invoices.length + 1,
+        orderId: newOrder.id,
+        invoiceNumber: `INV-${orderNumber}`,
+        buyerId: state.currentUser.id,
+        sellerId: product.sellerId,
+        businessId,
+        amount: totalAmount,
+        dueDate: dueDate.toISOString(),
+        status: 'SENT',
+        terms: invoiceTerms || 'Net 15',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }
 
     // Reduce product quantity
     product.quantity -= 1;
@@ -3773,6 +3990,28 @@ export const dbOperations = {
     return { success: true, settings: state.revenueSettings, log };
   },
 
+  updatePaymentSettings(userId: number, settings: Partial<PaymentSettings>) {
+    const state = getDBState();
+    state.paymentSettings = {
+      ...state.paymentSettings,
+      ...settings
+    };
+    
+    const details = `Admin updated payment settings: enabledMethods=${JSON.stringify(state.paymentSettings.enabledMethods)}`;
+    const log: AuditLog = {
+      id: state.auditLogs.length + 1,
+      userId,
+      action: 'UPDATE_PAYMENT_SETTINGS',
+      entityType: 'PAYMENT_SETTINGS',
+      entityId: 1,
+      details,
+      createdAt: new Date().toISOString(),
+    };
+    state.auditLogs.push(log);
+    saveDBState(state);
+    return { success: true, settings: state.paymentSettings, log };
+  },
+
   createBundle(sellerId: number, title: string, description: string, productIds: number[], price: number, discountPercentage: number, quantity: number) {
     const state = getDBState();
     const newId = Math.max(...state.productBundles.map(b => b.id), 300) + 1;
@@ -3827,6 +4066,17 @@ export function useDBState(): GoodSaleDBState {
       businessSubscriptions: [],
       verifiedPlusSubscriptions: [],
       currentUser: null,
+      transactions: [],
+      invoices: [],
+      refunds: [],
+      withdrawalRequests: [],
+      paymentSettings: {
+        enabledMethods: ['escrow', 'cod', 'card', 'bank', 'invoice', 'partial'],
+        codMaxOrderValue: 500000,
+        escrowFeePercentage: 1.5,
+        deliveryCommissionPercentage: 10
+      },
+      paymentLogs: []
     };
   });
 

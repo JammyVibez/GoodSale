@@ -45,6 +45,11 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
   const [productStatus, setProductStatus] = useState<'Available' | 'Out_Of_Stock' | 'Draft'>('Available');
   const [tags, setTags] = useState('apple, iphone, mobile');
 
+  // Custom Product-specific Payment Options Settings
+  const [allowedPaymentMethods, setAllowedPaymentMethods] = useState<string[]>(['escrow', 'card']);
+  const [depositPercent, setDepositPercent] = useState('30');
+  const [depositRemainingDays, setDepositRemainingDays] = useState('7');
+
   // Multi-image & video assets list (Min 3, Max 15)
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
   const [uploadedVideo, setUploadedVideo] = useState<string | null>(null);
@@ -328,7 +333,10 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
       Number(weightKg) || 0.5,
       dimensionsCm || '15x10x5',
       isAuction,
-      Number(auctionDuration) || 24
+      Number(auctionDuration) || 24,
+      allowedPaymentMethods,
+      Number(depositPercent) || 30,
+      Number(depositRemainingDays) || 7
     );
 
     // Save draft state on the product if required
@@ -2268,6 +2276,141 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                         </select>
                       </div>
                     )}
+
+                    {/* SELLER PAYMENT PREFERENCES CONFIGURATION */}
+                    <div className="sm:col-span-2 border-t border-gray-100 dark:border-slate-800 pt-4 mt-2">
+                      <h5 className="font-sans font-bold text-xs text-slate-800 dark:text-slate-200 mb-1">Merchant Payment Option Settings</h5>
+                      <p className="text-[10px] text-slate-400 mb-3">Select the specific payment channels you want to accept for this listing. Buyers will only be allowed to checkout using these modes.</p>
+                      
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={allowedPaymentMethods.includes('escrow')}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setAllowedPaymentMethods([...allowedPaymentMethods, 'escrow']);
+                              } else {
+                                setAllowedPaymentMethods(allowedPaymentMethods.filter(m => m !== 'escrow'));
+                              }
+                            }}
+                            className="w-4 h-4 text-emerald-500 rounded border-gray-300 focus:ring-emerald-500"
+                          />
+                          <span>GoodSale Escrow</span>
+                        </label>
+
+                        <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={allowedPaymentMethods.includes('card')}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setAllowedPaymentMethods([...allowedPaymentMethods, 'card']);
+                              } else {
+                                setAllowedPaymentMethods(allowedPaymentMethods.filter(m => m !== 'card'));
+                              }
+                            }}
+                            className="w-4 h-4 text-emerald-500 rounded border-gray-300 focus:ring-emerald-500"
+                          />
+                          <span>Credit / Debit Card</span>
+                        </label>
+
+                        <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={allowedPaymentMethods.includes('bank')}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setAllowedPaymentMethods([...allowedPaymentMethods, 'bank']);
+                              } else {
+                                setAllowedPaymentMethods(allowedPaymentMethods.filter(m => m !== 'bank'));
+                              }
+                            }}
+                            className="w-4 h-4 text-emerald-500 rounded border-gray-300 focus:ring-emerald-500"
+                          />
+                          <span>Direct Bank Transfer</span>
+                        </label>
+
+                        <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={allowedPaymentMethods.includes('cod')}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setAllowedPaymentMethods([...allowedPaymentMethods, 'cod']);
+                              } else {
+                                setAllowedPaymentMethods(allowedPaymentMethods.filter(m => m !== 'cod'));
+                              }
+                            }}
+                            className="w-4 h-4 text-emerald-500 rounded border-gray-300 focus:ring-emerald-500"
+                          />
+                          <span>Cash on Delivery (COD)</span>
+                        </label>
+
+                        {/* Only display Invoice if user is verified business account or has business profile */}
+                        {user?.role === 'SUPER_ADMIN' || db.businesses.some(b => b.ownerId === user?.id) ? (
+                          <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={allowedPaymentMethods.includes('invoice')}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setAllowedPaymentMethods([...allowedPaymentMethods, 'invoice']);
+                                } else {
+                                  setAllowedPaymentMethods(allowedPaymentMethods.filter(m => m !== 'invoice'));
+                                }
+                              }}
+                              className="w-4 h-4 text-emerald-500 rounded border-gray-300 focus:ring-emerald-500"
+                            />
+                            <span className="text-purple-500">Business Invoice</span>
+                          </label>
+                        ) : null}
+
+                        <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={allowedPaymentMethods.includes('partial')}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setAllowedPaymentMethods([...allowedPaymentMethods, 'partial']);
+                              } else {
+                                setAllowedPaymentMethods(allowedPaymentMethods.filter(m => m !== 'partial'));
+                              }
+                            }}
+                            className="w-4 h-4 text-emerald-500 rounded border-gray-300 focus:ring-emerald-500"
+                          />
+                          <span className="text-amber-500">Partial Deposit</span>
+                        </label>
+                      </div>
+
+                      {/* Display partial configuration inputs if partial payment is checked */}
+                      {allowedPaymentMethods.includes('partial') && (
+                        <div className="grid grid-cols-2 gap-4 mt-4 p-3.5 bg-slate-100 dark:bg-slate-900 rounded-2xl border border-gray-200/50 dark:border-slate-800">
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-500 block mb-1">Required Deposit (%)</label>
+                            <input
+                              type="number"
+                              min="10"
+                              max="90"
+                              value={depositPercent}
+                              onChange={(e) => setDepositPercent(e.target.value)}
+                              className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-500 block mb-1">Grace Period (Days)</label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="30"
+                              value={depositRemainingDays}
+                              onChange={(e) => setDepositRemainingDays(e.target.value)}
+                              className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-white"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

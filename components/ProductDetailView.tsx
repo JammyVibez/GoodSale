@@ -6,7 +6,7 @@ import {
   ArrowLeft, Shield, MapPin, CheckCircle, MessageSquare, 
   ShoppingCart, Star, Zap, Trash, Clock, Award, Tag, Send,
   Bell, BellOff, Check, TrendingDown, ThumbsUp, CornerDownRight,
-  Share2
+  Share2, Sparkles
 } from 'lucide-react';
 import { 
   Product, UserRole, getDBState, saveDBState, dbOperations, OrderStatus 
@@ -66,6 +66,10 @@ export default function ProductDetailView({
   const [replyText, setReplyText] = useState('');
   const [reviewSubmitFeedback, setReviewSubmitFeedback] = useState<string | null>(null);
 
+  // Gemini AI Security Tip Banner States
+  const [securityTip, setSecurityTip] = useState<{ badgeTitle: string; tip: string; threatLevel: string } | null>(null);
+  const [loadingTip, setLoadingTip] = useState(false);
+
   useEffect(() => {
     const handleStateChange = () => {
       setDb(getDBState());
@@ -73,6 +77,37 @@ export default function ProductDetailView({
     window.addEventListener('goodsale_db_state_change', handleStateChange);
     return () => window.removeEventListener('goodsale_db_state_change', handleStateChange);
   }, []);
+
+  // Fetch security tip contextually from Gemini API
+  useEffect(() => {
+    const targetProduct = db.products.find(p => p.id === productId);
+    if (!targetProduct) return;
+
+    setLoadingTip(true);
+    fetch('/api/ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'security_tip',
+        payload: {
+          category: targetProduct.category,
+          title: targetProduct.title
+        }
+      })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success && data.tipData) {
+        setSecurityTip(data.tipData);
+      }
+    })
+    .catch(err => {
+      console.error('Failed to fetch Gemini security tip:', err);
+    })
+    .finally(() => {
+      setLoadingTip(false);
+    });
+  }, [productId, db.products]);
 
   // Initialize and load price drop alerts for this product
   useEffect(() => {
@@ -1076,6 +1111,60 @@ export default function ProductDetailView({
             )}
           </div>
 
+        </div>
+
+        {/* Context-aware Gemini Security Tip Banner */}
+        <div id="gemini-security-tip-banner" className="mt-12 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm overflow-hidden relative group transition-all duration-300 hover:shadow-md">
+          <div className="absolute -top-12 -right-12 opacity-5 pointer-events-none transition-opacity group-hover:opacity-10">
+            <Shield className="w-48 h-48 text-emerald-500" />
+          </div>
+
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
+            <div className="flex items-start gap-4">
+              <div className={`p-3 rounded-2xl shrink-0 transition-colors duration-300 ${
+                loadingTip ? 'bg-emerald-500/10 text-emerald-500 animate-pulse' :
+                securityTip?.threatLevel === 'HIGH' ? 'bg-rose-500/10 text-rose-500 dark:bg-rose-500/20' :
+                securityTip?.threatLevel === 'MEDIUM' ? 'bg-amber-500/10 text-amber-500 dark:bg-amber-500/20' :
+                'bg-emerald-500/10 text-emerald-500 dark:bg-emerald-500/20'
+              }`}>
+                <Shield className="w-6 h-6 animate-pulse" />
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-sans font-bold text-sm tracking-tight text-slate-800 dark:text-white">
+                    {loadingTip ? 'Consulting Gemini Trust Engine...' : (securityTip?.badgeTitle || 'Smart Verification Guide')}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider ${
+                    loadingTip ? 'bg-emerald-500/10 text-emerald-500 animate-pulse' :
+                    securityTip?.threatLevel === 'HIGH' ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20' :
+                    securityTip?.threatLevel === 'MEDIUM' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' :
+                    'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                  }`}>
+                    {loadingTip ? 'AI ANALYZING' : `${securityTip?.threatLevel || 'SECURE'} RISK`}
+                  </span>
+                </div>
+                
+                {loadingTip ? (
+                  <div className="space-y-2 py-1 max-w-2xl">
+                    <div className="h-3 bg-gray-200 dark:bg-slate-800 rounded-full w-96 animate-pulse" />
+                    <div className="h-3 bg-gray-200 dark:bg-slate-800 rounded-full w-80 animate-pulse" />
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed max-w-3xl">
+                    {securityTip?.tip || 'Always check buyer trust scores and inspect items physically at a SafeMeet™ location or utilize verified GoodDispatch™ partner service before releasing escrow.'}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="shrink-0">
+              <span className="inline-flex items-center gap-1 bg-slate-50 dark:bg-slate-950 border border-gray-200/60 dark:border-slate-800/80 px-3.5 py-1.5 rounded-xl text-[10px] font-semibold text-slate-500 dark:text-slate-400 select-none">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                Gemini Security Assistant
+              </span>
+            </div>
+          </div>
         </div>
 
       </div>

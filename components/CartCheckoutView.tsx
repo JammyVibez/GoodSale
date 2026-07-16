@@ -5,7 +5,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   ShoppingCart, Shield, CreditCard, ChevronRight, CheckCircle2, 
   MapPin, Award, Trash2, KeyRound, QrCode, ClipboardCheck, ArrowLeft, RefreshCw,
-  Truck, ExternalLink, Sparkles, ShieldAlert, ShieldCheck, CheckCircle
+  Truck, ExternalLink, Sparkles, ShieldAlert, ShieldCheck, CheckCircle,
+  Coins, FileText, Upload
 } from 'lucide-react';
 import { 
   getDBState, saveDBState, dbOperations, Product, Order, OrderStatus 
@@ -47,6 +48,16 @@ export default function CartCheckoutView({
   const [hasGoodSaleProtect, setHasGoodSaleProtect] = useState(false);
   const [smartMatchingActive, setSmartMatchingActive] = useState(false);
   const [smartMatchResult, setSmartMatchResult] = useState<string | null>(null);
+
+  // Expanded Payment and Checkout States
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('escrow');
+  const [bankTransferReceipt, setBankTransferReceipt] = useState<string | null>(null);
+  const [bankTransferUploading, setBankTransferUploading] = useState(false);
+  const [invoiceTerms, setInvoiceTerms] = useState<string>('Net 15');
+  const [cardName, setCardName] = useState('');
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvv, setCardCvv] = useState('');
 
   // Interactive Verification PIN state
   const [enteredPin, setEnteredPin] = useState('');
@@ -120,6 +131,37 @@ export default function CartCheckoutView({
     }
   }, [preselectedProductId]);
 
+  // Items to purchase
+  const cartItems = preselectedProductId 
+    ? db.products.filter(p => p.id === preselectedProductId)
+    : db.products.filter(p => cart.includes(p.id));
+
+  const currentCheckoutItem = cartItems[0];
+
+  // Get active payment methods globally configured by admin, default to all if not set
+  const enabledGlobalMethods = db.paymentSettings?.enabledMethods || ['escrow', 'cod', 'card', 'bank', 'invoice', 'partial'];
+  
+  // Intersect product specific methods with global enabled ones.
+  const productMethods = currentCheckoutItem
+    ? ((currentCheckoutItem as any).paymentMethods || ['escrow', 'card', 'cod', 'bank', 'invoice', 'partial'])
+    : ['escrow', 'card', 'cod', 'bank', 'invoice', 'partial'];
+  
+  const allowedCheckoutMethods = productMethods.filter((m: string) => enabledGlobalMethods.includes(m.toLowerCase()));
+  
+  // Ensure we have at least 'escrow' if nothing else is left
+  if (allowedCheckoutMethods.length === 0) {
+    allowedCheckoutMethods.push('escrow');
+  }
+
+  // Auto-select first allowed payment method when item changes
+  useEffect(() => {
+    if (currentCheckoutItem) {
+      if (allowedCheckoutMethods.length > 0 && !allowedCheckoutMethods.includes(selectedPaymentMethod)) {
+        setSelectedPaymentMethod(allowedCheckoutMethods[0]);
+      }
+    }
+  }, [currentCheckoutItem, selectedPaymentMethod, allowedCheckoutMethods]);
+
   const user = db.currentUser;
   
   if (!user) {
@@ -150,11 +192,6 @@ export default function CartCheckoutView({
     );
   }
 
-  // Items to purchase
-  const cartItems = preselectedProductId 
-    ? db.products.filter(p => p.id === preselectedProductId)
-    : db.products.filter(p => cart.includes(p.id));
-
   const subtotal = cartItems.reduce((acc, p) => acc + p.price, 0);
   const escrowFee = subtotal * 0.015; // 1.5% neutral escrow fee
   
@@ -169,8 +206,10 @@ export default function CartCheckoutView({
   const totalDue = subtotal + escrowFee + deliveryCharge + protectFee;
 
   // Process payment securely into escrow
-  const handlePayIntoEscrow = () => {
+  const handlePayIntoEscrow = (customMethod?: string) => {
     if (cartItems.length === 0) return;
+
+    const pm = customMethod || selectedPaymentMethod || 'escrow';
 
     // Create Escrow Order for each item
     cartItems.forEach(item => {
@@ -179,12 +218,14 @@ export default function CartCheckoutView({
         deliveryAddress,
         city,
         state,
-        'CARD', // paymentMethod
+        pm, // paymentMethod
         deliveryMethod, // deliveryMethod
         false, // usePoints
         deliveryMethod === 'GOODSALE_PARTNER' && selectedPartnerId ? selectedPartnerId : undefined,
         serviceType,
-        hasGoodSaleProtect
+        hasGoodSaleProtect,
+        bankTransferReceipt || undefined,
+        invoiceTerms
       );
     });
 
@@ -679,6 +720,268 @@ export default function CartCheckoutView({
                       ⚠️ Please select a Courier Partner from the list or click &quot;Smart Match Me&quot; to unlock secure escrow assignment.
                     </p>
                   )}
+
+                  {/* MERCHANT PAYMENT CHANNELS SELECTOR */}
+                  <div className="border-t border-gray-100 dark:border-slate-800 pt-5 mt-4 space-y-4">
+                    <div>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Select Checkout Payment Channel</span>
+                      <p className="text-[10.5px] text-slate-400">The merchant has configured specific payment options for this item. Please select your preferred mode:</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {allowedCheckoutMethods.map((method: string) => {
+                        const mLower = method.toLowerCase();
+                        const isSelected = selectedPaymentMethod === mLower;
+                        
+                        let label = 'GoodSale Escrow';
+                        let icon = <Shield className="w-4 h-4 text-emerald-500" />;
+                        let desc = 'Secure buyer lock';
+
+                        if (mLower === 'card') {
+                          label = 'Credit / Debit Card';
+                          icon = <CreditCard className="w-4 h-4 text-blue-500" />;
+                          desc = 'Pay with Card';
+                        } else if (mLower === 'bank') {
+                          label = 'Direct Bank Transfer';
+                          icon = <ExternalLink className="w-4 h-4 text-purple-500" />;
+                          desc = 'Instant transfer';
+                        } else if (mLower === 'cod') {
+                          label = 'Cash on Delivery';
+                          icon = <Truck className="w-4 h-4 text-gray-500" />;
+                          desc = 'Pay at door';
+                        } else if (mLower === 'invoice') {
+                          label = 'Business Invoice';
+                          icon = <FileText className="w-4 h-4 text-indigo-500" />;
+                          desc = 'Net term billing';
+                        } else if (mLower === 'partial') {
+                          label = 'Partial Deposit';
+                          icon = <Coins className="w-4 h-4 text-amber-500" />;
+                          desc = `${currentCheckoutItem?.partialPercent || 30}% deposit payment`;
+                        }
+
+                        return (
+                          <button
+                            key={mLower}
+                            type="button"
+                            onClick={() => setSelectedPaymentMethod(mLower)}
+                            className={`p-3 border rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between h-24 ${
+                              isSelected
+                                ? 'border-emerald-500 bg-emerald-500/5 ring-1 ring-emerald-500'
+                                : 'border-gray-200 dark:border-slate-800 hover:border-gray-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900/45'
+                            }`}
+                          >
+                            <div className="flex justify-between items-start w-full">
+                              {icon}
+                              {isSelected && <CheckCircle2 className="w-4 h-4 text-emerald-500 fill-white dark:fill-none" />}
+                            </div>
+                            <div>
+                              <span className="block text-[11px] font-bold text-slate-800 dark:text-white leading-tight">
+                                {label}
+                              </span>
+                              <span className="block text-[9px] text-slate-400 mt-0.5 leading-none">
+                                {desc}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* DYNAMIC SUB-VIEWS BASED ON SELECTION */}
+                    {selectedPaymentMethod === 'bank' && (
+                      <div className="p-4 bg-purple-500/5 border border-purple-500/20 rounded-2xl space-y-3">
+                        <div className="flex items-start gap-2.5">
+                          <ExternalLink className="w-5 h-5 text-purple-500 shrink-0 mt-0.5" />
+                          <div className="text-xs">
+                            <h5 className="font-bold text-purple-800 dark:text-purple-400">Direct Bank Transfer Instructions</h5>
+                            <p className="text-slate-500 dark:text-slate-300 mt-1 leading-relaxed">
+                              Please transfer the exact checkout amount of <strong className="text-purple-700 dark:text-purple-300 font-mono">₦{totalDue.toLocaleString()}</strong> to the GoodSale Escrow settlement account:
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 bg-white dark:bg-slate-900 p-3 rounded-xl border border-purple-100 dark:border-purple-950 text-[11px]">
+                          <div>
+                            <span className="text-gray-400 block">Settlement Bank</span>
+                            <span className="font-bold text-slate-800 dark:text-slate-200">Wema Bank (Alat Escrow Hub)</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-400 block">Account Number</span>
+                            <span className="font-extrabold text-slate-950 dark:text-white font-mono tracking-wider">1023847586</span>
+                          </div>
+                          <div className="col-span-2 border-t border-gray-100 dark:border-slate-800 pt-1.5 mt-0.5">
+                            <span className="text-gray-400 block">Account Name</span>
+                            <span className="font-bold text-slate-800 dark:text-slate-200">GoodSale Nigeria Marketplace Ltd (Escrow Account)</span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2 pt-1">
+                          <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                            Upload Payment Transaction Screenshot Receipt (Mandatory for Review)
+                          </label>
+                          <div className="flex items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBankTransferUploading(true);
+                                setTimeout(() => {
+                                  setBankTransferReceipt(`GS-BANK-TX-${Math.floor(100000 + Math.random() * 900000)}-SCREENSHOT.png`);
+                                  setBankTransferUploading(false);
+                                }, 1500);
+                              }}
+                              disabled={bankTransferUploading}
+                              className="px-4 py-2 bg-purple-500 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 hover:bg-purple-600 transition-all cursor-pointer disabled:opacity-50"
+                            >
+                              {bankTransferUploading ? (
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Upload className="w-3.5 h-3.5" />
+                              )}
+                              {bankTransferReceipt ? 'Receipt Re-upload' : 'Upload Transaction Slip'}
+                            </button>
+                            {bankTransferReceipt ? (
+                              <div className="flex items-center gap-1 text-[11px] font-semibold text-emerald-500">
+                                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                                <span className="truncate max-w-[150px]">{bankTransferReceipt}</span>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-gray-400">Allowed formats: PNG, JPG (Max 5MB)</span>
+                            )}
+                          </div>
+                          {bankTransferReceipt && (
+                            <p className="text-[10px] text-emerald-600 font-medium">
+                              ✓ Receipt attached successfully! The transaction will enter pending review status upon order submit.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedPaymentMethod === 'invoice' && (
+                      <div className="p-4 bg-indigo-500/5 border border-indigo-500/20 rounded-2xl space-y-3">
+                        <div className="flex items-start gap-2.5">
+                          <FileText className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
+                          <div className="text-xs">
+                            <h5 className="font-bold text-indigo-800 dark:text-indigo-400">Business Net Term Invoice Checkout</h5>
+                            <p className="text-slate-500 dark:text-slate-300 mt-1 leading-relaxed">
+                              This payment mode allows corporate business profiles to checkout immediately and get invoiced under neutral credit-payment agreements.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Select Net Billing Terms</label>
+                          <select
+                            value={invoiceTerms}
+                            onChange={(e) => setInvoiceTerms(e.target.value)}
+                            className="px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-white focus:outline-none"
+                          >
+                            <option value="Net 15">Net 15 (Payment due in 15 days)</option>
+                            <option value="Net 30">Net 30 (Payment due in 30 days)</option>
+                            <option value="Net 60">Net 60 (Payment due in 60 days - Approved partners only)</option>
+                          </select>
+                        </div>
+
+                        <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-indigo-100 dark:border-indigo-950 text-[10px] space-y-1">
+                          <p className="font-bold text-slate-700 dark:text-slate-200 text-[11px] mb-1">Corporate Ledger Preview</p>
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">Billing Terms:</span>
+                            <span className="font-semibold text-slate-800 dark:text-slate-200">{invoiceTerms}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">Invoice Sum Amount:</span>
+                            <span className="font-bold text-slate-800 dark:text-slate-200">₦{totalDue.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">Due Date grace:</span>
+                            <span className="font-semibold text-slate-800 dark:text-slate-200">
+                              {new Date(Date.now() + (invoiceTerms === 'Net 30' ? 30 : invoiceTerms === 'Net 60' ? 60 : 15) * 24 * 60 * 60 * 1000).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <p className="text-[9px] text-amber-500 font-medium leading-relaxed pt-1.5 border-t border-gray-50 dark:border-slate-800 mt-1 font-sans">
+                            ✓ Outstanding balances not settled on schedule accrue a 2% monthly late payment surcharge penalty.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedPaymentMethod === 'card' && (
+                      <div className="p-4 bg-blue-500/5 border border-blue-500/20 rounded-2xl space-y-3">
+                        <div className="flex items-start gap-2.5">
+                          <CreditCard className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
+                          <div className="text-xs">
+                            <h5 className="font-bold text-blue-800 dark:text-blue-400">Debit / Credit Card Settlement Portal</h5>
+                            <p className="text-slate-500 dark:text-slate-300 mt-1 leading-relaxed">
+                              Pay instantly via our highly secure, PCI-DSS compliant direct gateway or toggle Paystack popups.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 text-xs">
+                          <div className="col-span-2">
+                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Cardholder Full Name</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. Aliko Dangote"
+                              value={cardName}
+                              onChange={(e) => setCardName(e.target.value)}
+                              className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg focus:outline-none"
+                            />
+                          </div>
+                          <div className="col-span-2">
+                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Card Number</label>
+                            <input
+                              type="text"
+                              maxLength={19}
+                              placeholder="5061 2345 6789 0123"
+                              value={cardNumber}
+                              onChange={(e) => setCardNumber(e.target.value)}
+                              className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg font-mono focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Expiry Date</label>
+                            <input
+                              type="text"
+                              maxLength={5}
+                              placeholder="MM/YY"
+                              value={cardExpiry}
+                              onChange={(e) => setCardExpiry(e.target.value)}
+                              className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg font-mono focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1">CVV Security Pin</label>
+                            <input
+                              type="password"
+                              maxLength={3}
+                              placeholder="•••"
+                              value={cardCvv}
+                              onChange={(e) => setCardCvv(e.target.value)}
+                              className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg font-mono focus:outline-none"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedPaymentMethod === 'cod' && (
+                      <div className="p-4 bg-gray-500/5 border border-gray-500/20 rounded-2xl space-y-2">
+                        <div className="flex items-start gap-2.5">
+                          <Truck className="w-5 h-5 text-gray-500 shrink-0 mt-0.5" />
+                          <div className="text-xs">
+                            <h5 className="font-bold text-slate-800 dark:text-slate-200">Cash on Delivery (COD) Agreement</h5>
+                            <p className="text-slate-500 dark:text-slate-300 mt-1 leading-relaxed">
+                              You will pay in cash or via point-of-sale transfer directly to the logistics handler upon verified package handover.
+                            </p>
+                            <p className="text-[10px] text-amber-500 font-medium leading-relaxed mt-1.5 font-sans">
+                              ⚠️ Note: Delivery charge & protect premiums must still be authorized on order submit. Fraudulent refusals of handovers result in dynamic Trust Score deductions!
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -780,18 +1083,65 @@ export default function CartCheckoutView({
                   <span>Grand Total (₦)</span>
                   <span>₦{totalDue.toLocaleString()}</span>
                 </div>
+
+                {selectedPaymentMethod === 'partial' && (
+                  <div className="space-y-1.5 p-3 bg-amber-500/[0.04] border border-amber-500/20 rounded-2xl text-xs mt-2">
+                    <div className="flex justify-between text-amber-600 dark:text-amber-400 font-bold">
+                      <span>Deposit Due Today ({currentCheckoutItem?.partialPercent || 30}%):</span>
+                      <span>₦{Math.round(totalDue * ((currentCheckoutItem?.partialPercent || 30) / 100)).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-400 text-[10px]">
+                      <span>Remaining Balance Due:</span>
+                      <span>₦{(totalDue - Math.round(totalDue * ((currentCheckoutItem?.partialPercent || 30) / 100))).toLocaleString()}</span>
+                    </div>
+                    <p className="text-[9px] text-amber-500 leading-normal font-sans font-medium">
+                      ⚠️ Settle the remaining balance within {currentCheckoutItem?.partialRemainingDays || 7} days of verified courier handover.
+                    </p>
+                  </div>
+                )}
               </div>
 
+              {selectedPaymentMethod === 'bank' && !bankTransferReceipt && (
+                <p className="text-[10px] text-amber-500 font-medium leading-normal p-2.5 bg-amber-500/5 rounded-xl border border-amber-500/10">
+                  ⚠️ Please upload your transfer screenshot receipt above to activate the submit button.
+                </p>
+              )}
+
               <button
-                disabled={deliveryMethod === 'GOODSALE_PARTNER' && !selectedPartnerId}
-                onClick={() => setShowPaystackModal(true)}
+                disabled={
+                  (deliveryMethod === 'GOODSALE_PARTNER' && !selectedPartnerId) ||
+                  (selectedPaymentMethod === 'bank' && !bankTransferReceipt)
+                }
+                onClick={() => {
+                  if (selectedPaymentMethod === 'bank') {
+                    handlePayIntoEscrow('BANK');
+                  } else if (selectedPaymentMethod === 'invoice') {
+                    handlePayIntoEscrow('INVOICE');
+                  } else if (selectedPaymentMethod === 'cod') {
+                    handlePayIntoEscrow('COD');
+                  } else if (selectedPaymentMethod === 'partial') {
+                    // Trigger simulated payment for deposit
+                    setShowPaystackModal(true);
+                  } else {
+                    setShowPaystackModal(true);
+                  }
+                }}
                 className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-sans font-extrabold text-xs rounded-xl transition-all shadow-lg shadow-emerald-500/20 cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-45 disabled:cursor-not-allowed"
               >
                 <Shield className="w-4 h-4 text-amber-300" />
-                {deliveryMethod === 'GOODSALE_PARTNER' && !selectedPartnerId 
-                  ? 'Select a courier partner' 
-                  : 'Pay Securely into Escrow'
-                }
+                {deliveryMethod === 'GOODSALE_PARTNER' && !selectedPartnerId ? (
+                  'Select a courier partner'
+                ) : selectedPaymentMethod === 'bank' ? (
+                  'Submit Transfer for Review'
+                ) : selectedPaymentMethod === 'invoice' ? (
+                  'Submit Business Invoice'
+                ) : selectedPaymentMethod === 'cod' ? (
+                  'Confirm COD Order'
+                ) : selectedPaymentMethod === 'partial' ? (
+                  `Pay ₦${Math.round(totalDue * ((currentCheckoutItem?.partialPercent || 30) / 100)).toLocaleString()} Deposit`
+                ) : (
+                  'Pay Securely into Escrow'
+                )}
               </button>
             </div>
 
