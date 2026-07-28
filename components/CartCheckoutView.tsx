@@ -170,16 +170,16 @@ export default function CartCheckoutView({
         <div className="w-16 h-16 bg-emerald-500/10 dark:bg-emerald-500/5 rounded-full flex items-center justify-center mx-auto mb-6 border border-emerald-500/20">
           <Shield className="w-8 h-8 text-emerald-500" />
         </div>
-        <h2 className="font-display font-black text-2xl text-slate-900 dark:text-white mb-2">Secure Escrow Checkout</h2>
+        <h2 className="font-display font-black text-2xl text-slate-900 dark:text-white mb-2">Create an account to use your cart</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-8 max-w-sm mx-auto leading-relaxed">
-          Verify delivery details, track courier handshakes, and process neutral locked payouts safely. Please sign in or register to complete your purchase.
+          Guests can browse the GoodSale catalog freely. Sign up or sign in to save items, checkout with escrow, and track deliveries.
         </p>
         <div className="space-y-3">
           <button
             onClick={onOpenAuth}
             className="w-full py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-sans font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer shadow-md shadow-emerald-500/10 transition-all"
           >
-            Sign In / Register Account
+            Create Account / Sign In
           </button>
           <button
             onClick={onBack}

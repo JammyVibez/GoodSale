@@ -63,6 +63,8 @@ export interface User {
   trustScore: number; // 0 - 100
   sellerLevel: string; // BRONZE, SILVER, GOLD, PLATINUM, DIAMOND
   goodPoints: number;
+  /** Soft-ban flag managed by admins */
+  isSuspended?: boolean;
 }
 
 export interface Profile {
