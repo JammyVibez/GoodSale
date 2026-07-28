@@ -240,7 +240,16 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
         password,
         referralCode.trim() || undefined
       );
-      if (!newUser) throw new Error('Account created but profile is missing. Check schema trigger.');
+      if (!newUser) {
+        // Supabase may require email confirmation before a session/profile exists
+        setSuccessMsg('Account created. Check your email to confirm, then sign in.');
+        setTimeout(() => {
+          setSuccessMsg('');
+          setIsSubmitting(false);
+          setMode('login');
+        }, 2000);
+        return;
+      }
       setSuccessMsg(`Account created. Welcome to GoodSale, ${newUser.fullName}!`);
       setTimeout(() => {
         setSuccessMsg('');

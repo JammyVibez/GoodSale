@@ -282,7 +282,7 @@ export const dbOperations = {
     }
   },
 
-  updateProfile(bio: string, address: string, city: string, stateName: string, deliveryPref: string) {
+  async updateProfile(bio: string, address: string, city: string, stateName: string, deliveryPref: string) {
     const state = getDBState();
     if (!state.currentUser) return;
     const profile = state.profiles.find((p) => p.userId === state.currentUser!.id);
@@ -293,6 +293,16 @@ export const dbOperations = {
       profile.state = stateName;
       profile.deliveryPreference = deliveryPref;
       saveDBState(state);
+    }
+    const client = createClient();
+    if (client && state.currentUser) {
+      await client.from('profiles').update({
+        bio,
+        address,
+        city,
+        state: stateName,
+        delivery_preference: deliveryPref,
+      }).eq('id', state.currentUser.id);
     }
   },
 
@@ -778,14 +788,12 @@ export const dbOperations = {
   },
 
   // Escrow delivery flow
-  shipOrder(orderId: number) {
+  async shipOrder(orderId: number) {
     const state = getDBState();
     const order = state.orders.find((o) => o.id === orderId);
     if (order && order.status === OrderStatus.PAID_ESCROW) {
       order.status = OrderStatus.SHIPPED;
       order.updatedAt = new Date().toISOString();
-
-      // Notify Buyer
       state.notifications.push({
         id: state.notifications.length + 1,
         userId: order.buyerId,
@@ -795,116 +803,69 @@ export const dbOperations = {
         isRead: false,
         createdAt: new Date().toISOString(),
       });
-
       saveDBState(state);
+    }
+    try {
+      await fetch('/api/orders/update-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, status: 'SHIPPED' }),
+      });
+      await reloadFromSupabase();
+    } catch (err) {
+      console.error('Failed to persist ship status:', err);
     }
   },
 
-  outForDelivery(orderId: number) {
+  async outForDelivery(orderId: number) {
     const state = getDBState();
     const order = state.orders.find((o) => o.id === orderId);
-    if (order && order.status === OrderStatus.SHIPPED) {
+    if (order && (order.status === OrderStatus.SHIPPED || order.status === OrderStatus.PAID_ESCROW)) {
       order.status = OrderStatus.OUT_FOR_DELIVERY;
       order.updatedAt = new Date().toISOString();
-
-      // Notify Buyer
       state.notifications.push({
         id: state.notifications.length + 1,
         userId: order.buyerId,
         title: 'Arriving Today!',
-        message: `Your package for Order ${order.orderNumber} is out for delivery. Have your Delivery PIN (${order.deliveryPin}) ready for verification.`,
+        message: `Your package for Order ${order.orderNumber} is out for delivery. Have your Delivery PIN ready for verification.`,
         type: 'ORDER',
         isRead: false,
         createdAt: new Date().toISOString(),
       });
-
       saveDBState(state);
     }
+    try {
+      await fetch('/api/orders/update-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, status: 'OUT_FOR_DELIVERY' }),
+      });
+      await reloadFromSupabase();
+    } catch (err) {
+      console.error('Failed to persist out-for-delivery status:', err);
+    }
   },
 
-  completeDelivery(orderId: number, enteredPin: string) {
-    const state = getDBState();
-    const order = state.orders.find((o) => o.id === orderId);
-    if (!order) return { error: 'Order not found' };
-
-    if (order.deliveryPin !== enteredPin) {
-      return { error: 'Incorrect Delivery PIN! Escrow funds cannot be released.' };
-    }
-
-    order.status = OrderStatus.DELIVERED_SUCCESS;
-    order.updatedAt = new Date().toISOString();
-
-    const escrow = state.escrows.find((e) => e.orderId === orderId);
-    if (escrow) {
-      escrow.isReleased = true;
-    }
-
-    // Award Loyalty GoodPoints for successful transactions
-    const buyer = state.users.find((u) => u.id === order.buyerId);
-    if (buyer) {
-      const earned = Math.round(order.totalAmount / 10000); // 1 point per ₦10k
-      buyer.goodPoints += earned;
-      state.goodPoints.push({
-        id: state.goodPoints.length + 1,
-        userId: buyer.id,
-        points: earned,
-        reason: `Earned on successful Escrow Transaction: ${order.orderNumber}`,
-        createdAt: new Date().toISOString(),
+  async completeDelivery(orderId: number, enteredPin: string) {
+    try {
+      const res = await fetch('/api/orders/release-escrow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, pin: enteredPin }),
       });
-    }
-
-    const seller = state.users.find((u) => u.id === order.sellerId);
-    if (seller) {
-      const earnedSeller = 50; // flat 50 points per successful sale
-      seller.goodPoints += earnedSeller;
-      seller.trustScore = Math.min(seller.trustScore + 1, 100); // trust increases on success
-      state.goodPoints.push({
-        id: state.goodPoints.length + 1,
-        userId: seller.id,
-        points: earnedSeller,
-        reason: `Earned on successful shop sale: ${order.orderNumber}`,
-        createdAt: new Date().toISOString(),
-      });
-
-      // Update Seller Level based on points
-      if (seller.goodPoints > 2000) seller.sellerLevel = 'DIAMOND';
-      else if (seller.goodPoints > 1000) seller.sellerLevel = 'PLATINUM';
-      else if (seller.goodPoints > 500) seller.sellerLevel = 'GOLD';
-      else if (seller.goodPoints > 200) seller.sellerLevel = 'SILVER';
-
-      // Check if referee completed first order
-      const referralRecord = state.referrals.find((r) => r.refereeId === order.buyerId && r.status === 'REGISTERED');
-      if (referralRecord) {
-        referralRecord.status = 'FIRST_ORDER_COMPLETED';
-        referralRecord.rewardReleased = true;
-        const referrer = state.users.find((u) => u.id === referralRecord.referrerId);
-        if (referrer) {
-          referrer.goodPoints += referralRecord.pointsReward;
-          state.goodPoints.push({
-            id: state.goodPoints.length + 1,
-            userId: referrer.id,
-            points: referralRecord.pointsReward,
-            reason: `Referral Completed (First Purchase): ${buyer?.fullName || 'User'}`,
-            createdAt: new Date().toISOString(),
-          });
-          state.notifications.push({
-            id: state.notifications.length + 1,
-            userId: referrer.id,
-            title: 'Referral GoodPoints Released!',
-            message: `Congratulations! Your referred friend completed their first purchase. 150 GoodPoints have been credited!`,
-            type: 'POINTS',
-            isRead: false,
-            createdAt: new Date().toISOString(),
-          });
-        }
+      const payload = await res.json();
+      if (!res.ok || !payload.success) {
+        return { error: payload.error || 'Incorrect Delivery PIN! Escrow funds cannot be released.' };
       }
+      await reloadFromSupabase();
+      return { success: true };
+    } catch (err) {
+      console.error('Escrow release request failed:', err);
+      return { error: 'Could not reach escrow service. Try again.' };
     }
-
-    saveDBState(state);
-    return { success: true };
   },
 
-  // Dispute escalation
+
   openDispute(orderId: number, reason: string) {
     const state = getDBState();
     const order = state.orders.find((o) => o.id === orderId);
@@ -1010,29 +971,43 @@ export const dbOperations = {
     saveDBState(state);
   },
 
-  // Submit User Verification (BVN/NIN simulation)
-  submitVerification(docType: DocumentType, docNum: string, docImageUrl?: string) {
+  // Submit User Verification — persisted for admin review
+  async submitVerification(docType: DocumentType, docNum: string, docImageUrl?: string) {
     const state = getDBState();
     if (!state.currentUser) return;
 
-    // Remove any existing PENDING
-    state.verifications = state.verifications.filter(v => v.userId !== state.currentUser!.id);
+    state.verifications = state.verifications.filter(v => v.userId !== state.currentUser!.id || v.status !== VerificationStatus.PENDING);
 
+    const selfie = state.profiles.find(p => p.userId === state.currentUser!.id)?.photoUrl || '';
     const newVer: IdentityVerification = {
-      id: state.verifications.length + 1,
+      id: Math.max(...state.verifications.map(v => v.id), 0) + 1,
       userId: state.currentUser.id,
       fullName: state.currentUser.fullName,
       documentType: docType,
       documentNumber: docNum,
-      documentImageUrl: docImageUrl || 'https://picsum.photos/seed/verification_doc/400/250',
-      selfieImageUrl: state.profiles.find(p => p.userId === state.currentUser!.id)?.photoUrl || 'https://picsum.photos/seed/selfie/200/200',
-      proofOfAddressUrl: 'https://picsum.photos/seed/utility/400/500',
+      documentImageUrl: docImageUrl || '',
+      selfieImageUrl: selfie,
+      proofOfAddressUrl: '',
       status: VerificationStatus.PENDING,
       createdAt: new Date().toISOString(),
     };
-
     state.verifications.push(newVer);
     saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      await client.from('identity_verifications').insert({
+        user_id: state.currentUser.id,
+        full_name: state.currentUser.fullName,
+        document_type: docType,
+        document_number: docNum,
+        document_image_url: docImageUrl || '',
+        selfie_image_url: selfie,
+        proof_of_address_url: '',
+        status: 'PENDING',
+      });
+      await reloadFromSupabase();
+    }
   },
 
   verifyUserImmediately(userId: number, role: UserRole) {
@@ -1078,7 +1053,7 @@ export const dbOperations = {
   },
 
   // Approve / Reject Verification (Admin tool)
-  handleVerificationApproval(verId: number, status: VerificationStatus, notes: string) {
+  async handleVerificationApproval(verId: number, status: VerificationStatus, notes: string) {
     const state = getDBState();
     const ver = state.verifications.find((v) => v.id === verId);
     if (!ver) return;
@@ -1131,6 +1106,24 @@ export const dbOperations = {
     }
 
     saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      await client.from('identity_verifications').update({
+        status,
+        admin_notes: notes,
+      }).eq('id', verId);
+      if (status === VerificationStatus.APPROVED && ver) {
+        const { error: roleErr } = await client.rpc('admin_set_profile_role', {
+          p_user_id: ver.userId,
+          p_role: 'VERIFIED_SELLER',
+        });
+        if (roleErr) {
+          console.warn('admin_set_profile_role failed (apply 002 migration):', roleErr.message);
+        }
+      }
+      await reloadFromSupabase();
+    }
   },
 
   // Chat/Messages flow

@@ -40,6 +40,13 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000). Sign up → create listings → checkout → chat → GoodDispatch jobs all hit Supabase with Realtime subscriptions.
 
+See **[PRODUCTION.md](./PRODUCTION.md)** for the full go-live checklist (credentials only you can supply + what is already coded).
+
+## SQL to run (order matters)
+
+1. `supabase/schema.sql`
+2. `supabase/migrations/002_production_hardening.sql`
+
 ## What is live now
 
 - **Auth**: Supabase email/password signup & login (`AuthModal`)

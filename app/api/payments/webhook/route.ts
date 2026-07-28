@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { logger, publicErrorMessage } from '@/lib/logger';
+import { reconcilePaystackPayment } from '@/lib/data/payments';
 
 /**
  * Paystack webhook receiver.
- * Configure the URL in Paystack dashboard: https://your-domain/api/payments/webhook
+ * Configure: https://your-domain/api/payments/webhook
  */
 export async function POST(req: NextRequest) {
   try {
@@ -32,8 +33,22 @@ export async function POST(req: NextRequest) {
       reference: event?.data?.reference,
     });
 
-    // Persist / reconcile escrow status here when domain APIs replace the demo store.
-    // Acknowledge quickly so Paystack does not retry aggressively.
+    if (event?.event === 'charge.success' && event?.data?.status === 'success') {
+      const metaOrderId = Number(
+        event.data?.metadata?.order_id || event.data?.metadata?.orderId || 0
+      ) || null;
+
+      const reconciliation = await reconcilePaystackPayment({
+        orderId: metaOrderId,
+        reference: event.data.reference,
+        amountKobo: event.data.amount,
+        channel: event.data.channel,
+        customerEmail: event.data.customer?.email,
+      });
+
+      return NextResponse.json({ success: true, received: true, reconciliation });
+    }
+
     return NextResponse.json({ success: true, received: true });
   } catch (error) {
     logger.error('Paystack webhook error', { error: String(error) });

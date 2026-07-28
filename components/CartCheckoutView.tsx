@@ -234,15 +234,15 @@ export default function CartCheckoutView({
   };
 
   // Submit Secret PIN Verification to release funds
-  const handleVerifyDeliveryPin = (orderId: number) => {
+  const handleVerifyDeliveryPin = async (orderId: number) => {
     setPinError(null);
     setPinSuccess(null);
 
-    const result = dbOperations.completeDelivery(orderId, enteredPin);
+    const result = await dbOperations.completeDelivery(orderId, enteredPin);
     if (result && 'error' in result) {
       setPinError(result.error || 'Verification failed');
     } else {
-      setPinSuccess('PIN verified! Neutral escrow capital payout dispatched immediately to merchant.');
+      setPinSuccess('PIN verified! Escrow funds released to the merchant wallet.');
       setEnteredPin('');
       setTimeout(() => setPinSuccess(null), 4000);
     }

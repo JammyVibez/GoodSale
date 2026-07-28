@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isDemoMode } from '@/lib/env';
 import { logger, publicErrorMessage } from '@/lib/logger';
 import { rateLimit, clientIpFromRequest } from '@/lib/rate-limit';
+import { reconcilePaystackPayment } from '@/lib/data/payments';
 
 /**
- * Verify a Paystack transaction server-side before releasing escrow / crediting wallets.
- * POST { reference: string }
+ * Verify a Paystack transaction server-side, then mark the related order paid.
+ * POST { reference: string, orderId?: number }
  */
 export async function POST(req: NextRequest) {
   try {
@@ -20,13 +21,13 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const reference = typeof body.reference === 'string' ? body.reference.trim() : '';
+    const orderId = body.orderId != null ? Number(body.orderId) : null;
     if (!reference || reference.length > 128) {
       return NextResponse.json({ success: false, error: 'Valid reference is required' }, { status: 400 });
     }
 
     const secret = process.env.PAYSTACK_SECRET_KEY;
 
-    // Demo-only mock acceptance when Paystack is not configured
     if (!secret) {
       if (!isDemoMode()) {
         return NextResponse.json(
@@ -40,10 +41,14 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
-      logger.info('Demo payment accepted without Paystack verify', { reference });
+      const reconciliation = orderId
+        ? await reconcilePaystackPayment({ orderId, reference, amountKobo: null, channel: 'demo' })
+        : { reconciled: false, reason: 'demo_no_order' as const };
+
       return NextResponse.json({
         success: true,
         demo: true,
+        reconciliation,
         data: {
           status: 'success',
           reference,
@@ -78,8 +83,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const metaOrderId =
+      orderId ||
+      Number(payload.data?.metadata?.order_id || payload.data?.metadata?.orderId || 0) ||
+      null;
+
+    const reconciliation = await reconcilePaystackPayment({
+      orderId: metaOrderId,
+      reference: payload.data.reference,
+      amountKobo: payload.data.amount,
+      channel: payload.data.channel,
+      customerEmail: payload.data.customer?.email,
+    });
+
     return NextResponse.json({
       success: true,
+      reconciliation,
       data: {
         status: payload.data.status,
         reference: payload.data.reference,
