@@ -75,6 +75,8 @@ export interface Profile {
   address: string;
   city: string;
   state: string;
+  lat?: number;
+  lng?: number;
   deliveryPreference: string;
   pushEnabled: boolean;
   emailEnabled: boolean;
@@ -166,6 +168,10 @@ export interface Order {
   deliveryAddress: string;
   deliveryCity: string;
   deliveryState: string;
+  deliveryLat?: number;
+  deliveryLng?: number;
+  pickupLat?: number;
+  pickupLng?: number;
   deliveryPin: string; // 6 digits
   qrCodeToken: string;
   status: OrderStatus;
@@ -495,6 +501,9 @@ export interface DeliveryPartner {
   address: string;
   state: string;
   city: string;
+  lastLat?: number;
+  lastLng?: number;
+  lastLocationAt?: string;
   nin: string;
   selfieUrl: string;
   licenseUrl?: string;

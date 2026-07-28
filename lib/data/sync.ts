@@ -267,3 +267,55 @@ export async function upsertDeliveryJob(
   if (error) throw error;
   return M.mapDeliveryJob(data as Record<string, unknown>);
 }
+
+export async function updateDeliveryJobLocation(
+  client: SupabaseClient,
+  jobId: number,
+  loc: { lat: number; lng: number; speed?: number; status?: string; trackingHistory?: unknown }
+) {
+  const payload: Record<string, unknown> = {
+    current_lat: loc.lat,
+    current_lng: loc.lng,
+  };
+  if (loc.speed != null) payload.current_speed = loc.speed;
+  if (loc.status) payload.status = loc.status;
+  if (loc.trackingHistory) payload.tracking_history = loc.trackingHistory;
+
+  const { data, error } = await client
+    .from('delivery_jobs')
+    .update(payload)
+    .eq('id', jobId)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return M.mapDeliveryJob(data as Record<string, unknown>);
+}
+
+export async function upsertDeliveryPartner(
+  client: SupabaseClient,
+  partner: Record<string, unknown>
+) {
+  const { data, error } = await client.from('delivery_partners').upsert(partner).select('*').single();
+  if (error) throw error;
+  return M.mapDeliveryPartner(data as Record<string, unknown>);
+}
+
+export async function updatePartnerLocation(
+  client: SupabaseClient,
+  partnerId: number,
+  lat: number,
+  lng: number
+) {
+  const { data, error } = await client
+    .from('delivery_partners')
+    .update({
+      last_lat: lat,
+      last_lng: lng,
+      last_location_at: new Date().toISOString(),
+    })
+    .eq('id', partnerId)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return M.mapDeliveryPartner(data as Record<string, unknown>);
+}

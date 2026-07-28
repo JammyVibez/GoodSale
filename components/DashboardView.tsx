@@ -12,6 +12,8 @@ import {
   Product, ProductCondition, getDBState, saveDBState, dbOperations, UserRole, OrderStatus, Order, Escrow
 } from '../lib/store';
 import LiveSafeMeetMap from './LiveSafeMeetMap';
+import LiveDispatchMap from './LiveDispatchMap';
+import { bestCoords, rankPartnersByProximity, formatDistanceKm } from '@/lib/geo';
 
 export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void }) {
   const [db, setDb] = useState(getDBState());
@@ -394,27 +396,47 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
     }
   };
 
-  // 2. Out For Delivery Trigger
+  // 2. Out For Delivery Trigger — prefer nearby available riders for GoodDispatch
   const handleMarkOutForDelivery = (orderId: number) => {
     const state = getDBState();
     const ord = state.orders.find(o => o.id === orderId);
-    if (ord) {
-      ord.status = OrderStatus.OUT_FOR_DELIVERY;
-      ord.updatedAt = new Date().toISOString();
-      
+    if (!ord) return;
+
+    const dest = bestCoords(
+      { lat: ord.deliveryLat, lng: ord.deliveryLng },
+      null,
+      ord.deliveryCity,
+      ord.deliveryState,
+      ord.deliveryAddress
+    );
+    const nearby = rankPartnersByProximity(
+      dest,
+      state.deliveryPartners.filter((p) => p.status === 'APPROVED' && p.isAvailable),
+      { maxKm: 50 }
+    );
+
+    void dbOperations.outForDelivery(orderId);
+
+    let job = state.deliveryJobs.find((j) => j.orderId === orderId);
+    if (!job && ord.deliveryMethod === 'GOODSALE_PARTNER') {
+      job = dbOperations.createDeliveryJob(orderId, ord.serviceType || 'STANDARD', ord.deliveryFee || 6000) || undefined;
+    }
+
+    if (job && !job.partnerId && nearby[0]) {
+      dbOperations.acceptDeliveryJob(job.id, nearby[0].partner.id);
       state.notifications.push({
-        id: state.notifications.length + 1,
-        userId: ord.buyerId,
-        title: 'Package Out For Delivery!',
-        message: `Your package for Order: ${ord.orderNumber} is now out with the local dispatch rider. Keep your 6-digit Delivery PIN handy!`,
+        id: getDBState().notifications.length + 1,
+        userId: nearby[0].partner.userId,
+        title: 'Nearby dispatch request',
+        message: `Seller assigned you a job ${formatDistanceKm(nearby[0].distanceKm)} from the buyer (${ord.orderNumber}).`,
         type: 'ORDER',
         isRead: false,
         createdAt: new Date().toISOString(),
       });
-
-      saveDBState(state);
-      setDb(state);
+      saveDBState(getDBState());
     }
+
+    setDb(getDBState());
   };
 
   // 3. Customer PIN Handshake Verification (unlocked held funds immediately)
@@ -1304,6 +1326,54 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                               PIN Handshake
                             </button>
                           )}
+
+                          {/* Live dispatch map for seller when rider is en route */}
+                          {ord.deliveryMethod === 'GOODSALE_PARTNER' &&
+                            [OrderStatus.OUT_FOR_DELIVERY, OrderStatus.SHIPPED].includes(ord.status) && (() => {
+                              const job = db.deliveryJobs.find((j) => j.orderId === ord.id);
+                              const dest = bestCoords(
+                                { lat: ord.deliveryLat, lng: ord.deliveryLng },
+                                null,
+                                ord.deliveryCity,
+                                ord.deliveryState,
+                                ord.deliveryAddress
+                              );
+                              const pickup = bestCoords({ lat: ord.pickupLat, lng: ord.pickupLng }, null);
+                              const rider =
+                                job?.currentLat != null && job?.currentLng != null
+                                  ? { lat: job.currentLat, lng: job.currentLng }
+                                  : null;
+                              const nearby = rankPartnersByProximity(
+                                dest,
+                                db.deliveryPartners.filter((p) => p.status === 'APPROVED' && p.isAvailable),
+                                { maxKm: 40 }
+                              ).slice(0, 3);
+                              return (
+                                <div className="w-full basis-full mt-3 space-y-2">
+                                  <LiveDispatchMap
+                                    rider={rider}
+                                    destination={dest}
+                                    pickup={pickup}
+                                    speedKmh={job?.currentSpeed}
+                                    statusLabel={rider ? 'Rider live' : 'Waiting for rider GPS'}
+                                    height="220px"
+                                  />
+                                  {nearby.length > 0 && !job?.partnerId && (
+                                    <div className="text-[10px] text-slate-500 dark:text-slate-400 space-y-1">
+                                      <span className="font-bold uppercase tracking-wider text-emerald-600">Nearby available riders</span>
+                                      {nearby.map((n) => (
+                                        <div key={n.partner.id} className="flex justify-between gap-2">
+                                          <span>{n.partner.fullName}</span>
+                                          <span className="font-mono text-emerald-500">
+                                            {formatDistanceKm(n.distanceKm)} · ~{n.etaMinutes}m
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
 
                           {/* 4. Complete Status info */}
                           {ord.status === OrderStatus.DELIVERED_SUCCESS && (
