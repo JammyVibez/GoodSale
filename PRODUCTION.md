@@ -3,7 +3,12 @@
 ## You must provide (cannot be automated)
 
 1. **Supabase project**
-   - Create project → run `supabase/schema.sql` then `supabase/migrations/002_production_hardening.sql`
+   - Create project → run in order:
+     1. `supabase/schema.sql`
+     2. `supabase/migrations/002_production_hardening.sql`
+     3. `supabase/migrations/003_user_suspend.sql`
+     4. `supabase/migrations/004_realtime_dispatch_geo.sql`
+     5. `supabase/migrations/005_security_payments.sql` (**required** for locked RPCs, disputes, withdrawals)
    - Copy URL, anon key, service role key into `.env.local` / host secrets
    - Auth → Email enabled; Site URL + redirect `https://YOUR_DOMAIN/auth/callback`
    - Manually promote first admin:  
@@ -30,6 +35,14 @@
 | Realtime catalog/orders/chat/dispatch | Done |
 | Persist products, orders, escrow, chat | Done |
 | Server PIN escrow release RPC + API | Done |
+| Courier PIN complete-delivery-job API | Done |
+| Disputes open/resolve RPCs + Paystack refund attempt | Done |
+| Seller withdrawals + admin approve/reject | Done |
+| Admin force escrow API | Done |
+| Orders UPDATE locked (RPC-only status changes) | Done (migration 005) |
+| `credit_wallet` / `mark_order_paid` service_role only | Done (migration 005) |
+| Paystack order-first checkout (`GS_<orderId>_`) | Done |
+| Payment unit tests (vitest) | Done |
 | Order ship / out-for-delivery API | Done |
 | Paystack verify + webhook → DB | Done |
 | Media upload API (products / chat / IDs) | Done |

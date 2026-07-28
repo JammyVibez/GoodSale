@@ -74,10 +74,8 @@ export default function CartCheckoutView({
   const [bankTransferReceipt, setBankTransferReceipt] = useState<string | null>(null);
   const [bankTransferUploading, setBankTransferUploading] = useState(false);
   const [invoiceTerms, setInvoiceTerms] = useState<string>('Net 15');
-  const [cardName, setCardName] = useState('');
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvv, setCardCvv] = useState('');
+  const [pendingPayOrderIds, setPendingPayOrderIds] = useState<number[]>([]);
+  const [pendingPayAmount, setPendingPayAmount] = useState(0);
 
   // Interactive Verification PIN state
   const [enteredPin, setEnteredPin] = useState('');
@@ -222,15 +220,18 @@ export default function CartCheckoutView({
 
   const totalDue = subtotal + escrowFee + deliveryCharge + protectFee;
 
-  // Process payment securely into escrow
+  // Create order(s); for card/escrow/partial open Paystack after order exists
   const handlePayIntoEscrow = async (customMethod?: string) => {
     if (cartItems.length === 0) return;
 
-    const pm = customMethod || selectedPaymentMethod || 'escrow';
+    const pm = (customMethod || selectedPaymentMethod || 'escrow').toLowerCase();
+    const needsPaystack = ['escrow', 'card', 'partial'].includes(pm);
 
-    // Create Escrow Order for each item (persisted to Supabase)
+    const createdIds: number[] = [];
+    let payAmount = 0;
+
     for (const item of cartItems) {
-      await dbOperations.placeOrder(
+      const order = await dbOperations.placeOrder(
         item.id,
         deliveryAddress,
         city,
@@ -245,8 +246,27 @@ export default function CartCheckoutView({
         invoiceTerms,
         { lat: deliveryOrigin.lat, lng: deliveryOrigin.lng }
       );
+      if (order?.id) {
+        createdIds.push(order.id);
+        payAmount += order.totalAmount;
+      }
     }
 
+    if (needsPaystack && createdIds.length > 0) {
+      setPendingPayOrderIds(createdIds);
+      setPendingPayAmount(payAmount || totalDue);
+      setShowPaystackModal(true);
+      return;
+    }
+
+    onClearCart();
+    setActiveStep('orders');
+  };
+
+  const handlePaystackSuccess = async () => {
+    setShowPaystackModal(false);
+    setPendingPayOrderIds([]);
+    setPendingPayAmount(0);
     onClearCart();
     setActiveStep('orders');
   };
@@ -966,56 +986,10 @@ export default function CartCheckoutView({
                         <div className="flex items-start gap-2.5">
                           <CreditCard className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
                           <div className="text-xs">
-                            <h5 className="font-bold text-blue-800 dark:text-blue-400">Debit / Credit Card Settlement Portal</h5>
+                            <h5 className="font-bold text-blue-800 dark:text-blue-400">Paystack Card Checkout</h5>
                             <p className="text-slate-500 dark:text-slate-300 mt-1 leading-relaxed">
-                              Pay instantly via our highly secure, PCI-DSS compliant direct gateway or toggle Paystack popups.
+                              Card details are never collected on GoodSale. You will complete payment inside Paystack&apos;s PCI-compliant popup after the order is created.
                             </p>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3 text-xs">
-                          <div className="col-span-2">
-                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Cardholder Full Name</label>
-                            <input
-                              type="text"
-                              placeholder="e.g. Aliko Dangote"
-                              value={cardName}
-                              onChange={(e) => setCardName(e.target.value)}
-                              className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg focus:outline-none"
-                            />
-                          </div>
-                          <div className="col-span-2">
-                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Card Number</label>
-                            <input
-                              type="text"
-                              maxLength={19}
-                              placeholder="5061 2345 6789 0123"
-                              value={cardNumber}
-                              onChange={(e) => setCardNumber(e.target.value)}
-                              className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg font-mono focus:outline-none"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Expiry Date</label>
-                            <input
-                              type="text"
-                              maxLength={5}
-                              placeholder="MM/YY"
-                              value={cardExpiry}
-                              onChange={(e) => setCardExpiry(e.target.value)}
-                              className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg font-mono focus:outline-none"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-1">CVV Security Pin</label>
-                            <input
-                              type="password"
-                              maxLength={3}
-                              placeholder="•••"
-                              value={cardCvv}
-                              onChange={(e) => setCardCvv(e.target.value)}
-                              className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg font-mono focus:outline-none"
-                            />
                           </div>
                         </div>
                       </div>
@@ -1169,18 +1143,19 @@ export default function CartCheckoutView({
                   (selectedPaymentMethod === 'bank' && !bankTransferReceipt)
                 }
                 onClick={() => {
-                  if (selectedPaymentMethod === 'bank') {
-                    handlePayIntoEscrow('BANK');
-                  } else if (selectedPaymentMethod === 'invoice') {
-                    handlePayIntoEscrow('INVOICE');
-                  } else if (selectedPaymentMethod === 'cod') {
-                    handlePayIntoEscrow('COD');
-                  } else if (selectedPaymentMethod === 'partial') {
-                    // Trigger simulated payment for deposit
-                    setShowPaystackModal(true);
-                  } else {
-                    setShowPaystackModal(true);
-                  }
+                  void handlePayIntoEscrow(
+                    selectedPaymentMethod === 'bank'
+                      ? 'BANK'
+                      : selectedPaymentMethod === 'invoice'
+                        ? 'INVOICE'
+                        : selectedPaymentMethod === 'cod'
+                          ? 'COD'
+                          : selectedPaymentMethod === 'partial'
+                            ? 'partial'
+                            : selectedPaymentMethod === 'card'
+                              ? 'card'
+                              : 'escrow'
+                  );
                 }}
                 className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-sans font-extrabold text-xs rounded-xl transition-all shadow-lg shadow-emerald-500/20 cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-45 disabled:cursor-not-allowed"
               >
@@ -1410,14 +1385,20 @@ export default function CartCheckoutView({
                                 <div className="flex gap-2">
                                   <button
                                     onClick={() => {
-                                      if (!disputeReason.trim()) {
-                                        alert('Please enter a reason for the dispute.');
-                                        return;
-                                      }
-                                      dbOperations.openDispute(order.id, disputeReason);
-                                      setShowDisputeFormOrderId(null);
-                                      setDisputeReason('');
-                                      alert('Escrow Dispute submitted successfully! Funds are now securely frozen. GoodSale Admin will contact you.');
+                                      void (async () => {
+                                        if (!disputeReason.trim()) {
+                                          alert('Please enter a reason for the dispute.');
+                                          return;
+                                        }
+                                        const result = await dbOperations.openDispute(order.id, disputeReason);
+                                        if (result && 'error' in result && result.error && !(result as { success?: boolean }).success) {
+                                          alert(String(result.error));
+                                          return;
+                                        }
+                                        setShowDisputeFormOrderId(null);
+                                        setDisputeReason('');
+                                        alert('Escrow Dispute submitted successfully! Funds are now securely frozen.');
+                                      })();
                                     }}
                                     className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold text-xs rounded-xl transition-all cursor-pointer"
                                   >
@@ -1505,15 +1486,20 @@ export default function CartCheckoutView({
           </div>
         )}
 
-        {showPaystackModal && (
+        {showPaystackModal && pendingPayOrderIds[0] && (
           <PaystackPayment 
             email={user.email} 
-            amount={totalDue} 
-            onSuccess={(ref) => {
-              setShowPaystackModal(false);
-              handlePayIntoEscrow();
+            amount={pendingPayAmount || totalDue}
+            orderId={pendingPayOrderIds[0]}
+            orderIds={pendingPayOrderIds}
+            onSuccess={() => {
+              void handlePaystackSuccess();
             }} 
-            onCancel={() => setShowPaystackModal(false)} 
+            onCancel={() => {
+              setShowPaystackModal(false);
+              // Orders remain PENDING until paid
+              setActiveStep('orders');
+            }} 
           />
         )}
 

@@ -100,7 +100,7 @@ export default function RevenueCenterView() {
   };
 
   // Withdraw Cash from Wallet Form Submit
-  const handleWithdraw = (e: React.FormEvent) => {
+  const handleWithdraw = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !wallet) return;
 
@@ -121,7 +121,7 @@ export default function RevenueCenterView() {
     }
 
     setWalletError(null);
-    const result = dbOperations.withdrawFromWallet(user.id, amt, {
+    const result = await dbOperations.withdrawFromWallet(user.id, amt, {
       name: bankAccountName,
       number: bankAccountNumber,
       bank: bankName

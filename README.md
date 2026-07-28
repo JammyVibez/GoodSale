@@ -46,6 +46,9 @@ See **[PRODUCTION.md](./PRODUCTION.md)** for the full go-live checklist (credent
 
 1. `supabase/schema.sql`
 2. `supabase/migrations/002_production_hardening.sql`
+3. `supabase/migrations/003_user_suspend.sql`
+4. `supabase/migrations/004_realtime_dispatch_geo.sql`
+5. `supabase/migrations/005_security_payments.sql` (RLS lockdown, disputes, refunds, withdrawals)
 
 ## What is live now
 
@@ -53,11 +56,20 @@ See **[PRODUCTION.md](./PRODUCTION.md)** for the full go-live checklist (credent
 - **Profiles**: created by DB trigger on `auth.users` insert
 - **Catalog / orders / escrow / chat / delivery jobs**: loaded from Postgres; writes for products, orders, messages, chat rooms persist to Supabase
 - **Realtime**: `messages`, `orders`, `delivery_jobs`, `products`, `notifications`, `bids`, `chat_rooms`, …
-- **Payments**: Paystack Inline + `/api/payments/verify` (configure keys for live charges)
+- **Payments**: Order created first as `PENDING` → Paystack Inline with `GS_<orderId>_…` → `/api/payments/verify` + webhook mark `PAID_ESCROW`
+- **Escrow**: Buyer PIN `/api/orders/release-escrow`; courier `/api/orders/complete-delivery-job`; admin force `/api/admin/escrow`
+- **Disputes / payouts**: `/api/disputes/*`, `/api/wallet/withdraw`, `/api/admin/withdrawals`
 - **Setup banner**: shown until Supabase URL/anon key are present
 
 ## Scripts
 
+```bash
+npm run dev
+npm run lint
+npm run typecheck
+npm test
+npm run build
+```
 ```bash
 npm run dev
 npm run build && npm run start

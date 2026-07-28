@@ -509,8 +509,8 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
                   {pending && (
                     <div className="flex flex-col sm:flex-row gap-2">
                       <input placeholder="Resolution notes" value={notes} onChange={(e) => setDisputeNotes((s) => ({ ...s, [d.id]: e.target.value }))} className={`${inp} flex-1`} />
-                      <button disabled={busy} className={btnOk} onClick={() => run(() => { dbOperations.resolveDispute(d.id, 'RELEASE_SELLER', notes || 'Resolved in favor of seller.'); }, 'Released to seller')}>Release seller</button>
-                      <button disabled={busy} className={btnNo} onClick={() => run(() => { dbOperations.resolveDispute(d.id, 'REFUND_BUYER', notes || 'Resolved in favor of buyer.'); }, 'Refunded to buyer')}>Refund buyer</button>
+                      <button disabled={busy} className={btnOk} onClick={() => run(async () => { await dbOperations.resolveDispute(d.id, 'RELEASE_SELLER', notes || 'Resolved in favor of seller.'); }, 'Released to seller')}>Release seller</button>
+                      <button disabled={busy} className={btnNo} onClick={() => run(async () => { await dbOperations.resolveDispute(d.id, 'REFUND_BUYER', notes || 'Resolved in favor of buyer.'); }, 'Refunded to buyer')}>Refund buyer</button>
                     </div>
                   )}
                 </div>
