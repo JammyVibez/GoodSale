@@ -268,8 +268,8 @@ export default function ProductDetailView({
     }
   };
 
-  // Negotiate offer submission (Simulated Chat Offer Card)
-  const handleSendOffer = () => {
+  // Negotiate offer submission
+  const handleSendOffer = async () => {
     if (!db.currentUser) {
       onOpenAuth?.();
       return;
@@ -277,12 +277,11 @@ export default function ProductDetailView({
     const amount = Number(negotiateOffer);
     if (isNaN(amount) || amount <= 0) return;
 
-    // Create Chat Room
-    const roomId = dbOperations.getOrCreateChatRoom(product.id);
+    const roomId = await dbOperations.getOrCreateChatRoom(product.id);
     if (roomId) {
-      dbOperations.sendMessage(
+      await dbOperations.sendMessage(
         roomId, 
-        `🤝 SENT PROPOSED NEGOTIATION OFFER: ₦${amount.toLocaleString()}. I would like to purchase via GoodSale Escrow!`
+        `SENT PROPOSED NEGOTIATION OFFER: ₦${amount.toLocaleString()}. I would like to purchase via GoodSale Escrow!`
       );
       setShowNegotiateDrawer(false);
       onNavigate('chats', { roomId });
@@ -290,12 +289,12 @@ export default function ProductDetailView({
   };
 
   // Initialize Chat directly
-  const handleStartChat = () => {
+  const handleStartChat = async () => {
     if (!db.currentUser) {
       onOpenAuth?.();
       return;
     }
-    const roomId = dbOperations.getOrCreateChatRoom(product.id);
+    const roomId = await dbOperations.getOrCreateChatRoom(product.id);
     if (roomId) {
       onNavigate('chats', { roomId });
     }

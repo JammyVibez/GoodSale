@@ -160,8 +160,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
     }
   };
 
-  // Standard Login Submission with Password Checks
-  const handleCustomLoginSubmit = (e: React.FormEvent) => {
+  // Real Supabase Auth login
+  const handleCustomLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
@@ -172,59 +172,32 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
     }
 
     setIsSubmitting(true);
-
-    setTimeout(() => {
-      const state = getDBState();
-      // Find user by email or phone
-      const matchedUser = state.users.find(
-        (u) => u.email.toLowerCase() === loginIdentifier.trim().toLowerCase() || u.phoneNumber === loginIdentifier.trim()
-      );
-
-      if (!matchedUser) {
-        setErrorMsg('Invalid login credentials. User not found.');
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Check password (demo client-side auth — replace with Supabase Auth in production)
-      if (!isDemoMode()) {
-        setErrorMsg('Client-side password auth is disabled in production. Connect Supabase Auth before going live.');
-        setIsSubmitting(false);
-        return;
-      }
-      const userPwd = (matchedUser as any).password || 'password123';
-      if (loginPassword !== userPwd) {
-        setErrorMsg('Incorrect secure password. Please try again.');
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Login User
-      dbOperations.loginUser(matchedUser.id);
-      setSuccessMsg(`Welcome back, ${matchedUser.fullName}! JWT active session established.`);
-
+    try {
+      const user = await dbOperations.loginWithPassword(loginIdentifier.trim(), loginPassword);
+      setSuccessMsg(`Welcome back, ${user.fullName}!`);
       if (rememberMe) {
-        localStorage.setItem('goodsale_saved_session_id', matchedUser.id.toString());
+        localStorage.setItem('goodsale_saved_session_id', user.id.toString());
       } else {
         localStorage.removeItem('goodsale_saved_session_id');
       }
-
       setTimeout(() => {
         setSuccessMsg('');
         setIsSubmitting(false);
         if (onSuccess) onSuccess();
         onClose();
-      }, 1200);
-    }, 1000);
+      }, 800);
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Login failed');
+      setIsSubmitting(false);
+    }
   };
 
-  // Registration Submission with field-by-field validations & duplicate checks
-  const handleRegistrationSubmit = (e: React.FormEvent) => {
+  // Registration via Supabase Auth (email confirmation handled by Supabase project settings)
+  const handleRegistrationSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
 
-    // Detailed field validations
     if (!fullName.trim() || !username.trim() || !email.trim() || !phoneNumber.trim() || !password || !confirmPassword) {
       setErrorMsg('All fields are mandatory. Please provide all data.');
       return;
@@ -256,42 +229,31 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
       return;
     }
 
-    // 1. Checks duplicate email or phone number in database
-    const state = getDBState();
-    const isEmailDuplicate = state.users.some(u => u.email.toLowerCase() === email.trim().toLowerCase());
-    if (isEmailDuplicate) {
-      setErrorMsg('This Email Address is already registered. Please utilize another or Sign In.');
-      return;
-    }
-
-    const isPhoneDuplicate = state.users.some(u => u.phoneNumber === phoneNumber.trim());
-    if (isPhoneDuplicate) {
-      setErrorMsg('This Phone Number is already associated with an account.');
-      return;
-    }
-
-    const isUsernameDuplicate = state.users.some(u => u.username.toLowerCase() === username.trim().toLowerCase());
-    if (isUsernameDuplicate) {
-      setErrorMsg('This Username is already taken. Please customize it.');
-      return;
-    }
-
     setIsSubmitting(true);
-
-    // 2. Proceed to simulated secure OTP generation
-    setTimeout(() => {
-      const generated = Math.floor(100000 + Math.random() * 900000).toString();
-      setGeneratedOtp(generated);
-      setOtpCountdown(120);
-      setOtpPurpose('REGISTER');
-      
-      setSuccessMsg(`✓ Validation Completed. Generated secure OTP code has been dispatched to ${email}.`);
-      setMode('otp_verify');
+    try {
+      const newUser = await dbOperations.registerUser(
+        fullName,
+        username.trim().toLowerCase(),
+        email.trim(),
+        phoneNumber.trim(),
+        selectedRole,
+        password,
+        referralCode.trim() || undefined
+      );
+      if (!newUser) throw new Error('Account created but profile is missing. Check schema trigger.');
+      setSuccessMsg(`Account created. Welcome to GoodSale, ${newUser.fullName}!`);
+      setTimeout(() => {
+        setSuccessMsg('');
+        setIsSubmitting(false);
+        setMode('onboarding');
+      }, 800);
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Registration failed');
       setIsSubmitting(false);
-    }, 1200);
+    }
   };
 
-  // OTP Verification Submission
+  // OTP Verification (password reset flow only — registration uses Supabase Auth directly)
   const handleVerifyOtpSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
@@ -303,132 +265,91 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
     }
 
     if (otpCode !== generatedOtp) {
-      setErrorMsg('Incorrect OTP token. Please enter the correct code shown in the delivery alert.');
+      setErrorMsg('Incorrect OTP token.');
       return;
     }
 
     setIsSubmitting(true);
-
     setTimeout(() => {
-      try {
-        if (otpPurpose === 'REGISTER') {
-          // Register the user formally inside local state
-          const newUser = dbOperations.registerUser(
-            fullName,
-            username.trim().toLowerCase(),
-            email.trim(),
-            phoneNumber.trim(),
-            selectedRole,
-            referralCode.trim() || undefined
-          );
-
-          // Store password into database state user object (extending the base schema gracefully)
-          const state = getDBState();
-          const dbUser = state.users.find(u => u.id === newUser.id);
-          if (dbUser) {
-            (dbUser as any).password = password;
-          }
-          saveDBState(state);
-
-          setSuccessMsg(`✓ Verification Approved! Account created. Welcome to GoodSale, ${newUser.fullName}!`);
-          
-          // Switch to Onboarding page!
-          setTimeout(() => {
-            setSuccessMsg('');
-            setIsSubmitting(false);
-            setMode('onboarding');
-          }, 1500);
-
-        } else if (otpPurpose === 'FORGOT_PASSWORD') {
-          setSuccessMsg('✓ Account Verified! Please set your new secure account password.');
-          setTimeout(() => {
-            setSuccessMsg('');
-            setIsSubmitting(false);
-            setMode('new_password');
-          }, 1200);
-        }
-      } catch (err: any) {
-        setErrorMsg(err.message || 'An error occurred during account provisioning.');
+      if (otpPurpose === 'FORGOT_PASSWORD') {
+        setSuccessMsg('Account verified. Set your new password.');
+        setTimeout(() => {
+          setSuccessMsg('');
+          setIsSubmitting(false);
+          setMode('new_password');
+        }, 800);
+      } else {
         setIsSubmitting(false);
+        setErrorMsg('Use the Sign Up form — registration no longer uses simulated OTP.');
       }
-    }, 1000);
+    }, 400);
   };
 
-  // Forgot Password submission
-  const handleForgotPasswordSubmit = (e: React.FormEvent) => {
+  // Forgot Password — Supabase reset email
+  const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
 
     if (!forgotIdentifier.trim()) {
-      setErrorMsg('Please specify your registered Email or Phone.');
-      return;
-    }
-
-    const state = getDBState();
-    const matchedUser = state.users.find(
-      u => u.email.toLowerCase() === forgotIdentifier.trim().toLowerCase() || u.phoneNumber === forgotIdentifier.trim()
-    );
-
-    if (!matchedUser) {
-      setErrorMsg('No active GoodSale account matched this identifier.');
+      setErrorMsg('Please specify your registered Email.');
       return;
     }
 
     setIsSubmitting(true);
-
-    setTimeout(() => {
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      setGeneratedOtp(code);
-      setOtpCountdown(120);
-      setOtpPurpose('FORGOT_PASSWORD');
-      
-      setSuccessMsg(`✓ Verification SMS & Email sent to ${forgotIdentifier}.`);
-      setMode('reset_password_otp');
+    try {
+      const { createClient } = await import('@/lib/supabase/client');
+      const client = createClient();
+      if (!client) throw new Error('Supabase is not configured');
+      const email = forgotIdentifier.includes('@')
+        ? forgotIdentifier.trim()
+        : (getDBState().users.find((u) => u.phoneNumber === forgotIdentifier.trim())?.email || '');
+      if (!email) throw new Error('Enter the email associated with your account.');
+      const { error } = await client.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/callback?next=/`,
+      });
+      if (error) throw error;
+      setSuccessMsg('Password reset link sent. Check your email.');
       setIsSubmitting(false);
-    }, 1200);
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Could not start password reset');
+      setIsSubmitting(false);
+    }
   };
 
-  // Save new Password
-  const handleNewPasswordSubmit = (e: React.FormEvent) => {
+  // Save new Password via Supabase session
+  const handleNewPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
 
     if (newPassword.length < 8) {
-      setErrorMsg('Password must be at least 8 characters long for corporate security guidelines.');
+      setErrorMsg('Password must be at least 8 characters long.');
       return;
     }
 
     if (newPassword !== newConfirmPassword) {
-      setErrorMsg('Password confirmation mismatch. Check matching strings.');
+      setErrorMsg('Password confirmation mismatch.');
       return;
     }
 
     setIsSubmitting(true);
-
-    setTimeout(() => {
-      const state = getDBState();
-      // Find user that matches the forgot token identifier
-      const matchedUser = state.users.find(
-        u => u.email.toLowerCase() === forgotIdentifier.trim().toLowerCase() || u.phoneNumber === forgotIdentifier.trim()
-      );
-
-      if (matchedUser) {
-        (matchedUser as any).password = newPassword;
-        saveDBState(state);
-        setSuccessMsg('✓ Password successfully updated! Please login with your new credentials.');
-        
-        setTimeout(() => {
-          setSuccessMsg('');
-          setIsSubmitting(false);
-          setMode('login');
-        }, 1500);
-      } else {
-        setErrorMsg('Fatal session mismatch. Please restart the reset process.');
+    try {
+      const { createClient } = await import('@/lib/supabase/client');
+      const client = createClient();
+      if (!client) throw new Error('Supabase is not configured');
+      const { error } = await client.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      setSuccessMsg('Password updated. You can continue.');
+      setTimeout(() => {
+        setSuccessMsg('');
         setIsSubmitting(false);
-      }
-    }, 1200);
+        setMode('login');
+      }, 800);
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Could not update password');
+      setIsSubmitting(false);
+    }
   };
 
   // Finish Onboarding process
@@ -667,20 +588,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                 <div className="flex-grow border-t border-gray-150 dark:border-slate-800"></div>
               </div>
 
-              {/* Guest Quick Login Button (demo mode only) */}
-              {isDemoMode() && (
-              <button
-                type="button"
-                onClick={() => {
-                  dbOperations.loginAsGuest();
-                  onClose();
-                }}
-                className="w-full py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 font-sans font-extrabold text-xs uppercase tracking-wider rounded-xl cursor-pointer flex items-center justify-center gap-2 transition-all border border-gray-200 dark:border-slate-700"
-              >
-                <span>🚀</span>
-                <span>Hop in as Guest (One-Click)</span>
-              </button>
-              )}
+              {/* Guest login removed — Supabase Auth only */}
 
               {/* JWT Session Manager Panel */}
               <div className="bg-slate-50 dark:bg-slate-950 rounded-2xl p-4 border border-gray-150 dark:border-slate-850 space-y-3">

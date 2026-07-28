@@ -38,32 +38,13 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Messages stay live via Supabase Realtime (see bootstrapStore in lib/store.ts)
   useEffect(() => {
     const handleStateChange = () => {
       setDb(getDBState());
     };
     window.addEventListener('goodsale_db_state_change', handleStateChange);
     return () => window.removeEventListener('goodsale_db_state_change', handleStateChange);
-  }, []);
-
-  // Standard Real-time background sync to simulate standard real-time message relays
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetch('/api/db')
-        .then(res => res.json())
-        .then(data => {
-          if (data.success && data.state) {
-            const currentString = JSON.stringify(getDBState().messages);
-            const incomingString = JSON.stringify(data.state.messages);
-            if (currentString !== incomingString) {
-              saveDBState(data.state);
-            }
-          }
-        })
-        .catch(err => console.error('Real-time chat relay sync error:', err));
-    }, 2000);
-
-    return () => clearInterval(interval);
   }, []);
 
   // Set active room to initialRoomId if passed from details view

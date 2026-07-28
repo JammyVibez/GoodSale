@@ -652,25 +652,13 @@ export default function Header({
                     <Sparkles className="w-3.5 h-3.5" />
                     <span>Sign Up</span>
                   </button>
-                  {isDemoMode() && (
-                  <button
-                    id="auth-guest-btn"
-                    onClick={() => {
-                      dbOperations.loginAsGuest();
-                    }}
-                    className="flex items-center gap-1 px-2.5 py-1.5 bg-gray-50 hover:bg-gray-100 dark:bg-slate-900 dark:hover:bg-slate-850 text-slate-500 dark:text-slate-400 font-sans font-bold rounded-lg text-xs transition-all cursor-pointer select-none border border-gray-200 dark:border-slate-800"
-                    title="Hop in as guest"
-                  >
-                    🚀
-                    <span>Hop as Guest</span>
-                  </button>
-                  )}
+                  {/* Guest login removed — use Supabase Auth */}
                 </div>
               ) : (
                 <button
                   id="auth-logout-btn"
-                  onClick={() => {
-                    dbOperations.logout();
+                  onClick={async () => {
+                    await dbOperations.logout();
                     onNavigate('landing');
                   }}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border border-red-500/20 bg-red-500/5 text-red-600 dark:text-red-400 hover:bg-red-500/10 hover:border-red-500/30 select-none shrink-0"

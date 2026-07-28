@@ -277,7 +277,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
 
 
   // Create new listing with full verification, duplicate-checking and prohibited-terms scanning
-  const handleCreateListing = (e: React.FormEvent) => {
+  const handleCreateListing = async (e: React.FormEvent) => {
     e.preventDefault();
     setStepValidationErrors(null);
     setDuplicateDetected(false);
@@ -315,7 +315,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
     }
 
     // Save product via store operation
-    const newProd = dbOperations.addProduct(
+    const newProd = await dbOperations.addProduct(
       title,
       description,
       category,

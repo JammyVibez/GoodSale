@@ -1,69 +1,71 @@
 # GoodSale
 
-Nigeria's escrow-backed C2C marketplace — identity verification, Paystack payments, SafeMeet delivery, and AI shopping safety tips.
+Nigeria's escrow-backed C2C marketplace with **live Supabase Auth**, realtime catalog/orders/chat/dispatch, and Paystack checkout.
 
-## Quick start (demo)
+Mock seed users/products/orders have been **removed**. The app loads empty until you connect Supabase.
+
+## 1. Create a Supabase project
+
+1. Create a project at [supabase.com](https://supabase.com)
+2. Open **SQL Editor** → paste and run [`supabase/schema.sql`](./supabase/schema.sql)
+3. (Optional) Create storage buckets: `government-ids` (private), `product-images` (public), `chat-media` (public)
+4. Authentication → Providers → enable **Email**
+5. Authentication → URL config → add `http://localhost:3000/auth/callback` (and your production URL)
+
+## 2. Add credentials
 
 ```bash
 cp .env.example .env.local
+```
+
+Fill in at minimum:
+
+| Variable | Where to find it |
+|----------|------------------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Project Settings → API → Project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Project Settings → API → `anon` `public` |
+| `SUPABASE_SERVICE_ROLE_KEY` | Project Settings → API → `service_role` (server only) |
+| `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` | Paystack Dashboard → Settings → API Keys |
+| `PAYSTACK_SECRET_KEY` | Paystack secret key |
+| `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` locally |
+
+Restart the dev server after saving `.env.local`.
+
+## 3. Run
+
+```bash
 npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). With `NEXT_PUBLIC_DEMO_MODE` unset, local `NODE_ENV=development` keeps demo features on (guest login, mock payments without Paystack keys, instant verify).
+Open [http://localhost:3000](http://localhost:3000). Sign up → create listings → checkout → chat → GoodDispatch jobs all hit Supabase with Realtime subscriptions.
 
-## Production checklist
+## What is live now
 
-Set these in your host environment (Vercel, Docker, etc.):
-
-| Variable | Required | Notes |
-|----------|----------|--------|
-| `NEXT_PUBLIC_DEMO_MODE` | **Yes → `false`** | Disables guest login, mock card/wallet credit, email SUPER_ADMIN elevation, open `/api/db` blob sync, instant ID verify |
-| `NEXT_PUBLIC_APP_URL` | Yes | Canonical URL for SEO / sitemap |
-| `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` | Yes | Paystack Inline checkout |
-| `PAYSTACK_SECRET_KEY` | Yes | Server-side `transaction.verify` |
-| `PAYSTACK_WEBHOOK_SECRET` | Recommended | Webhook HMAC (`/api/payments/webhook`) |
-| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Auth + storage |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Client / RLS-scoped access |
-| `SUPABASE_SERVICE_ROLE_KEY` | Yes (server) | Private ID uploads — never expose to browser |
-| `GEMINI_API_KEY` | Optional | AI tips; heuristics used if missing |
-| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | Optional | SafeMeet map |
-
-### What this release hardens
-
-- **Payments**: No more in-app card/CVV/PIN forms. Paystack Inline + `/api/payments/verify` + webhook receiver.
-- **APIs**: Rate limits, payload size/MIME checks, sanitized errors, structured JSON logs.
-- **Demo gates**: Dangerous prototype paths refuse to run when demo mode is off.
-- **Ops**: `.gitignore`, `/api/health`, security headers (CSP/HSTS/etc.), Docker standalone image, GitHub Actions CI (`lint` / `typecheck` / `build`), `robots.ts` / `sitemap.ts`.
-
-### Still required before handling real money / PII at scale
-
-1. **Supabase Auth** (or equivalent) with httpOnly sessions — replace client-side password simulation.
-2. **Normalized tables + RLS** — replace the demo full-state JSON blob (`market_state` / `/api/db`).
-3. **Admin-only verification workflow** — review government IDs from a private bucket; never self-approve.
-4. **Escrow ledger on the server** — delivery PIN hashing and fund release must not be client-authoritative.
+- **Auth**: Supabase email/password signup & login (`AuthModal`)
+- **Profiles**: created by DB trigger on `auth.users` insert
+- **Catalog / orders / escrow / chat / delivery jobs**: loaded from Postgres; writes for products, orders, messages, chat rooms persist to Supabase
+- **Realtime**: `messages`, `orders`, `delivery_jobs`, `products`, `notifications`, `bids`, `chat_rooms`, …
+- **Payments**: Paystack Inline + `/api/payments/verify` (configure keys for live charges)
+- **Setup banner**: shown until Supabase URL/anon key are present
 
 ## Scripts
 
 ```bash
-npm run dev         # local development
-npm run build       # production build
-npm run start       # serve production build
-npm run lint        # Next.js ESLint
-npm run typecheck   # tsc --noEmit
+npm run dev
+npm run build && npm run start
+npm run lint
+npm run typecheck
 ```
 
 ## Docker
 
 ```bash
 docker compose up --build
-# health: GET /api/health
 ```
 
-## Paystack webhook
+Pass the same env vars into the compose service.
 
-Point Paystack to `https://<your-domain>/api/payments/webhook` and set `PAYSTACK_WEBHOOK_SECRET` (or reuse `PAYSTACK_SECRET_KEY` for HMAC).
+## Need help wiring credentials?
 
-## License
-
-Private — All rights reserved.
+Add the Supabase + Paystack values to Cursor / Vercel / Docker secrets (or `.env.local`) and re-run. Without them the UI stays empty and the amber setup banner explains what is missing.

@@ -1,1767 +1,249 @@
 // lib/store.ts
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
+import { createEmptyState } from '@/lib/data/empty-state';
+import {
+  loadMarketplaceState,
+  subscribeMarketplaceRealtime,
+  findProfileByAuthId,
+  insertOrderWithEscrow,
+  insertMessage,
+  upsertProduct,
+} from '@/lib/data/sync';
 import { isDemoMode, isOwnerAdminEmail } from '@/lib/demo';
+import type { GoodSaleDBState, User, Product, Order, Message } from '@/lib/types';
+import {
+  UserRole,
+  Profile,
+  Referral,
+  ProductCondition,
+  OrderStatus,
+  DocumentType,
+  VerificationStatus,
+  DeliveryVehicleType,
+  DeliveryJobStatus,
+  Bid,
+  DeliveryJob,
+  Dispute,
+  IdentityVerification,
+  Review,
+  SafeMeetMeetup,
+  DeliveryPartner,
+  SponsoredAd,
+  AuditLog,
+  RevenueSettings,
+  PaymentSettings,
+  ProductBundle,
+  Notification,
+  Escrow,
+  Auction,
+  ChatRoom,
+  GoodPointsTransaction,
+  FollowerRelation,
+  Wallet,
+  WalletTransaction,
+  Business,
+  BusinessSubscription,
+  VerifiedPlusSubscription,
+} from '@/lib/types';
+
+// Re-export domain types so existing imports from '../lib/store' keep working
+export * from '@/lib/types';
 
-// Standard Enums
-export enum UserRole {
-  GUEST = 'GUEST',
-  BUYER = 'BUYER',
-  SELLER = 'SELLER',
-  VERIFIED_SELLER = 'VERIFIED_SELLER',
-  BUSINESS = 'BUSINESS',
-  VERIFIED_BUSINESS = 'VERIFIED_BUSINESS',
-  MODERATOR = 'MODERATOR',
-  ADMIN = 'ADMIN',
-  SUPER_ADMIN = 'SUPER_ADMIN',
-}
-
-export enum ProductCondition {
-  NEW = 'NEW',
-  LIKE_NEW = 'LIKE_NEW',
-  EXCELLENT = 'EXCELLENT',
-  GOOD = 'GOOD',
-  FAIR = 'FAIR',
-}
-
-export enum OrderStatus {
-  PENDING = 'PENDING',
-  PAID_ESCROW = 'PAID_ESCROW',
-  SHIPPED = 'SHIPPED',
-  OUT_FOR_DELIVERY = 'OUT_FOR_DELIVERY',
-  DELIVERED_SUCCESS = 'DELIVERED_SUCCESS',
-  DISPUTED = 'DISPUTED',
-  REFUNDED = 'REFUNDED',
-  CANCELLED = 'CANCELLED',
-  
-  // Custom Merchant Payment statuses
-  PENDING_BANK_TRANSFER = 'PENDING_BANK_TRANSFER',
-  PARTIAL_DEPOSIT_PAID = 'PARTIAL_DEPOSIT_PAID',
-  INVOICE_SENT = 'INVOICE_SENT',
-  COD_PENDING = 'COD_PENDING',
-}
-
-export enum DocumentType {
-  NIN = 'NIN',
-  NATIONAL_ID = 'NATIONAL_ID',
-  PASSPORT = 'PASSPORT',
-  DRIVERS_LICENSE = 'DRIVERS_LICENSE',
-  VOTERS_CARD = 'VOTERS_CARD',
-}
-
-export enum VerificationStatus {
-  PENDING = 'PENDING',
-  APPROVED = 'APPROVED',
-  REJECTED = 'REJECTED',
-}
-
-// Interfaces corresponding to our database relational schema
-export interface User {
-  id: number;
-  fullName: string;
-  username: string;
-  email: string;
-  phoneNumber: string;
-  role: UserRole;
-  referralCode: string;
-  referredById?: number;
-  trustScore: number; // 0 - 100
-  sellerLevel: string; // BRONZE, SILVER, GOLD, PLATINUM, DIAMOND
-  goodPoints: number;
-}
-
-export interface Profile {
-  userId: number;
-  photoUrl: string;
-  coverUrl: string;
-  bio: string;
-  address: string;
-  city: string;
-  state: string;
-  deliveryPreference: string;
-  pushEnabled: boolean;
-  emailEnabled: boolean;
-  smsEnabled: boolean;
-}
-
-export interface Business {
-  id: number;
-  ownerId: number;
-  name: string;
-  logoUrl: string;
-  bannerUrl: string;
-  description: string;
-  openingHours: string;
-  address: string;
-  city: string;
-  state: string;
-  isVerified: boolean;
-  trustScore: number;
-  followers: number;
-  rating: number;
-  reviewsCount: number;
-}
-
-export interface Product {
-  id: number;
-  sellerId: number;
-  businessId?: number;
-  title: string;
-  description: string;
-  category: string;
-  brand: string;
-  condition: ProductCondition;
-  price: number;
-  isNegotiable: boolean;
-  quantity: number;
-  stockStatus: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK';
-  images: string[];
-  barcode?: string;
-  qrCode?: string;
-  deliveryMethod: string;
-  pickupAvailable: boolean;
-  warranty?: string;
-  returnPolicy?: string;
-  weightKg?: number;
-  dimensionsCm?: string;
-  isAuction: boolean;
-  viewCount: number;
-  createdAt: string;
-  paymentMethods?: string[]; // e.g. ['escrow', 'cod', 'card', 'bank', 'invoice', 'partial']
-  partialPercent?: number;
-  partialRemainingDays?: number;
-}
-
-export interface Auction {
-  id: number;
-  productId: number;
-  startingBid: number;
-  reservePrice: number;
-  buyNowPrice?: number;
-  endsAt: string; // ISO date
-  isActive: boolean;
-}
-
-export interface Bid {
-  id: number;
-  auctionId: number;
-  userId: number;
-  username: string;
-  userAvatar: string;
-  amount: number;
-  createdAt: string;
-}
-
-export interface Order {
-  id: number;
-  orderNumber: string; // GS-2026-000001
-  buyerId: number;
-  sellerId: number;
-  productId: number;
-  productTitle: string;
-  productImage: string;
-  totalAmount: number;
-  discountAmount: number;
-  deliveryFee: number;
-  taxAmount: number;
-  paymentMethod: string;
-  deliveryMethod: string;
-  deliveryAddress: string;
-  deliveryCity: string;
-  deliveryState: string;
-  deliveryPin: string; // 6 digits
-  qrCodeToken: string;
-  status: OrderStatus;
-  goodPointsUsed: number;
-  createdAt: string;
-  updatedAt: string;
-  selectedPartnerId?: number;
-  serviceType?: 'ECONOMY' | 'STANDARD' | 'EXPRESS';
-  hasGoodSaleProtect?: boolean;
-  protectFee?: number;
-  
-  // Custom Merchant Payment System fields
-  depositPercent?: number;
-  depositRemainingDays?: number;
-  depositAmountPaid?: number;
-  balanceRemaining?: number;
-  isBalanceSettled?: boolean;
-  bankTransferReceipt?: string;
-  invoiceTerms?: string;
-}
-
-export interface Escrow {
-  id: number;
-  orderId: number;
-  heldAmount: number;
-  isReleased: boolean;
-  isRefunded: boolean;
-}
-
-export interface Dispute {
-  id: number;
-  orderId: number;
-  orderNumber: string;
-  openedById: number;
-  openedByName: string;
-  reason: string;
-  evidenceUrl?: string;
-  adminNotes?: string;
-  resolution: 'PENDING' | 'REFUND_BUYER' | 'RELEASE_SELLER';
-  createdAt: string;
-}
-
-export interface ChatRoom {
-  id: number;
-  buyerId: number;
-  sellerId: number;
-  productId: number;
-  productTitle: string;
-  productPrice: number;
-  productImage: string;
-  sellerName: string;
-  buyerName: string;
-  lastMessage?: string;
-  lastMessageTime?: string;
-}
-
-export interface Message {
-  id: number;
-  roomId: number;
-  senderId: number;
-  messageText?: string;
-  imageUrl?: string;
-  videoUrl?: string;
-  voiceNoteUrl?: string;
-  receiptDetails?: {
-    orderNumber: string;
-    productTitle: string;
-    amount: number;
-    paymentMethod: string;
-    status: string;
-    createdAt: string;
-  };
-  productDetails?: {
-    id: number;
-    title: string;
-    price: number;
-    image: string;
-    condition: string;
-  };
-  offerDetails?: {
-    amount: number;
-    productId: number;
-    status: 'PENDING' | 'ACCEPTED' | 'COUNTERED' | 'DECLINED';
-    counterAmount?: number;
-    proposedBy: number;
-  };
-  createdAt: string;
-}
-
-export interface ReviewReply {
-  id: number;
-  authorId: number;
-  authorName: string;
-  authorPhoto: string;
-  authorRole: string; // 'BUYER' | 'SELLER' | 'ADMIN'
-  comment: string;
-  createdAt: string;
-}
-
-export interface Review {
-  id: number;
-  orderId?: number; // make optional since general product reviews might not have order context
-  productId?: number; // optional product link
-  reviewerId: number;
-  reviewerName: string;
-  reviewerPhoto: string;
-  revieweeId?: number; // make optional if general comment
-  rating: number; // 1-5, or 0 if it is just a product comment/question
-  comment: string;
-  imageUrl?: string;
-  sellerReply?: string;
-  isHelpfulVotes: number;
-  replies?: ReviewReply[]; // nested replies from buyers, sellers, or other vendors
-  createdAt: string;
-}
-
-export interface IdentityVerification {
-  id: number;
-  userId: number;
-  fullName: string;
-  documentType: DocumentType;
-  documentNumber: string;
-  documentImageUrl: string;
-  selfieImageUrl: string;
-  proofOfAddressUrl: string;
-  status: VerificationStatus;
-  adminNotes?: string;
-  createdAt: string;
-}
-
-export interface GoodPointsTransaction {
-  id: number;
-  userId: number;
-  points: number;
-  reason: string;
-  createdAt: string;
-}
-
-export interface Referral {
-  id: number;
-  referrerId: number;
-  refereeId: number;
-  refereeName: string;
-  status: 'REGISTERED' | 'FIRST_ORDER_COMPLETED';
-  pointsReward: number;
-  rewardReleased?: boolean;
-  createdAt: string;
-}
-
-export interface Notification {
-  id: number;
-  userId: number;
-  title: string;
-  message: string;
-  type: 'ORDER' | 'BID' | 'DISPUTE' | 'POINTS' | 'CHAT' | 'VERIFICATION' | 'SAFEMEET' | 'ESCROW';
-  isRead: boolean;
-  createdAt: string;
-}
-
-export interface SafeMeetLocation {
-  id: number;
-  name: string;
-  address: string;
-  lat: number;
-  lng: number;
-  photoUrl: string;
-  openingHours: string;
-  safetyRating: number;
-  distanceKm: number;
-  travelTimeMinutes: number;
-  parkingAvailable: boolean;
-  accessibility: string;
-  isFavorite?: boolean;
-}
-
-export interface SafeMeetMeetup {
-  id: number;
-  orderId: number;
-  locationId: number;
-  scheduledAt: string; // ISO string
-  status: 'PENDING_CONFIRMATION' | 'SCHEDULED' | 'BUYER_ARRIVED' | 'SELLER_ARRIVED' | 'COMPLETED' | 'CANCELLED';
-  buyerConfirmedArrival: boolean;
-  sellerConfirmedArrival: boolean;
-  rating?: number;
-  reportText?: string;
-  createdAt: string;
-}
-
-export interface FollowerRelation {
-  id: number;
-  followerId: number; // user who is following
-  followedUserId?: number; // seller being followed
-  followedBusinessId?: number; // business being followed
-  createdAt: string;
-}
-
-export interface ProductBundle {
-  id: number;
-  sellerId: number;
-  title: string;
-  description: string;
-  productIds: number[];
-  price: number;
-  discountPercentage: number;
-  quantity: number;
-  createdAt: string;
-}
-
-// ==========================================
-// GOODSALE PAYMENT & CHECKOUT SYSTEM INTERFACES
-// ==========================================
-
-export interface PaymentTransaction {
-  id: number;
-  transactionId: string;
-  orderId?: number;
-  orderNumber?: string;
-  buyerId: number;
-  sellerId: number;
-  amount: number;
-  paymentMethod: string;
-  status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'REFUNDED';
-  purpose: 'ORDER_PAYMENT' | 'ESCROW_RELEASE' | 'DEPOSIT_PAYMENT' | 'BALANCE_PAYMENT' | 'WITHDRAWAL';
-  createdAt: string;
-}
-
-export interface Invoice {
-  id: number;
-  invoiceNumber: string;
-  orderId: number;
-  buyerId: number;
-  sellerId: number;
-  businessId: number;
-  amount: number;
-  terms: string; // e.g. "Net 15", "Due on Receipt"
-  dueDate: string;
-  status: 'DRAFT' | 'SENT' | 'VIEWED' | 'PAID' | 'OVERDUE' | 'CANCELLED';
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface Refund {
-  id: number;
-  refundNumber: string;
-  transactionId: string;
-  orderId: number;
-  amount: number;
-  reason: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
-  createdAt: string;
-}
-
-export interface WithdrawalRequest {
-  id: number;
-  requestNumber: string;
-  userId: number;
-  amount: number;
-  bankName: string;
-  accountNumber: string;
-  accountName: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
-  createdAt: string;
-}
-
-export interface PaymentSettings {
-  enabledMethods: string[]; // e.g. ['escrow', 'cod', 'card', 'bank', 'invoice', 'partial']
-  codMaxOrderValue: number; // e.g. 500000
-  escrowFeePercentage: number; // e.g. 1.5
-  deliveryCommissionPercentage: number; // e.g. 10
-}
-
-export interface PaymentLog {
-  id: number;
-  userId?: number;
-  action: string;
-  details: string;
-  ipAddress: string;
-  createdAt: string;
-}
-
-// ==========================================
-// GOODDISPATCH™ DELIVERY NETWORK TYPES & ENUMS
-// ==========================================
-
-export enum DeliveryVehicleType {
-  BICYCLE = 'BICYCLE',
-  MOTORCYCLE = 'MOTORCYCLE',
-  CAR = 'CAR',
-  VAN = 'VAN',
-  TRUCK = 'TRUCK',
-  KEKE = 'KEKE',
-  LOGISTICS = 'LOGISTICS',
-  FLEET = 'FLEET',
-}
-
-export enum DeliveryJobStatus {
-  PENDING = 'PENDING',
-  ACCEPTED = 'ACCEPTED',
-  PICKED_UP = 'PICKED_UP',
-  IN_TRANSIT = 'IN_TRANSIT',
-  ARRIVED = 'ARRIVED',
-  COMPLETED = 'COMPLETED',
-  CANCELLED = 'CANCELLED',
-}
-
-export interface DeliveryPartner {
-  id: number;
-  userId: number;
-  fullName: string;
-  phone: string;
-  email: string;
-  vehicleType: DeliveryVehicleType;
-  brand: string;
-  model: string;
-  plateNumber: string;
-  color: string;
-  year: number;
-  capacity: string;
-  photoUrl: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
-  isAvailable: boolean;
-  trustScore: number;
-  rating: number;
-  completedDeliveries: number;
-  acceptanceRate: number;
-  activeDeliveriesCount: number;
-  address: string;
-  state: string;
-  city: string;
-  nin: string;
-  selfieUrl: string;
-  licenseUrl?: string;
-  createdAt: string;
-}
-
-export interface DeliveryJob {
-  id: number;
-  orderId: number;
-  partnerId?: number;
-  status: DeliveryJobStatus;
-  serviceType: 'ECONOMY' | 'STANDARD' | 'EXPRESS';
-  deliveryFee: number;
-  platformCommission: number;
-  courierEarnings: number;
-  estPickupTime: string;
-  estDeliveryTime: string;
-  currentLat?: number;
-  currentLng?: number;
-  currentSpeed?: number;
-  pin: string;
-  sosTriggered?: boolean;
-  incidentReport?: string;
-  trackingHistory: { status: string; time: string; note: string }[];
-  createdAt: string;
-}
-
-// ==========================================
-// GOODSALE REVENUE SYSTEM TYPES
-// ==========================================
-
-export interface RevenueSettings {
-  escrowPercentageFee: number;
-  escrowMinFee: number;
-  escrowMaxFee: number;
-  deliveryCommissionPercentage: number;
-  featured3DaysPrice: number;
-  featured7DaysPrice: number;
-  featured14DaysPrice: number;
-  featured30DaysPrice: number;
-  subProPrice: number;
-  subPremiumPrice: number;
-  subEnterprisePrice: number;
-  verifiedPlusPrice: number;
-  flashSaleFeaturePrice: number;
-  auctionSuccessFeePercentage: number;
-  adCpcPrice: number;
-  goodSaleProtectFee: number;
-}
-
-export interface SponsoredAd {
-  id: number;
-  sellerId: number;
-  type: 'PRODUCT' | 'BUSINESS' | 'BANNER_HOME' | 'BANNER_CATEGORY';
-  targetId: number;
-  bannerUrl?: string;
-  title: string;
-  status: 'ACTIVE' | 'PAUSED' | 'COMPLETED';
-  budget: number;
-  spent: number;
-  clicks: number;
-  impressions: number;
-  createdAt: string;
-}
-
-export interface FeaturedListing {
-  id: number;
-  productId: number;
-  sellerId: number;
-  durationDays: number;
-  expiresAt: string;
-  status: 'ACTIVE' | 'EXPIRED';
-  createdAt: string;
-}
-
-export interface Wallet {
-  id: number;
-  userId: number;
-  balance: number;
-  bankName?: string;
-  bankAccountName?: string;
-  bankAccountNumber?: string;
-}
-
-export interface WalletTransaction {
-  id: number;
-  walletId: number;
-  amount: number;
-  type: 'CREDIT_SALE' | 'CREDIT_DELIVERY' | 'DEBIT_WITHDRAWAL' | 'DEBIT_FEES' | 'DEBIT_SUBCRIPTION' | 'DEBIT_AD' | 'DEBIT_PROTECT';
-  description: string;
-  status: 'PENDING' | 'COMPLETED' | 'FAILED';
-  createdAt: string;
-}
-
-export interface AuditLog {
-  id: number;
-  userId: number;
-  action: string;
-  entityType: string;
-  entityId: number;
-  details: string;
-  createdAt: string;
-}
-
-export interface BusinessSubscription {
-  id: number;
-  userId: number;
-  plan: 'FREE' | 'PRO' | 'PREMIUM' | 'ENTERPRISE';
-  expiresAt: string;
-  createdAt: string;
-}
-
-export interface VerifiedPlusSubscription {
-  id: number;
-  userId: number;
-  expiresAt: string;
-  createdAt: string;
-}
-
-// Initial Mock Datasets representing the Nigerian Local Context
-const INITIAL_USERS: User[] = [
-  {
-    id: 1,
-    fullName: 'Hamza Aliyu',
-    username: 'hamzadev',
-    email: 'hamza@goodsale.ng',
-    phoneNumber: '+2348030001111',
-    role: UserRole.BUYER,
-    referralCode: 'GS-HAMZA-83',
-    trustScore: 98,
-    sellerLevel: 'BRONZE',
-    goodPoints: 340,
-  },
-  {
-    id: 2,
-    fullName: 'Fatima Abubakar',
-    username: 'fatima_deals',
-    email: 'fatima@goodsale.ng',
-    phoneNumber: '+2348051112222',
-    role: UserRole.VERIFIED_SELLER,
-    referralCode: 'GS-FATIMA-42',
-    trustScore: 100,
-    sellerLevel: 'GOLD',
-    goodPoints: 1200,
-  },
-  {
-    id: 3,
-    fullName: 'Chidi Anozie',
-    username: 'chidi_deals',
-    email: 'chidi@goodsale.ng',
-    phoneNumber: '+2348122223333',
-    role: UserRole.SELLER,
-    referralCode: 'GS-CHIDI-19',
-    trustScore: 92,
-    sellerLevel: 'BRONZE',
-    goodPoints: 150,
-  },
-  {
-    id: 4,
-    fullName: 'Sandra Edet',
-    username: 'sandra_hub',
-    email: 'sandra@goodsale.ng',
-    phoneNumber: '+2349033334444',
-    role: UserRole.VERIFIED_BUSINESS,
-    referralCode: 'GS-SANDRA-76',
-    trustScore: 99,
-    sellerLevel: 'PLATINUM',
-    goodPoints: 4500,
-  }
-];
-
-const INITIAL_PROFILES: Profile[] = [
-  {
-    userId: 1,
-    photoUrl: 'https://picsum.photos/seed/hamza/200',
-    coverUrl: 'https://picsum.photos/seed/hamza_cover/800/300',
-    bio: 'Professional UI Engineer and secure escrow enthusiast in Yaba, Lagos.',
-    address: '24 Herbert Macaulay Way, Yaba',
-    city: 'Yaba',
-    state: 'Lagos',
-    deliveryPreference: 'GOODSALE_PARTNER',
-    pushEnabled: true,
-    emailEnabled: true,
-    smsEnabled: true,
-  },
-  {
-    userId: 2,
-    photoUrl: 'https://picsum.photos/seed/fatima/200',
-    coverUrl: 'https://picsum.photos/seed/fatima_cover/800/300',
-    bio: 'Certified Apple Vendor. Grade A UK Used iPhones & premium accessories under escrow.',
-    address: 'Block B, Suite 12, Wuse Zone 5',
-    city: 'Wuse',
-    state: 'Abuja',
-    deliveryPreference: 'SELF_MANAGED',
-    pushEnabled: true,
-    emailEnabled: true,
-    smsEnabled: false,
-  },
-  {
-    userId: 3,
-    photoUrl: 'https://picsum.photos/seed/chidi/200',
-    coverUrl: 'https://picsum.photos/seed/chidi_cover/800/300',
-    bio: 'Gadget reseller. Quick delivery across Lagos.',
-    address: '15 Computer Village, Ikeja',
-    city: 'Ikeja',
-    state: 'Lagos',
-    deliveryPreference: 'GOODSALE_PARTNER',
-    pushEnabled: true,
-    emailEnabled: false,
-    smsEnabled: false,
-  },
-  {
-    userId: 4,
-    photoUrl: 'https://picsum.photos/seed/sandra/200',
-    coverUrl: 'https://picsum.photos/seed/sandra_cover/800/300',
-    bio: 'Official Sandra Hub enterprise store. Vetted high-end laptops & workplace gear.',
-    address: '42 Ademola Adetokunbo Crescent, Wuse II',
-    city: 'Wuse II',
-    state: 'Abuja',
-    deliveryPreference: 'GOODSALE_PARTNER',
-    pushEnabled: true,
-    emailEnabled: true,
-    smsEnabled: true,
-  }
-];
-
-const INITIAL_BUSINESSES: Business[] = [
-  {
-    id: 1,
-    ownerId: 2,
-    name: 'Fatima Gadget Emporium',
-    logoUrl: 'https://picsum.photos/seed/fatimalogo/150',
-    bannerUrl: 'https://picsum.photos/seed/fatimabanner/1000/400',
-    description: 'Premier certified merchant specializing in authentic Grade A++ UK-used Apple devices, chargers, and premium protections.',
-    openingHours: '8:00 AM - 6:00 PM',
-    address: 'Block B, Suite 12, Wuse Zone 5',
-    city: 'Wuse',
-    state: 'Abuja',
-    isVerified: true,
-    trustScore: 100,
-    rating: 4.9,
-    reviewsCount: 148,
-    followers: 1205,
-  },
-  {
-    id: 2,
-    ownerId: 4,
-    name: 'Sandra Hub Tech Store',
-    logoUrl: 'https://picsum.photos/seed/sandralogo/150',
-    bannerUrl: 'https://picsum.photos/seed/sandrabanner/1000/400',
-    description: 'Vetted premium enterprise computer store supplying original factory sealed laptops, workstation monitors, and ergonomic setups.',
-    openingHours: '9:00 AM - 7:00 PM',
-    address: '42 Ademola Adetokunbo Crescent, Wuse II',
-    city: 'Wuse II',
-    state: 'Abuja',
-    isVerified: true,
-    trustScore: 99,
-    rating: 4.8,
-    reviewsCount: 312,
-    followers: 3480,
-  }
-];
-
-const INITIAL_PRODUCTS: Product[] = [
-  {
-    id: 101,
-    sellerId: 3,
-    businessId: 1,
-    title: 'iPhone 15 Pro Max (Grade A++ UK Used)',
-    description: 'Perfect UK-used titanium gray iPhone 15 Pro Max, 256GB storage. Zero scratches, 96% battery health. Comes with original Apple charging cord, high-quality protective case, and a 6-month GoodSale escrow-backed warranty.',
-    category: 'Phones',
-    brand: 'Apple',
-    condition: ProductCondition.LIKE_NEW,
-    price: 1350000,
-    isNegotiable: true,
-    quantity: 4,
-    stockStatus: 'IN_STOCK',
-    images: [
-      'https://picsum.photos/seed/iphone15pro/600/600',
-      'https://picsum.photos/seed/iphone15pro_2/600/600',
-      'https://picsum.photos/seed/iphone15pro_3/600/600',
-    ],
-    barcode: '194253831814',
-    deliveryMethod: 'GOODSALE_PARTNER',
-    pickupAvailable: true,
-    warranty: '6 Months GoodSale Escrow Warranty',
-    returnPolicy: '7 Days Return on Defect',
-    weightKg: 0.22,
-    dimensionsCm: '15.9 x 7.6 x 0.8 cm',
-    isAuction: false,
-    viewCount: 421,
-    createdAt: '2026-07-10T10:00:00Z',
-  },
-  {
-    id: 102,
-    sellerId: 3,
-    businessId: 1,
-    title: 'MacBook Pro 14" M3 (Verified Brand New)',
-    description: 'Brand new, factory-sealed Apple MacBook Pro with the powerful M3 chip, 8-Core CPU, 10-Core GPU, 8GB Unified Memory, and 512GB SSD storage. Elegant Space Gray finish. Bid starts low. Live auction is active, ending soon!',
-    category: 'Laptops',
-    brand: 'Apple',
-    condition: ProductCondition.NEW,
-    price: 2500000,
-    isNegotiable: false,
-    quantity: 1,
-    stockStatus: 'IN_STOCK',
-    images: [
-      'https://picsum.photos/seed/macbookm3/600/600',
-      'https://picsum.photos/seed/macbookm3_2/600/600',
-    ],
-    barcode: '195949117604',
-    deliveryMethod: 'GOODSALE_PARTNER',
-    pickupAvailable: true,
-    warranty: '1 Year Apple Global Warranty',
-    returnPolicy: 'No Return unless wrong shipment',
-    weightKg: 1.55,
-    dimensionsCm: '31.2 x 22.1 x 1.5 cm',
-    isAuction: true,
-    viewCount: 782,
-    createdAt: '2026-07-09T14:30:00Z',
-  },
-  {
-    id: 103,
-    sellerId: 2,
-    businessId: 2,
-    title: 'Premium Handwoven Aso Oke Agbada Set',
-    description: 'A masterpiece of traditional craftsmanship. Fully tailored luxury 4-piece Agbada set handwoven from fine cotton and metallic thread. Includes the flowing outer Agbada, inner Kaftan, trousers, and a matching cap (Fila). Styled in a royal gold-threaded pattern.',
-    category: 'Fashion',
-    brand: 'Fatima Bespoke',
-    condition: ProductCondition.NEW,
-    price: 180000,
-    isNegotiable: true,
-    quantity: 2,
-    stockStatus: 'IN_STOCK',
-    images: [
-      'https://picsum.photos/seed/agbada/600/600',
-      'https://picsum.photos/seed/agbada_2/600/600',
-    ],
-    barcode: '493821039823',
-    deliveryMethod: 'THIRD_PARTY_COURIER',
-    pickupAvailable: false,
-    warranty: 'Lifetime stitching quality assurance',
-    returnPolicy: '3 Days return for tailoring modifications',
-    weightKg: 1.8,
-    dimensionsCm: 'Tailored Fit',
-    isAuction: false,
-    viewCount: 145,
-    createdAt: '2026-07-10T08:15:00Z',
-  },
-  {
-    id: 104,
-    sellerId: 4,
-    title: 'Nike Air Max 90 (Retro Premium)',
-    description: 'Stunning streetwear icon shoes, retro premium edition. Size UK 9 (43 Euro). Worn only twice, clean sole with almost zero wear. Extremely comfortable cushions. Selling because it is half-size too small for me.',
-    category: 'Fashion',
-    brand: 'Nike',
-    condition: ProductCondition.EXCELLENT,
-    price: 95000,
-    isNegotiable: true,
-    quantity: 1,
-    stockStatus: 'IN_STOCK',
-    images: [
-      'https://picsum.photos/seed/nikeair/600/600',
-      'https://picsum.photos/seed/nikeair_2/600/600',
-    ],
-    barcode: '194274719234',
-    deliveryMethod: 'GOODSALE_PARTNER',
-    pickupAvailable: true,
-    warranty: 'None',
-    returnPolicy: 'No return, check fit on pickup',
-    weightKg: 0.85,
-    dimensionsCm: '33 x 21 x 12 cm',
-    isAuction: false,
-    viewCount: 88,
-    createdAt: '2026-07-11T02:10:00Z',
-  },
-  {
-    id: 105,
-    sellerId: 1,
-    title: 'Vintage Mercedes Benz W123 (Restored Collector Edition)',
-    description: 'Iconic classic 1982 Mercedes-Benz 230E completely restored with genuine Mercedes classic parts. Original dashboard, working vintage dashboard dials, factory air conditioning blowing cold, automatic transmission, retro gold alloy wheels. Runs smoothly in Lagos traffic without overheating. True collector gold.',
-    category: 'Vehicles',
-    brand: 'Mercedes-Benz',
-    condition: ProductCondition.GOOD,
-    price: 8500000,
-    isNegotiable: true,
-    quantity: 1,
-    stockStatus: 'IN_STOCK',
-    images: [
-      'https://picsum.photos/seed/vintagecar/600/600',
-      'https://picsum.photos/seed/vintagecar_2/600/600',
-    ],
-    barcode: '882310239103',
-    deliveryMethod: 'SELLER_DELIVERY',
-    pickupAvailable: true,
-    warranty: 'Engine block guaranteed for 30 days',
-    returnPolicy: 'Sold as-is, view physical car before escrow payout',
-    weightKg: 1420.0,
-    dimensionsCm: '472 x 178 x 143 cm',
-    isAuction: true,
-    viewCount: 1512,
-    createdAt: '2026-07-08T11:00:00Z',
-  }
-];
-
-const INITIAL_AUCTIONS: Auction[] = [
-  {
-    id: 1,
-    productId: 102, // MacBook
-    startingBid: 1800000,
-    reservePrice: 2200000,
-    buyNowPrice: 2450000,
-    endsAt: '2026-07-12T18:00:00Z',
-    isActive: true,
-  },
-  {
-    id: 2,
-    productId: 105, // Mercedes Benz
-    startingBid: 6500000,
-    reservePrice: 8000000,
-    buyNowPrice: 8500000,
-    endsAt: '2026-07-14T12:00:00Z',
-    isActive: true,
-  },
-];
-
-const INITIAL_BIDS: Bid[] = [
-  {
-    id: 1,
-    auctionId: 1, // Macbook
-    userId: 1,
-    username: 'hamzadev',
-    userAvatar: 'https://picsum.photos/seed/hamza/50',
-    amount: 1950000,
-    createdAt: '2026-07-11T12:30:00Z',
-  },
-  {
-    id: 2,
-    auctionId: 1,
-    userId: 4,
-    username: 'sandra_beauty',
-    userAvatar: 'https://picsum.photos/seed/sandra/50',
-    amount: 2100000,
-    createdAt: '2026-07-11T13:45:00Z',
-  },
-];
-
-const INITIAL_CHATS: ChatRoom[] = [
-  {
-    id: 1,
-    buyerId: 1,
-    sellerId: 3,
-    productId: 101, // iPhone
-    productTitle: 'iPhone 15 Pro Max (Grade A++ UK Used)',
-    productPrice: 1350000,
-    productImage: 'https://picsum.photos/seed/iphone15pro/150',
-    sellerName: 'Alaba Tech & Electronics Hub',
-    buyerName: 'Hamza Ibrahim',
-    lastMessage: 'Is this negotiable? I am ready to close at ₦1,300,000.',
-    lastMessageTime: '10:45 AM',
-  },
-];
-
-const INITIAL_MESSAGES: Message[] = [
-  {
-    id: 1,
-    roomId: 1,
-    senderId: 3,
-    messageText: 'Welcome to Alaba Tech Hub. Yes, this device is available and 100% genuine Grade-A.',
-    createdAt: '2026-07-11T10:40:00Z',
-  },
-  {
-    id: 2,
-    roomId: 1,
-    senderId: 1,
-    messageText: 'Is this negotiable? I am ready to close at ₦1,300,000.',
-    createdAt: '2026-07-11T10:45:00Z',
-  },
-];
-
-const INITIAL_REVIEWS: Review[] = [
-  {
-    id: 1,
-    orderId: 9001,
-    reviewerId: 1,
-    reviewerName: 'Hamza Ibrahim',
-    reviewerPhoto: 'https://picsum.photos/seed/hamza/50',
-    revieweeId: 3,
-    rating: 5,
-    comment: 'Flawless escrow delivery! I received my UK-used MacBook exactly as described, checked the specs, and unlocked the delivery PIN. Super safe process!',
-    isHelpfulVotes: 8,
-    createdAt: '2026-07-05T14:00:00Z',
-  },
-  {
-    id: 2,
-    orderId: 9002,
-    reviewerId: 4,
-    reviewerName: 'Sandra Edet',
-    reviewerPhoto: 'https://picsum.photos/seed/sandra/50',
-    revieweeId: 2,
-    rating: 5,
-    comment: 'The traditional handwoven Aso-Oke Agbada fits my husband perfectly. Fatima tailored it beautifully. Royal Gold looks spectacular!',
-    isHelpfulVotes: 4,
-    createdAt: '2026-07-06T11:20:00Z',
-  },
-];
-
-const INITIAL_VERIFICATIONS: IdentityVerification[] = [
-  {
-    id: 1,
-    userId: 2,
-    fullName: 'Fatima Abubakar',
-    documentType: DocumentType.PASSPORT,
-    documentNumber: 'A12048938',
-    documentImageUrl: 'https://picsum.photos/seed/passport/400/250',
-    selfieImageUrl: 'https://picsum.photos/seed/fatima_selfie/200/200',
-    proofOfAddressUrl: 'https://picsum.photos/seed/utility_bill/400/500',
-    status: VerificationStatus.APPROVED,
-    adminNotes: 'Passport verified successfully. Gold Verified Seller status issued.',
-    createdAt: '2026-07-01T09:00:00Z',
-  },
-  {
-    id: 2,
-    userId: 4,
-    fullName: 'Sandra Edet',
-    documentType: DocumentType.NIN,
-    documentNumber: '49382103841',
-    documentImageUrl: 'https://picsum.photos/seed/nin/400/250',
-    selfieImageUrl: 'https://picsum.photos/seed/sandra_selfie/200/200',
-    proofOfAddressUrl: 'https://picsum.photos/seed/sandra_bill/400/500',
-    status: VerificationStatus.PENDING,
-    createdAt: '2026-07-11T12:00:00Z',
-  },
-];
-
-const INITIAL_ORDERS: Order[] = [
-  {
-    id: 2001,
-    orderNumber: 'GS-2026-000001',
-    buyerId: 1,
-    sellerId: 3,
-    productId: 101, // iPhone
-    productTitle: 'iPhone 15 Pro Max (Grade A++ UK Used)',
-    productImage: 'https://picsum.photos/seed/iphone15pro/150',
-    totalAmount: 1362000, // including delivery and tax
-    discountAmount: 0,
-    deliveryFee: 10000,
-    taxAmount: 2000,
-    paymentMethod: 'CARD',
-    deliveryMethod: 'GOODSALE_PARTNER',
-    deliveryAddress: 'Block B2, Phase 1, Gbagada Estate',
-    deliveryCity: 'Gbagada',
-    deliveryState: 'Lagos',
-    deliveryPin: '593842',
-    qrCodeToken: 'QR-TOKEN-GS-0001',
-    status: OrderStatus.PAID_ESCROW,
-    goodPointsUsed: 0,
-    createdAt: '2026-07-11T10:00:00Z',
-    updatedAt: '2026-07-11T10:05:00Z',
-  },
-  {
-    id: 2002,
-    orderNumber: 'GS-2026-000002',
-    buyerId: 1,
-    sellerId: 2,
-    productId: 103, // Agbada
-    productTitle: 'Premium Handwoven Aso Oke Agbada Set',
-    productImage: 'https://picsum.photos/seed/agbada/150',
-    totalAmount: 195000,
-    discountAmount: 0,
-    deliveryFee: 12000,
-    taxAmount: 3000,
-    paymentMethod: 'BANK_TRANSFER',
-    deliveryMethod: 'THIRD_PARTY_COURIER',
-    deliveryAddress: 'Block B2, Phase 1, Gbagada Estate',
-    deliveryCity: 'Gbagada',
-    deliveryState: 'Lagos',
-    deliveryPin: '821302',
-    qrCodeToken: 'QR-TOKEN-GS-0002',
-    status: OrderStatus.SHIPPED,
-    goodPointsUsed: 0,
-    createdAt: '2026-07-10T11:00:00Z',
-    updatedAt: '2026-07-10T14:00:00Z',
-  },
-];
-
-const INITIAL_ESCROWS: Escrow[] = [
-  {
-    id: 1,
-    orderId: 2001,
-    heldAmount: 1350000,
-    isReleased: false,
-    isRefunded: false,
-  },
-  {
-    id: 2,
-    orderId: 2002,
-    heldAmount: 180000,
-    isReleased: false,
-    isRefunded: false,
-  },
-];
-
-const INITIAL_DISPUTES: Dispute[] = [
-  {
-    id: 1,
-    orderId: 2002,
-    orderNumber: 'GS-2026-000002',
-    openedById: 1,
-    openedByName: 'Hamza Ibrahim',
-    reason: 'Sizing mismatch on tailoring parameters. Flowing Agbada outer robe sleeves are tailored 4 inches shorter than typical specifications. Opened for tailoring corrections.',
-    evidenceUrl: 'https://picsum.photos/seed/dispute_evidence/600/400',
-    resolution: 'PENDING',
-    createdAt: '2026-07-11T13:00:00Z',
-  },
-];
-
-const INITIAL_NOTIFICATIONS: Notification[] = [
-  {
-    id: 1,
-    userId: 1,
-    title: 'Escrow Payment Secured',
-    message: 'Your payment for Order GS-2026-000001 (iPhone 15 Pro Max) has been locked in GoodSale Escrow. Your Delivery PIN is: 593842. Only reveal it to the seller upon receiving and inspecting your package!',
-    type: 'ORDER',
-    isRead: false,
-    createdAt: '2026-07-11T10:05:00Z',
-  },
-  {
-    id: 2,
-    userId: 3,
-    title: 'New Escrow Order Received',
-    message: 'Buyer Hamza Ibrahim has paid ₦1,350,000 into Escrow. Please pack and ship "iPhone 15 Pro Max" via GoodSale Delivery Partner.',
-    type: 'ORDER',
-    isRead: false,
-    createdAt: '2026-07-11T10:05:00Z',
-  },
-  {
-    id: 3,
-    userId: 1,
-    title: 'Outbid Alert',
-    message: 'You have been outbid on "MacBook Pro 14" M3". Current highest bid is ₦2,100,000 by sandra_beauty. Increase your bid to win!',
-    type: 'BID',
-    isRead: false,
-    createdAt: '2026-07-11T13:45:00Z',
-  },
-];
-
-const INITIAL_GOODPOINTS: GoodPointsTransaction[] = [
-  { id: 1, userId: 1, points: 100, reason: 'NIN Profile Verification Bonus', createdAt: '2026-07-01T09:00:00Z' },
-  { id: 2, userId: 1, points: 50, reason: 'Referees (Fatima Abubakar) First Successful Sale', createdAt: '2026-07-05T14:05:00Z' },
-  { id: 3, userId: 1, points: 200, reason: 'Earned on High-quality Product Review Submission', createdAt: '2026-07-05T14:00:00Z' },
-];
-
-const INITIAL_REFERRALS: Referral[] = [
-  {
-    id: 1,
-    referrerId: 1,
-    refereeId: 2,
-    refereeName: 'Fatima Abubakar',
-    status: 'FIRST_ORDER_COMPLETED',
-    pointsReward: 150,
-    createdAt: '2026-07-01T09:00:00Z',
-  },
-];
-
-const INITIAL_SAFEMEET_LOCATIONS: SafeMeetLocation[] = [
-  {
-    id: 1,
-    name: 'Ikeja City Mall Public Safe Zone',
-    address: 'Obafemi Awolowo Way, Ikeja, Lagos',
-    lat: 6.5971,
-    lng: 3.3551,
-    photoUrl: 'https://picsum.photos/seed/ikejamall/400/250',
-    openingHours: '09:00 AM - 09:00 PM',
-    safetyRating: 4.9,
-    distanceKm: 2.3,
-    travelTimeMinutes: 12,
-    parkingAvailable: true,
-    accessibility: 'Wheelchair accessible, CCTV monitored, security guard on-site',
-    isFavorite: true
-  },
-  {
-    id: 2,
-    name: 'GoodSale Hub - Wuse II Partner Center',
-    address: 'Adetokunbo Ademola Crescent, Wuse II, Abuja',
-    lat: 9.0772,
-    lng: 7.4789,
-    photoUrl: 'https://picsum.photos/seed/abuja_hub/400/250',
-    openingHours: '08:00 AM - 06:00 PM',
-    safetyRating: 5.0,
-    distanceKm: 4.1,
-    travelTimeMinutes: 15,
-    parkingAvailable: true,
-    accessibility: 'Private parking lot, biometric security, verified locker access'
-  },
-  {
-    id: 3,
-    name: 'Police Station Zone (Wuse Zone 3 Area)',
-    address: 'Herbert Macaulay Way, Wuse Zone 3, Abuja',
-    lat: 9.0664,
-    lng: 7.4646,
-    photoUrl: 'https://picsum.photos/seed/policestation/400/250',
-    openingHours: '24 Hours',
-    safetyRating: 4.8,
-    distanceKm: 1.2,
-    travelTimeMinutes: 5,
-    parkingAvailable: true,
-    accessibility: 'Active police presence, CCTV surveillance, public parking space',
-    isFavorite: false
-  },
-  {
-    id: 4,
-    name: 'Mega Plaza SafeMeet Partner Cafe',
-    address: 'Idowu Martins Street, Victoria Island, Lagos',
-    lat: 6.4294,
-    lng: 3.4215,
-    photoUrl: 'https://picsum.photos/seed/megaplaza/400/250',
-    openingHours: '07:30 AM - 10:00 PM',
-    safetyRating: 4.7,
-    distanceKm: 5.8,
-    travelTimeMinutes: 20,
-    parkingAvailable: true,
-    accessibility: 'Free WiFi, indoor seating, premium security patrol'
-  }
-];
-
-const INITIAL_SAFEMEET_MEETUPS: SafeMeetMeetup[] = [];
-
-const INITIAL_FOLLOWERS: FollowerRelation[] = [];
-
-const INITIAL_BUNDLES: ProductBundle[] = [];
-
-const INITIAL_DELIVERY_PARTNERS: DeliveryPartner[] = [
-  {
-    id: 1,
-    userId: 2, // Fatima (just linking a user for mock relation)
-    fullName: 'Dele Coker',
-    phone: '+2348031112222',
-    email: 'dele.coker@gooddispatch.ng',
-    vehicleType: DeliveryVehicleType.MOTORCYCLE,
-    brand: 'Honda',
-    model: 'CG 125',
-    plateNumber: 'LND-492-AA',
-    color: 'Red',
-    year: 2024,
-    capacity: '15kg Courier Box',
-    photoUrl: 'https://picsum.photos/seed/dele/200',
-    status: 'APPROVED',
-    isAvailable: true,
-    trustScore: 98,
-    rating: 4.9,
-    completedDeliveries: 142,
-    acceptanceRate: 96,
-    activeDeliveriesCount: 0,
-    address: '12 Herbert Macaulay Way',
-    city: 'Yaba',
-    state: 'Lagos',
-    nin: '12345678901',
-    selfieUrl: 'https://picsum.photos/seed/deleselfie/200',
-    createdAt: '2026-07-01T10:00:00Z',
-  },
-  {
-    id: 2,
-    userId: 3, // Chidi
-    fullName: 'Amina Bello',
-    phone: '+2348053334444',
-    email: 'amina.bello@gooddispatch.ng',
-    vehicleType: DeliveryVehicleType.BICYCLE,
-    brand: 'Trek',
-    model: 'FX 2 Disc',
-    plateNumber: 'N/A',
-    color: 'Silver',
-    year: 2025,
-    capacity: '5kg Backpack',
-    photoUrl: 'https://picsum.photos/seed/amina/200',
-    status: 'APPROVED',
-    isAvailable: true,
-    trustScore: 95,
-    rating: 4.8,
-    completedDeliveries: 56,
-    acceptanceRate: 92,
-    activeDeliveriesCount: 0,
-    address: 'Block B, Suite 12, Wuse II',
-    city: 'Wuse',
-    state: 'Abuja',
-    nin: '98765432109',
-    selfieUrl: 'https://picsum.photos/seed/aminaselfie/200',
-    createdAt: '2026-07-02T11:00:00Z',
-  },
-  {
-    id: 3,
-    userId: 1, // Hamza
-    fullName: 'Emeka Obi',
-    phone: '+2348125556666',
-    email: 'emeka.obi@gooddispatch.ng',
-    vehicleType: DeliveryVehicleType.CAR,
-    brand: 'Toyota',
-    model: 'Corolla',
-    plateNumber: 'ABC-123-XY',
-    color: 'Black',
-    year: 2021,
-    capacity: '100kg Trunk',
-    photoUrl: 'https://picsum.photos/seed/emeka/200',
-    status: 'APPROVED',
-    isAvailable: true,
-    trustScore: 100,
-    rating: 4.95,
-    completedDeliveries: 210,
-    acceptanceRate: 98,
-    activeDeliveriesCount: 0,
-    address: '15 Computer Village',
-    city: 'Ikeja',
-    state: 'Lagos',
-    nin: '45678901234',
-    selfieUrl: 'https://picsum.photos/seed/emekaselfie/200',
-    createdAt: '2026-07-03T12:00:00Z',
-  },
-  {
-    id: 4,
-    userId: 4, // Sandra
-    fullName: 'Kelechi Dispatch',
-    phone: '+2349036667777',
-    email: 'kelechi@gooddispatch.ng',
-    vehicleType: DeliveryVehicleType.KEKE,
-    brand: 'TVS',
-    model: 'King',
-    plateNumber: 'IKJ-582-ZZ',
-    color: 'Yellow',
-    year: 2023,
-    capacity: '200kg Cabin',
-    photoUrl: 'https://picsum.photos/seed/keke/200',
-    status: 'APPROVED',
-    isAvailable: true,
-    trustScore: 92,
-    rating: 4.75,
-    completedDeliveries: 95,
-    acceptanceRate: 88,
-    activeDeliveriesCount: 0,
-    address: '22 Allen Avenue',
-    city: 'Ikeja',
-    state: 'Lagos',
-    nin: '56789012345',
-    selfieUrl: 'https://picsum.photos/seed/kekeselfie/200',
-    createdAt: '2026-07-04T09:00:00Z',
-  }
-];
-
-const INITIAL_REVENUE_SETTINGS: RevenueSettings = {
-  escrowPercentageFee: 1.5,
-  escrowMinFee: 100,
-  escrowMaxFee: 15000,
-  deliveryCommissionPercentage: 10,
-  featured3DaysPrice: 2500,
-  featured7DaysPrice: 5000,
-  featured14DaysPrice: 9000,
-  featured30DaysPrice: 18000,
-  subProPrice: 15000,
-  subPremiumPrice: 35000,
-  subEnterprisePrice: 85000,
-  verifiedPlusPrice: 10000,
-  flashSaleFeaturePrice: 7500,
-  auctionSuccessFeePercentage: 2.5,
-  adCpcPrice: 150,
-  goodSaleProtectFee: 1500,
-};
-
-// Unified DB State interface
-export interface GoodSaleDBState {
-  users: User[];
-  profiles: Profile[];
-  businesses: Business[];
-  products: Product[];
-  auctions: Auction[];
-  bids: Bid[];
-  orders: Order[];
-  escrows: Escrow[];
-  disputes: Dispute[];
-  chatRooms: ChatRoom[];
-  messages: Message[];
-  reviews: Review[];
-  verifications: IdentityVerification[];
-  goodPoints: GoodPointsTransaction[];
-  referrals: Referral[];
-  notifications: Notification[];
-  safeMeetLocations: SafeMeetLocation[];
-  safeMeetMeetups: SafeMeetMeetup[];
-  followerRelations: FollowerRelation[];
-  productBundles: ProductBundle[];
-  deliveryPartners: DeliveryPartner[];
-  deliveryJobs: DeliveryJob[];
-  revenueSettings: RevenueSettings;
-  sponsoredAds: SponsoredAd[];
-  featuredListings: FeaturedListing[];
-  wallets: Wallet[];
-  walletTransactions: WalletTransaction[];
-  auditLogs: AuditLog[];
-  businessSubscriptions: BusinessSubscription[];
-  verifiedPlusSubscriptions: VerifiedPlusSubscription[];
-  currentUser: User | null;
-  transactions: PaymentTransaction[];
-  invoices: Invoice[];
-  refunds: Refund[];
-  withdrawalRequests: WithdrawalRequest[];
-  paymentSettings: PaymentSettings;
-  paymentLogs: PaymentLog[];
-}
-
-const STORE_KEY = 'goodsale_relational_database_v1';
 const STORE_CHANGE_EVENT = 'goodsale_db_state_change';
 
-// Global variable for server compatibility
 let dbInstance: GoodSaleDBState | null = null;
+let bootstrapped = false;
+let bootstrapPromise: Promise<void> | null = null;
+let realtimeUnsub: (() => void) | null = null;
+
+function notify() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(STORE_CHANGE_EVENT));
+  }
+}
 
 export function getDBState(): GoodSaleDBState {
-  if (typeof window === 'undefined') {
-    return {
-      users: INITIAL_USERS,
-      profiles: INITIAL_PROFILES,
-      businesses: INITIAL_BUSINESSES,
-      products: INITIAL_PRODUCTS,
-      auctions: INITIAL_AUCTIONS,
-      bids: INITIAL_BIDS,
-      orders: INITIAL_ORDERS,
-      escrows: INITIAL_ESCROWS,
-      disputes: INITIAL_DISPUTES,
-      chatRooms: INITIAL_CHATS,
-      messages: INITIAL_MESSAGES,
-      reviews: INITIAL_REVIEWS,
-      verifications: INITIAL_VERIFICATIONS,
-      goodPoints: INITIAL_GOODPOINTS,
-      referrals: INITIAL_REFERRALS,
-      notifications: INITIAL_NOTIFICATIONS,
-      safeMeetLocations: INITIAL_SAFEMEET_LOCATIONS,
-      safeMeetMeetups: INITIAL_SAFEMEET_MEETUPS,
-      followerRelations: INITIAL_FOLLOWERS,
-      productBundles: INITIAL_BUNDLES,
-      deliveryPartners: INITIAL_DELIVERY_PARTNERS,
-      deliveryJobs: [],
-      revenueSettings: INITIAL_REVENUE_SETTINGS,
-      sponsoredAds: [],
-      featuredListings: [],
-      wallets: [],
-      walletTransactions: [],
-      auditLogs: [],
-      businessSubscriptions: [],
-      verifiedPlusSubscriptions: [],
-      currentUser: null, // Defaults to GUEST/null if empty
-      transactions: [],
-      invoices: [],
-      refunds: [],
-      withdrawalRequests: [],
-      paymentSettings: {
-        enabledMethods: ['escrow', 'cod', 'card', 'bank', 'invoice', 'partial'],
-        codMaxOrderValue: 500000,
-        escrowFeePercentage: 1.5,
-        deliveryCommissionPercentage: 10
-      },
-      paymentLogs: []
-    };
+  if (!dbInstance) {
+    dbInstance = createEmptyState();
   }
-
-  if (dbInstance) return dbInstance;
-
-  try {
-    const raw = localStorage.getItem(STORE_KEY);
-    if (raw) {
-      dbInstance = JSON.parse(raw);
-      // Ensure all core arrays exist to prevent runtime crashes due to older browser local storage states
-      if (!dbInstance!.users) dbInstance!.users = INITIAL_USERS;
-      if (!dbInstance!.profiles) dbInstance!.profiles = INITIAL_PROFILES;
-      if (!dbInstance!.businesses) dbInstance!.businesses = INITIAL_BUSINESSES;
-      if (!dbInstance!.products) dbInstance!.products = INITIAL_PRODUCTS;
-      if (!dbInstance!.auctions) dbInstance!.auctions = INITIAL_AUCTIONS;
-      if (!dbInstance!.bids) dbInstance!.bids = INITIAL_BIDS;
-      if (!dbInstance!.orders) dbInstance!.orders = INITIAL_ORDERS;
-      if (!dbInstance!.escrows) dbInstance!.escrows = INITIAL_ESCROWS;
-      if (!dbInstance!.disputes) dbInstance!.disputes = INITIAL_DISPUTES;
-      if (!dbInstance!.chatRooms) dbInstance!.chatRooms = INITIAL_CHATS;
-      if (!dbInstance!.messages) dbInstance!.messages = INITIAL_MESSAGES;
-      if (!dbInstance!.reviews) dbInstance!.reviews = INITIAL_REVIEWS;
-      if (!dbInstance!.verifications) dbInstance!.verifications = INITIAL_VERIFICATIONS;
-      if (!dbInstance!.goodPoints) dbInstance!.goodPoints = INITIAL_GOODPOINTS;
-      if (!dbInstance!.referrals) dbInstance!.referrals = INITIAL_REFERRALS;
-      if (!dbInstance!.notifications) dbInstance!.notifications = INITIAL_NOTIFICATIONS;
-
-      // Ensure new arrays are initialized in existing stores
-      if (!dbInstance!.safeMeetLocations) dbInstance!.safeMeetLocations = INITIAL_SAFEMEET_LOCATIONS;
-      if (!dbInstance!.safeMeetMeetups) dbInstance!.safeMeetMeetups = [];
-      if (!dbInstance!.followerRelations) dbInstance!.followerRelations = INITIAL_FOLLOWERS;
-      if (!dbInstance!.productBundles) dbInstance!.productBundles = INITIAL_BUNDLES;
-      if (!dbInstance!.deliveryPartners) dbInstance!.deliveryPartners = INITIAL_DELIVERY_PARTNERS;
-      if (!dbInstance!.deliveryJobs) dbInstance!.deliveryJobs = [];
-      if (!dbInstance!.revenueSettings) dbInstance!.revenueSettings = INITIAL_REVENUE_SETTINGS;
-      if (!dbInstance!.sponsoredAds) dbInstance!.sponsoredAds = [];
-      if (!dbInstance!.featuredListings) dbInstance!.featuredListings = [];
-      if (!dbInstance!.wallets) dbInstance!.wallets = [];
-      if (!dbInstance!.walletTransactions) dbInstance!.walletTransactions = [];
-      if (!dbInstance!.auditLogs) dbInstance!.auditLogs = [];
-      if (!dbInstance!.businessSubscriptions) dbInstance!.businessSubscriptions = [];
-      if (!dbInstance!.verifiedPlusSubscriptions) dbInstance!.verifiedPlusSubscriptions = [];
-      if (!dbInstance!.transactions) dbInstance!.transactions = [];
-      if (!dbInstance!.invoices) dbInstance!.invoices = [];
-      if (!dbInstance!.refunds) dbInstance!.refunds = [];
-      if (!dbInstance!.withdrawalRequests) dbInstance!.withdrawalRequests = [];
-      if (!dbInstance!.paymentSettings) dbInstance!.paymentSettings = {
-        enabledMethods: ['escrow', 'cod', 'card', 'bank', 'invoice', 'partial'],
-        codMaxOrderValue: 500000,
-        escrowFeePercentage: 1.5,
-        deliveryCommissionPercentage: 10
-      };
-      if (!dbInstance!.paymentLogs) dbInstance!.paymentLogs = [];
-      // Force logout of mock users on load to satisfy "logout all mock users"
-      if (dbInstance!.currentUser && dbInstance!.currentUser.id <= 4) {
-        dbInstance!.currentUser = null;
-      }
-      // Auto-elevate owner and admin accounts (demo mode only)
-      if (dbInstance!.currentUser && isOwnerAdminEmail(dbInstance!.currentUser.email)) {
-        dbInstance!.currentUser.role = UserRole.SUPER_ADMIN;
-      }
-      dbInstance!.users.forEach(u => {
-        if (isOwnerAdminEmail(u.email)) {
-          u.role = UserRole.SUPER_ADMIN;
-        }
-      });
-      localStorage.setItem(STORE_KEY, JSON.stringify(dbInstance));
-      return dbInstance!;
-    }
-  } catch (e) {
-    console.error('Failed to parse GoodSale local storage DB:', e);
-  }
-
-  // Fallback / Initial load
-  const initial: GoodSaleDBState = {
-    users: INITIAL_USERS,
-    profiles: INITIAL_PROFILES,
-    businesses: INITIAL_BUSINESSES,
-    products: INITIAL_PRODUCTS,
-    auctions: INITIAL_AUCTIONS,
-    bids: INITIAL_BIDS,
-    orders: INITIAL_ORDERS,
-    escrows: INITIAL_ESCROWS,
-    disputes: INITIAL_DISPUTES,
-    chatRooms: INITIAL_CHATS,
-    messages: INITIAL_MESSAGES,
-    reviews: INITIAL_REVIEWS,
-    verifications: INITIAL_VERIFICATIONS,
-    goodPoints: INITIAL_GOODPOINTS,
-    referrals: INITIAL_REFERRALS,
-    notifications: INITIAL_NOTIFICATIONS,
-    safeMeetLocations: INITIAL_SAFEMEET_LOCATIONS,
-    safeMeetMeetups: INITIAL_SAFEMEET_MEETUPS,
-    followerRelations: INITIAL_FOLLOWERS,
-    productBundles: INITIAL_BUNDLES,
-    deliveryPartners: INITIAL_DELIVERY_PARTNERS,
-    deliveryJobs: [],
-    revenueSettings: INITIAL_REVENUE_SETTINGS,
-    sponsoredAds: [],
-    featuredListings: [],
-    wallets: [],
-    walletTransactions: [],
-    auditLogs: [],
-    businessSubscriptions: [],
-    verifiedPlusSubscriptions: [],
-    currentUser: null, // Starts as GUEST/null if empty
-    transactions: [],
-    invoices: [],
-    refunds: [],
-    withdrawalRequests: [],
-    paymentSettings: {
-      enabledMethods: ['escrow', 'cod', 'card', 'bank', 'invoice', 'partial'],
-      codMaxOrderValue: 500000,
-      escrowFeePercentage: 1.5,
-      deliveryCommissionPercentage: 10
-    },
-    paymentLogs: []
-  };
-
-  saveDBState(initial);
-  return dbInstance!;
+  return dbInstance;
 }
 
 export function saveDBState(state: GoodSaleDBState) {
   dbInstance = state;
-  if (typeof window !== 'undefined') {
-    try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(state));
-      window.dispatchEvent(new CustomEvent(STORE_CHANGE_EVENT));
-
-      // Full-state server sync is demo-only (disabled in production by /api/db)
-      if (isDemoMode()) {
-        fetch('/api/db', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ state }),
-        }).catch(err => console.error('Failed to sync state to server database:', err));
-      }
-    } catch (e) {
-      console.error('Failed to save state to localStorage:', e);
-    }
-  }
+  notify();
 }
 
-// Database helper operations supporting full relational workflow
+export async function reloadFromSupabase() {
+  const client = createClient();
+  if (!client) {
+    dbInstance = createEmptyState();
+    notify();
+    return;
+  }
+  const { data: sessionData } = await client.auth.getSession();
+  const authId = sessionData.session?.user?.id ?? null;
+  const next = await loadMarketplaceState(client, authId);
+  // Preserve in-flight currentUser if profile lag after signup
+  if (!next.currentUser && dbInstance?.currentUser) {
+    next.currentUser = dbInstance.currentUser;
+  }
+  dbInstance = next;
+  notify();
+}
+
+export async function bootstrapStore(): Promise<void> {
+  if (bootstrapped) return;
+  if (bootstrapPromise) return bootstrapPromise;
+  bootstrapPromise = (async () => {
+    await reloadFromSupabase();
+    const client = createClient();
+    if (client && !realtimeUnsub) {
+      let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+      realtimeUnsub = subscribeMarketplaceRealtime(client, {
+        onChange: () => {
+          if (reloadTimer) clearTimeout(reloadTimer);
+          reloadTimer = setTimeout(() => {
+            void reloadFromSupabase();
+          }, 300);
+        },
+      });
+      client.auth.onAuthStateChange(async (event) => {
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+          await reloadFromSupabase();
+        }
+        if (event === 'SIGNED_OUT') {
+          const empty = createEmptyState();
+          // Still load public catalog
+          const loaded = await loadMarketplaceState(client, null);
+          loaded.currentUser = null;
+          dbInstance = loaded;
+          notify();
+        }
+      });
+    }
+    bootstrapped = true;
+  })();
+  return bootstrapPromise;
+}
+
+export function isLiveBackendConfigured(): boolean {
+  return isSupabaseConfigured();
+}
+
 export const dbOperations = {
-  // Authentication Actions
-  registerUser(fullName: string, username: string, email: string, phoneNumber: string, role: UserRole, referralCodeUsed?: string) {
-    const state = getDBState();
-    const newId = Math.max(...state.users.map((u) => u.id), 0) + 1;
-    const refCode = `GS-${username.toUpperCase()}-${Math.floor(10 + Math.random() * 90)}`;
+  // Authentication Actions — Supabase Auth (profile created by DB trigger)
+  async registerUser(
+    fullName: string,
+    username: string,
+    email: string,
+    phoneNumber: string,
+    role: UserRole,
+    password: string,
+    referralCodeUsed?: string
+  ) {
+    const client = createClient();
+    if (!client) {
+      throw new Error('Supabase is not configured. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.');
+    }
 
-    const emailLower = email.trim().toLowerCase();
-    const resolvedRole = isOwnerAdminEmail(emailLower)
-      ? UserRole.SUPER_ADMIN
-      : (role || UserRole.BUYER);
+    const { data, error } = await client.auth.signUp({
+      email: email.trim(),
+      password,
+      options: {
+        data: {
+          full_name: fullName,
+          username,
+          phone_number: phoneNumber,
+          role: role || UserRole.BUYER,
+          referral_code_used: referralCodeUsed || null,
+        },
+      },
+    });
+    if (error) throw error;
+    if (!data.user) throw new Error('Registration failed');
 
-    const newUser: User = {
-      id: newId,
-      fullName,
-      username,
-      email,
-      phoneNumber,
-      role: resolvedRole,
-      referralCode: refCode,
-      trustScore: 100,
-      sellerLevel: 'BRONZE',
-      goodPoints: referralCodeUsed ? 100 : 50, // Welcome points
-    };
+    let profile: User | null = null;
+    for (let i = 0; i < 8; i++) {
+      profile = await findProfileByAuthId(client, data.user.id);
+      if (profile) break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
 
-    const newProfile: Profile = {
-      userId: newId,
-      photoUrl: `https://picsum.photos/seed/${username}/200`,
-      coverUrl: `https://picsum.photos/seed/${username}_cover/800/300`,
-      bio: `Proud GoodSale ${newUser.role.toLowerCase()}`,
-      address: '',
-      city: '',
-      state: '',
-      deliveryPreference: 'GOODSALE_PARTNER',
-      pushEnabled: true,
-      emailEnabled: true,
-      smsEnabled: false,
-    };
+    if (profile && role && role !== UserRole.BUYER) {
+      await client.from('profiles').update({ role }).eq('id', profile.id);
+      profile.role = role;
+    }
 
-    state.users.push(newUser);
-    state.profiles.push(newProfile);
-
-    // Track referral if matched
-    if (referralCodeUsed) {
+    if (profile && referralCodeUsed) {
+      const state = getDBState();
       const referrer = state.users.find((u) => u.referralCode === referralCodeUsed);
       if (referrer) {
-        newUser.referredById = referrer.id;
-        const newReferral: Referral = {
-          id: state.referrals.length + 1,
-          referrerId: referrer.id,
-          refereeId: newUser.id,
-          refereeName: newUser.fullName,
+        await client.from('profiles').update({ referred_by_id: referrer.id }).eq('id', profile.id);
+        await client.from('referrals').insert({
+          referrer_id: referrer.id,
+          referee_id: profile.id,
+          referee_name: fullName,
           status: 'REGISTERED',
-          pointsReward: 150,
-          createdAt: new Date().toISOString(),
-        };
-        state.referrals.push(newReferral);
-
-        // Notify referrer
-        state.notifications.push({
-          id: state.notifications.length + 1,
-          userId: referrer.id,
-          title: 'Referral Registered!',
-          message: `${newUser.fullName} registered using your referral code. You will earn 150 GoodPoints as soon as they complete their first successful escrow order!`,
-          type: 'POINTS',
-          isRead: false,
-          createdAt: new Date().toISOString(),
+          points_reward: 150,
         });
       }
     }
 
-    state.currentUser = newUser;
-    saveDBState(state);
-    return newUser;
+    await reloadFromSupabase();
+    const state = getDBState();
+    if (profile) {
+      state.currentUser = profile;
+      saveDBState(state);
+      return profile;
+    }
+    return getDBState().currentUser;
+  },
+
+  async loginWithPassword(emailOrPhone: string, password: string) {
+    const client = createClient();
+    if (!client) {
+      throw new Error('Supabase is not configured. Add credentials to continue.');
+    }
+
+    let email = emailOrPhone.trim();
+    if (!email.includes('@')) {
+      const { data } = await client.from('profiles').select('email').eq('phone_number', email).maybeSingle();
+      if (!data?.email) throw new Error('No account found for that phone number.');
+      email = data.email;
+    }
+
+    const { data, error } = await client.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    if (!data.user) throw new Error('Login failed');
+
+    await reloadFromSupabase();
+    const user = getDBState().currentUser;
+    if (!user) throw new Error('Profile not found. Ensure supabase/schema.sql has been applied.');
+    return user;
   },
 
   loginUser(userId: number) {
     const state = getDBState();
     const user = state.users.find((u) => u.id === userId);
     if (user) {
-      if (isOwnerAdminEmail(user.email)) {
-        user.role = UserRole.SUPER_ADMIN;
-      }
       state.currentUser = user;
-      // Daily Login Points check
-      const lastLoginPoints = state.goodPoints.filter(p => p.userId === userId && p.reason.includes('Daily Login'));
-      const todayString = new Date().toISOString().split('T')[0];
-      const alreadyClaimed = lastLoginPoints.some(p => p.createdAt.startsWith(todayString));
-
-      if (!alreadyClaimed) {
-        user.goodPoints += 10;
-        state.goodPoints.push({
-          id: state.goodPoints.length + 1,
-          userId: user.id,
-          points: 10,
-          reason: 'Daily Login Loyalty Reward',
-          createdAt: new Date().toISOString(),
-        });
-        state.notifications.push({
-          id: state.notifications.length + 1,
-          userId: user.id,
-          title: 'Loyalty Daily Points Claimed!',
-          message: 'You received 10 GoodPoints for your daily login reward! Keep streak active to level up.',
-          type: 'POINTS',
-          isRead: false,
-          createdAt: new Date().toISOString(),
-        });
-      }
-
       saveDBState(state);
     }
   },
 
   loginAsGuest() {
-    if (!isDemoMode()) {
-      console.warn('Guest login is disabled outside demo mode. Use real authentication.');
-      return null;
-    }
-    const state = getDBState();
-    let guestUser = state.users.find(u => u.username === 'guest_trader');
-    if (!guestUser) {
-      const newId = Math.max(...state.users.map((u) => u.id), 0) + 1;
-      const refCode = `GS-GUEST-${Math.floor(100 + Math.random() * 900)}`;
-      guestUser = {
-        id: newId,
-        fullName: 'Guest Trader',
-        username: 'guest_trader',
-        email: 'guest@goodsale.ng',
-        phoneNumber: '+2348000000000',
-        role: UserRole.BUYER,
-        referralCode: refCode,
-        trustScore: 100,
-        sellerLevel: 'BRONZE',
-        goodPoints: 100,
-      };
-
-      const newProfile = {
-        userId: newId,
-        photoUrl: 'https://picsum.photos/seed/guest_avatar/200',
-        coverUrl: 'https://picsum.photos/seed/guest_cover/800/300',
-        bio: 'Proud GoodSale Guest Trader exploring secure escrow deals.',
-        address: '12 Joel Ogunnaike Street, GRA Ikeja',
-        city: 'Ikeja',
-        state: 'Lagos',
-        deliveryPreference: 'GOODSALE_PARTNER',
-        pushEnabled: true,
-        emailEnabled: true,
-        smsEnabled: false,
-      };
-
-      state.users.push(guestUser);
-      state.profiles.push(newProfile);
-    }
-    
-    state.currentUser = guestUser;
-    saveDBState(state);
-    return guestUser;
+    throw new Error('Guest login removed. Please create a real account.');
   },
 
-  logout() {
+  async logout() {
+    const client = createClient();
+    if (client) {
+      await client.auth.signOut();
+    }
     const state = getDBState();
     state.currentUser = null;
     saveDBState(state);
@@ -1831,7 +313,7 @@ export const dbOperations = {
   },
 
   // Products Actions
-  addProduct(
+  async addProduct(
     title: string,
     description: string,
     category: string,
@@ -1919,6 +401,33 @@ export const dbOperations = {
     });
 
     saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      try {
+        const saved = await upsertProduct(client, newProduct);
+        // Replace temp id with DB id
+        const idx = state.products.findIndex((x) => x.id === newProduct.id);
+        if (idx >= 0) state.products[idx] = { ...newProduct, id: saved.id };
+        if (isAuction) {
+          const auc = state.auctions.find((a) => a.productId === newProduct.id);
+          if (auc) {
+            auc.productId = saved.id;
+            await client.from('auctions').insert({
+              product_id: saved.id,
+              starting_bid: auc.startingBid,
+              reserve_price: auc.reservePrice,
+              ends_at: auc.endsAt,
+              is_active: true,
+            });
+          }
+        }
+        saveDBState(state);
+        return { ...newProduct, id: saved.id };
+      } catch (err) {
+        console.error('Failed to persist product:', err);
+      }
+    }
     return newProduct;
   },
 
@@ -1970,7 +479,7 @@ export const dbOperations = {
   },
 
   // Escrow Orders
-  placeOrder(
+  async placeOrder(
     productId: number, 
     deliveryAddress: string, 
     deliveryCity: string, 
@@ -2237,6 +746,34 @@ export const dbOperations = {
     });
 
     saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      try {
+        const saved = await insertOrderWithEscrow(client, newOrder, totalAmount);
+        const oi = state.orders.findIndex((o) => o.id === newOrder.id);
+        if (oi >= 0) state.orders[oi] = { ...newOrder, id: saved.id };
+        const ei = state.escrows.findIndex((e) => e.orderId === newOrder.id);
+        if (ei >= 0) state.escrows[ei].orderId = saved.id;
+        if (deliveryMethod === 'GOODSALE_PARTNER') {
+          await client.from('delivery_jobs').insert({
+            order_id: saved.id,
+            status: 'PENDING',
+            service_type: serviceType,
+            delivery_fee: deliveryFee,
+            platform_commission: Math.round(deliveryFee * ((state.revenueSettings?.deliveryCommissionPercentage || 10) / 100)),
+            courier_earnings: deliveryFee - Math.round(deliveryFee * ((state.revenueSettings?.deliveryCommissionPercentage || 10) / 100)),
+            pin: deliveryPin,
+            tracking_history: [{ status: 'PENDING', time: new Date().toISOString(), note: 'Awaiting courier' }],
+          });
+        }
+        saveDBState(state);
+        void reloadFromSupabase();
+        return { ...newOrder, id: saved.id };
+      } catch (err) {
+        console.error('Failed to persist order:', err);
+      }
+    }
     return newOrder;
   },
 
@@ -2597,15 +1134,42 @@ export const dbOperations = {
   },
 
   // Chat/Messages flow
-  sendMessage(roomId: number, text?: string, imgUrl?: string, videoUrl?: string, receiptDetails?: any, productDetails?: any) {
+  async sendMessage(roomId: number, text?: string, imgUrl?: string, videoUrl?: string, receiptDetails?: any, productDetails?: any) {
     const state = getDBState();
     if (!state.currentUser) return;
 
     const room = state.chatRooms.find((r) => r.id === roomId);
     if (!room) return;
 
+    const client = createClient();
+    if (client) {
+      try {
+        const saved = await insertMessage(client, {
+          roomId,
+          senderId: state.currentUser.id,
+          messageText: text,
+          imageUrl: imgUrl,
+          videoUrl,
+          receiptDetails,
+          productDetails,
+        });
+        state.messages.push(saved);
+        const preview = text || (imgUrl ? 'Sent an image' : videoUrl ? 'Sent a video' : 'Sent an attachment');
+        room.lastMessage = preview;
+        room.lastMessageTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        await client.from('chat_rooms').update({
+          last_message: preview,
+          last_message_time: new Date().toISOString(),
+        }).eq('id', roomId);
+        saveDBState(state);
+        return saved;
+      } catch (err) {
+        console.error('Failed to send message:', err);
+      }
+    }
+
     const newMsg: Message = {
-      id: state.messages.length + 1,
+      id: Math.max(...state.messages.map((m) => m.id), 0) + 1,
       roomId,
       senderId: state.currentUser.id,
       messageText: text,
@@ -2615,15 +1179,13 @@ export const dbOperations = {
       productDetails,
       createdAt: new Date().toISOString(),
     };
-
     state.messages.push(newMsg);
-    room.lastMessage = text || (imgUrl ? '📷 Sent an image' : videoUrl ? '🎥 Sent a video' : receiptDetails ? '🧾 Sent a receipt' : productDetails ? '📦 Shared a product preview' : 'Sent a attachment');
+    room.lastMessage = text || 'Sent an attachment';
     room.lastMessageTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
     saveDBState(state);
   },
 
-  getOrCreateChatRoom(productId: number) {
+  async getOrCreateChatRoom(productId: number) {
     const state = getDBState();
     if (!state.currentUser) return null;
 
@@ -2656,6 +1218,29 @@ export const dbOperations = {
         lastMessageTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       state.chatRooms.unshift(room);
+
+      const client = createClient();
+      if (client) {
+        try {
+          const { data, error } = await client.from('chat_rooms').insert({
+            buyer_id: room.buyerId,
+            seller_id: room.sellerId,
+            product_id: room.productId,
+            product_title: room.productTitle,
+            product_price: room.productPrice,
+            product_image: room.productImage,
+            seller_name: room.sellerName,
+            buyer_name: room.buyerName,
+            last_message: 'Chat started',
+            last_message_time: new Date().toISOString(),
+          }).select('*').single();
+          if (!error && data) {
+            room.id = Number(data.id);
+          }
+        } catch (err) {
+          console.error('Failed to create chat room:', err);
+        }
+      }
 
       // Add a welcoming automated first message
       state.messages.push({
@@ -4038,81 +2623,20 @@ export const dbOperations = {
   },
 };
 
+
 export function useDBState(): GoodSaleDBState {
-  const [db, setDb] = useState<GoodSaleDBState>(() => {
-    return {
-      users: INITIAL_USERS,
-      profiles: INITIAL_PROFILES,
-      businesses: INITIAL_BUSINESSES,
-      products: INITIAL_PRODUCTS,
-      auctions: INITIAL_AUCTIONS,
-      bids: INITIAL_BIDS,
-      orders: INITIAL_ORDERS,
-      escrows: INITIAL_ESCROWS,
-      disputes: INITIAL_DISPUTES,
-      chatRooms: INITIAL_CHATS,
-      messages: INITIAL_MESSAGES,
-      reviews: INITIAL_REVIEWS,
-      verifications: INITIAL_VERIFICATIONS,
-      goodPoints: INITIAL_GOODPOINTS,
-      referrals: INITIAL_REFERRALS,
-      notifications: INITIAL_NOTIFICATIONS,
-      safeMeetLocations: INITIAL_SAFEMEET_LOCATIONS,
-      safeMeetMeetups: INITIAL_SAFEMEET_MEETUPS,
-      followerRelations: INITIAL_FOLLOWERS,
-      productBundles: INITIAL_BUNDLES,
-      deliveryPartners: INITIAL_DELIVERY_PARTNERS || [],
-      deliveryJobs: [],
-      revenueSettings: INITIAL_REVENUE_SETTINGS,
-      sponsoredAds: [],
-      featuredListings: [],
-      wallets: [],
-      walletTransactions: [],
-      auditLogs: [],
-      businessSubscriptions: [],
-      verifiedPlusSubscriptions: [],
-      currentUser: null,
-      transactions: [],
-      invoices: [],
-      refunds: [],
-      withdrawalRequests: [],
-      paymentSettings: {
-        enabledMethods: ['escrow', 'cod', 'card', 'bank', 'invoice', 'partial'],
-        codMaxOrderValue: 500000,
-        escrowFeePercentage: 1.5,
-        deliveryCommissionPercentage: 10
-      },
-      paymentLogs: []
-    };
-  });
+  const [db, setDb] = useState<GoodSaleDBState>(() => getDBState());
+  const ready = useRef(false);
 
   useEffect(() => {
-    setDb(getDBState());
-
-    // Pull from durable server database on load (demo mode only)
-    if (isDemoMode()) {
-      fetch('/api/db')
-        .then(res => res.json())
-        .then(data => {
-          if (data.success && data.state) {
-            const localState = getDBState();
-            const mergedState = {
-              ...data.state,
-              currentUser: localState.currentUser // Preserve current local user session
-            };
-            saveDBState(mergedState);
-          }
-        })
-        .catch(err => console.error('Failed to pull server database state:', err));
-    }
-
-    const handleStateChange = () => {
-      setDb(getDBState());
-    };
-    window.addEventListener('goodsale_db_state_change', handleStateChange);
-    return () => window.removeEventListener('goodsale_db_state_change', handleStateChange);
+    void bootstrapStore().then(() => {
+      ready.current = true;
+      setDb({ ...getDBState() });
+    });
+    const handleStateChange = () => setDb({ ...getDBState() });
+    window.addEventListener(STORE_CHANGE_EVENT, handleStateChange);
+    return () => window.removeEventListener(STORE_CHANGE_EVENT, handleStateChange);
   }, []);
 
   return db;
 }
-

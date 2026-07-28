@@ -1,0 +1,70 @@
+import type { GoodSaleDBState, RevenueSettings, PaymentSettings } from '@/lib/types';
+
+export const DEFAULT_REVENUE_SETTINGS: RevenueSettings = {
+  escrowPercentageFee: 1.5,
+  escrowMinFee: 100,
+  escrowMaxFee: 15000,
+  deliveryCommissionPercentage: 10,
+  featured3DaysPrice: 2500,
+  featured7DaysPrice: 5000,
+  featured14DaysPrice: 9000,
+  featured30DaysPrice: 18000,
+  subProPrice: 15000,
+  subPremiumPrice: 35000,
+  subEnterprisePrice: 85000,
+  verifiedPlusPrice: 10000,
+  flashSaleFeaturePrice: 7500,
+  auctionSuccessFeePercentage: 2.5,
+  adCpcPrice: 150,
+  goodSaleProtectFee: 1500,
+};
+
+export const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
+  enabledMethods: ['escrow', 'cod', 'card', 'bank', 'invoice', 'partial'],
+  codMaxOrderValue: 500000,
+  escrowFeePercentage: 1.5,
+  deliveryCommissionPercentage: 10,
+};
+
+/** Empty marketplace state — no mock users, products, or orders. */
+export function createEmptyState(): GoodSaleDBState {
+  return {
+    users: [],
+    profiles: [],
+    businesses: [],
+    products: [],
+    auctions: [],
+    bids: [],
+    orders: [],
+    escrows: [],
+    disputes: [],
+    chatRooms: [],
+    messages: [],
+    reviews: [],
+    verifications: [],
+    goodPoints: [],
+    referrals: [],
+    notifications: [],
+    safeMeetLocations: [],
+    safeMeetMeetups: [],
+    followerRelations: [],
+    productBundles: [],
+    deliveryPartners: [],
+    deliveryJobs: [],
+    revenueSettings: { ...DEFAULT_REVENUE_SETTINGS },
+    sponsoredAds: [],
+    featuredListings: [],
+    wallets: [],
+    walletTransactions: [],
+    auditLogs: [],
+    businessSubscriptions: [],
+    verifiedPlusSubscriptions: [],
+    currentUser: null,
+    transactions: [],
+    invoices: [],
+    refunds: [],
+    withdrawalRequests: [],
+    paymentSettings: { ...DEFAULT_PAYMENT_SETTINGS },
+    paymentLogs: [],
+  };
+}
