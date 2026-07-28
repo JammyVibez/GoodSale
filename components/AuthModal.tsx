@@ -8,6 +8,7 @@ import {
   MapPin, Globe, Languages, Camera, RefreshCw, Lock, AlertTriangle, Cpu
 } from 'lucide-react';
 import { useDBState, dbOperations, UserRole, getDBState, saveDBState } from '../lib/store';
+import { isDemoMode } from '@/lib/demo';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -185,7 +186,12 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
         return;
       }
 
-      // Check password (standard fallback password simulation 'password123' if registered before, or actual matched password)
+      // Check password (demo client-side auth — replace with Supabase Auth in production)
+      if (!isDemoMode()) {
+        setErrorMsg('Client-side password auth is disabled in production. Connect Supabase Auth before going live.');
+        setIsSubmitting(false);
+        return;
+      }
       const userPwd = (matchedUser as any).password || 'password123';
       if (loginPassword !== userPwd) {
         setErrorMsg('Incorrect secure password. Please try again.');
@@ -661,7 +667,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                 <div className="flex-grow border-t border-gray-150 dark:border-slate-800"></div>
               </div>
 
-              {/* Guest Quick Login Button */}
+              {/* Guest Quick Login Button (demo mode only) */}
+              {isDemoMode() && (
               <button
                 type="button"
                 onClick={() => {
@@ -673,6 +680,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                 <span>🚀</span>
                 <span>Hop in as Guest (One-Click)</span>
               </button>
+              )}
 
               {/* JWT Session Manager Panel */}
               <div className="bg-slate-50 dark:bg-slate-950 rounded-2xl p-4 border border-gray-150 dark:border-slate-850 space-y-3">

@@ -2,6 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { isDemoMode, isOwnerAdminEmail } from '@/lib/demo';
 
 // Standard Enums
 export enum UserRole {
@@ -1513,16 +1514,12 @@ export function getDBState(): GoodSaleDBState {
       if (dbInstance!.currentUser && dbInstance!.currentUser.id <= 4) {
         dbInstance!.currentUser = null;
       }
-      // Auto-elevate owner and admin accounts
-      if (dbInstance!.currentUser) {
-        const emailLower = dbInstance!.currentUser.email.toLowerCase();
-        if (emailLower === 'lightingstar79@gmail.com' || emailLower === 'admin@goodsale.ng') {
-          dbInstance!.currentUser.role = UserRole.SUPER_ADMIN;
-        }
+      // Auto-elevate owner and admin accounts (demo mode only)
+      if (dbInstance!.currentUser && isOwnerAdminEmail(dbInstance!.currentUser.email)) {
+        dbInstance!.currentUser.role = UserRole.SUPER_ADMIN;
       }
       dbInstance!.users.forEach(u => {
-        const emailLower = u.email.toLowerCase();
-        if (emailLower === 'lightingstar79@gmail.com' || emailLower === 'admin@goodsale.ng') {
+        if (isOwnerAdminEmail(u.email)) {
           u.role = UserRole.SUPER_ADMIN;
         }
       });
@@ -1590,12 +1587,14 @@ export function saveDBState(state: GoodSaleDBState) {
       localStorage.setItem(STORE_KEY, JSON.stringify(state));
       window.dispatchEvent(new CustomEvent(STORE_CHANGE_EVENT));
 
-      // Sync to standard durable server database
-      fetch('/api/db', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ state }),
-      }).catch(err => console.error('Failed to sync state to server database:', err));
+      // Full-state server sync is demo-only (disabled in production by /api/db)
+      if (isDemoMode()) {
+        fetch('/api/db', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ state }),
+        }).catch(err => console.error('Failed to sync state to server database:', err));
+      }
     } catch (e) {
       console.error('Failed to save state to localStorage:', e);
     }
@@ -1611,7 +1610,7 @@ export const dbOperations = {
     const refCode = `GS-${username.toUpperCase()}-${Math.floor(10 + Math.random() * 90)}`;
 
     const emailLower = email.trim().toLowerCase();
-    const resolvedRole = (emailLower === 'lightingstar79@gmail.com' || emailLower === 'admin@goodsale.ng')
+    const resolvedRole = isOwnerAdminEmail(emailLower)
       ? UserRole.SUPER_ADMIN
       : (role || UserRole.BUYER);
 
@@ -1683,8 +1682,7 @@ export const dbOperations = {
     const state = getDBState();
     const user = state.users.find((u) => u.id === userId);
     if (user) {
-      const emailLower = user.email.toLowerCase();
-      if (emailLower === 'lightingstar79@gmail.com' || emailLower === 'admin@goodsale.ng') {
+      if (isOwnerAdminEmail(user.email)) {
         user.role = UserRole.SUPER_ADMIN;
       }
       state.currentUser = user;
@@ -1718,6 +1716,10 @@ export const dbOperations = {
   },
 
   loginAsGuest() {
+    if (!isDemoMode()) {
+      console.warn('Guest login is disabled outside demo mode. Use real authentication.');
+      return null;
+    }
     const state = getDBState();
     let guestUser = state.users.find(u => u.username === 'guest_trader');
     if (!guestUser) {
@@ -2497,6 +2499,10 @@ export const dbOperations = {
   },
 
   verifyUserImmediately(userId: number, role: UserRole) {
+    if (!isDemoMode()) {
+      console.warn('Instant verification is disabled outside demo mode. Await admin review.');
+      return;
+    }
     const state = getDBState();
     const user = state.users.find(u => u.id === userId);
     if (user) {
@@ -4083,20 +4089,22 @@ export function useDBState(): GoodSaleDBState {
   useEffect(() => {
     setDb(getDBState());
 
-    // Pull from standard durable server database on load
-    fetch('/api/db')
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && data.state) {
-          const localState = getDBState();
-          const mergedState = {
-            ...data.state,
-            currentUser: localState.currentUser // Preserve current local user session
-          };
-          saveDBState(mergedState);
-        }
-      })
-      .catch(err => console.error('Failed to pull server database state:', err));
+    // Pull from durable server database on load (demo mode only)
+    if (isDemoMode()) {
+      fetch('/api/db')
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && data.state) {
+            const localState = getDBState();
+            const mergedState = {
+              ...data.state,
+              currentUser: localState.currentUser // Preserve current local user session
+            };
+            saveDBState(mergedState);
+          }
+        })
+        .catch(err => console.error('Failed to pull server database state:', err));
+    }
 
     const handleStateChange = () => {
       setDb(getDBState());

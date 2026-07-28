@@ -1,5 +1,21 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextRequest, NextResponse } from "next/server";
+import { logger, publicErrorMessage } from "@/lib/logger";
+import { rateLimit, clientIpFromRequest } from "@/lib/rate-limit";
+
+const MAX_QUERY_LEN = 500;
+const MAX_TEXT_LEN = 4000;
+const ALLOWED_ACTIONS = new Set([
+  "recommend",
+  "barcode",
+  "moderate",
+  "analyze_metrics",
+  "security_tip",
+]);
+
+function clip(value: unknown, max: number): string {
+  return String(value ?? "").slice(0, max);
+}
 
 // Initialize Gemini client lazily to avoid startup crashes if key is missing
 let aiClient: GoogleGenAI | null = null;
@@ -190,18 +206,31 @@ function getHeuristicModeration(title: string, description: string, price: numbe
 
 export async function POST(req: NextRequest) {
   try {
+    const ip = clientIpFromRequest(req);
+    const limited = rateLimit(`ai:${ip}`, 30, 60_000);
+    if (!limited.allowed) {
+      return NextResponse.json(
+        { success: false, error: "Too many AI requests. Please slow down." },
+        { status: 429, headers: { "Retry-After": String(Math.ceil(limited.retryAfterMs / 1000)) } }
+      );
+    }
+
     const body = await req.json();
     const { action, payload } = body;
 
-    if (!action || !payload) {
+    if (!action || !payload || typeof payload !== "object") {
       return NextResponse.json({ success: false, error: "Missing action or payload parameters" }, { status: 400 });
+    }
+
+    if (!ALLOWED_ACTIONS.has(action)) {
+      return NextResponse.json({ success: false, error: `Action ${action} not recognized.` }, { status: 400 });
     }
 
     const client = getAiClient();
 
     // ACTION 1: SEARCH RECOMMENDATION TIPS
     if (action === "recommend") {
-      const query = payload.query || "";
+      const query = clip(payload.query, MAX_QUERY_LEN);
       if (!client) {
         return NextResponse.json({
           success: true,
@@ -252,7 +281,7 @@ Deliver a highly tailored response containing:
 
     // ACTION 2: BARCODE AUTOFILL LOOKUP
     if (action === "barcode") {
-      const barcode = payload.barcode || "";
+      const barcode = clip(payload.barcode, 64);
       if (!client) {
         return NextResponse.json({
           success: true,
@@ -314,10 +343,10 @@ If the barcode is unfamiliar, make up a realistic product of high quality fittin
 
     // ACTION 3: AI SAFETY MODERATION
     if (action === "moderate") {
-      const title = payload.title || "";
-      const description = payload.description || "";
+      const title = clip(payload.title, MAX_QUERY_LEN);
+      const description = clip(payload.description, MAX_TEXT_LEN);
       const price = Number(payload.price) || 0;
-      const condition = payload.condition || "NEW";
+      const condition = clip(payload.condition || "NEW", 32);
 
       if (!client) {
         return NextResponse.json({
@@ -444,8 +473,8 @@ Evaluate their conversion stats and provide a highly motivating, strategic growt
 
     // ACTION 5: CONTEXT-AWARE SECURITY TIP
     if (action === "security_tip") {
-      const category = payload.category || "";
-      const title = payload.title || "";
+      const category = clip(payload.category, MAX_QUERY_LEN);
+      const title = clip(payload.title, MAX_QUERY_LEN);
 
       if (!client) {
         return NextResponse.json({
@@ -504,8 +533,11 @@ Provide a safety tip JSON with:
 
     return NextResponse.json({ success: false, error: `Action ${action} not recognized.` }, { status: 400 });
 
-  } catch (err: any) {
-    console.error("Failed to process AI endpoint request:", err);
-    return NextResponse.json({ success: false, error: err.message || "Internal Server Error" }, { status: 500 });
+  } catch (err: unknown) {
+    logger.error("Failed to process AI endpoint request", { error: String(err) });
+    return NextResponse.json(
+      { success: false, error: publicErrorMessage(err) },
+      { status: 500 }
+    );
   }
 }

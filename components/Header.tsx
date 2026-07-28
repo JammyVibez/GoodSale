@@ -8,6 +8,7 @@ import {
   Menu, X, Gavel, Package, Eye, EyeOff, Trash, Zap, MessageSquare, Truck, DollarSign
 } from 'lucide-react';
 import { User, UserRole, getDBState, saveDBState, dbOperations, useDBState } from '../lib/store';
+import { isDemoMode, isOwnerAdminEmail } from '@/lib/demo';
 import Logo from './LogoIcon';
 
 interface HeaderProps {
@@ -651,6 +652,7 @@ export default function Header({
                     <Sparkles className="w-3.5 h-3.5" />
                     <span>Sign Up</span>
                   </button>
+                  {isDemoMode() && (
                   <button
                     id="auth-guest-btn"
                     onClick={() => {
@@ -662,6 +664,7 @@ export default function Header({
                     🚀
                     <span>Hop as Guest</span>
                   </button>
+                  )}
                 </div>
               ) : (
                 <button
@@ -750,8 +753,7 @@ export default function Header({
               {user && (
                 user.role === UserRole.ADMIN || 
                 user.role === UserRole.SUPER_ADMIN || 
-                user.email.toLowerCase() === 'lightingstar79@gmail.com' || 
-                user.email.toLowerCase() === 'admin@goodsale.ng'
+                isOwnerAdminEmail(user.email)
               ) && (
                 <button 
                   onClick={() => onNavigate('admin')}

@@ -1,138 +1,164 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import fs from "fs";
-import path from "path";
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import fs from 'fs';
+import path from 'path';
+import { isDemoMode } from '@/lib/env';
+import { logger, publicErrorMessage } from '@/lib/logger';
+import { rateLimit, clientIpFromRequest } from '@/lib/rate-limit';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabaseUrl, supabaseAnonKey) : null;
+const ALLOWED_MIME = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'application/pdf',
+]);
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseServiceKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabase =
+  supabaseUrl && supabaseServiceKey ? createClient(supabaseUrl, supabaseServiceKey) : null;
+
+function sanitizeUserId(raw: string): string {
+  return raw.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64) || 'unknown';
+}
+
+function extensionFor(file: File): string {
+  const fromName = file.name.split('.').pop()?.toLowerCase();
+  if (fromName && ['jpg', 'jpeg', 'png', 'webp', 'pdf'].includes(fromName)) {
+    return fromName === 'jpeg' ? 'jpg' : fromName;
+  }
+  if (file.type === 'image/png') return 'png';
+  if (file.type === 'image/webp') return 'webp';
+  if (file.type === 'application/pdf') return 'pdf';
+  return 'jpg';
+}
 
 export async function POST(req: NextRequest) {
   try {
+    const ip = clientIpFromRequest(req);
+    const limited = rateLimit(`upload-id:${ip}`, 10, 60_000);
+    if (!limited.allowed) {
+      return NextResponse.json(
+        { success: false, error: 'Too many upload attempts. Please try again later.' },
+        { status: 429, headers: { 'Retry-After': String(Math.ceil(limited.retryAfterMs / 1000)) } }
+      );
+    }
+
+    // Production requires Supabase private storage — no public FS / base64 fallbacks
+    if (!isDemoMode() && !supabase) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Identity document uploads require configured Supabase storage in production.',
+        },
+        { status: 503 }
+      );
+    }
+
     const formData = await req.formData();
-    const file = formData.get("file") as File | null;
-    const userId = formData.get("userId")?.toString() || "unknown";
+    const file = formData.get('file') as File | null;
+    const userId = sanitizeUserId(formData.get('userId')?.toString() || 'unknown');
 
     if (!file) {
-      return NextResponse.json({ success: false, error: "No file provided" }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'No file provided' }, { status: 400 });
+    }
+
+    if (!ALLOWED_MIME.has(file.type)) {
+      return NextResponse.json(
+        { success: false, error: 'Unsupported file type. Upload JPEG, PNG, WebP, or PDF.' },
+        { status: 415 }
+      );
+    }
+
+    if (file.size <= 0 || file.size > MAX_UPLOAD_BYTES) {
+      return NextResponse.json(
+        { success: false, error: 'File must be between 1 byte and 5 MB.' },
+        { status: 413 }
+      );
     }
 
     const fileBuffer = Buffer.from(await file.arrayBuffer());
-    const fileExtension = file.name.split(".").pop() || "png";
+    const fileExtension = extensionFor(file);
     const fileName = `gov_id_${userId}_${Date.now()}.${fileExtension}`;
 
-    let uploadedUrl = "";
-    let uploadSource = "none";
+    let uploadedUrl = '';
+    let uploadSource = 'none';
 
-    // 1. Try uploading to Supabase Storage if configured
     if (supabase) {
       try {
-        // Try uploading to "government-ids" bucket first
-        let { data, error } = await supabase.storage
-          .from("government-ids")
-          .upload(fileName, fileBuffer, {
-            contentType: file.type,
-            upsert: true
-          });
+        const bucket = 'government-ids';
+        const { error } = await supabase.storage.from(bucket).upload(fileName, fileBuffer, {
+          contentType: file.type,
+          upsert: false,
+        });
 
-        // Self-healing: try creating "government-ids" bucket if missing
-        if (error && (error.message?.includes("not found") || error.message?.includes("Bucket"))) {
-          try {
-            console.log("[Self-Healing] Attempting to auto-create 'government-ids' bucket...");
-            const { error: createError } = await supabase.storage.createBucket("government-ids", { public: true });
-            if (!createError) {
-              const retryRes = await supabase.storage
-                .from("government-ids")
-                .upload(fileName, fileBuffer, {
-                  contentType: file.type,
-                  upsert: true
-                });
-              data = retryRes.data;
-              error = retryRes.error;
-            }
-          } catch (bucketCreateErr: any) {
-            console.warn("[Self-Healing] Could not auto-create government-ids bucket:", bucketCreateErr.message);
-          }
-        }
+        if (!error) {
+          // Prefer signed URLs (private bucket). Fall back to public URL only in demo mode.
+          const { data: signed, error: signError } = await supabase.storage
+            .from(bucket)
+            .createSignedUrl(fileName, 60 * 60);
 
-        if (!error && data) {
-          const { data: publicUrlData } = supabase.storage
-            .from("government-ids")
-            .getPublicUrl(fileName);
-          uploadedUrl = publicUrlData.publicUrl;
-          uploadSource = "supabase-storage";
-        } else {
-          // Fallback to "goodsale-data" bucket
-          let { data: data2, error: error2 } = await supabase.storage
-            .from("goodsale-data")
-            .upload(`uploads/${fileName}`, fileBuffer, {
-              contentType: file.type,
-              upsert: true
-            });
-
-          // Self-healing: try creating "goodsale-data" bucket if missing
-          if (error2 && (error2.message?.includes("not found") || error2.message?.includes("Bucket"))) {
-            try {
-              console.log("[Self-Healing] Attempting to auto-create 'goodsale-data' bucket during ID upload fallback...");
-              const { error: createError } = await supabase.storage.createBucket("goodsale-data", { public: true });
-              if (!createError) {
-                const retryRes2 = await supabase.storage
-                  .from("goodsale-data")
-                  .upload(`uploads/${fileName}`, fileBuffer, {
-                    contentType: file.type,
-                    upsert: true
-                  });
-                data2 = retryRes2.data;
-                error2 = retryRes2.error;
-              }
-            } catch (bucketCreateErr: any) {
-              console.warn("[Self-Healing] Could not auto-create fallback goodsale-data bucket:", bucketCreateErr.message);
-            }
-          }
-
-          if (!error2 && data2) {
-            const { data: publicUrlData } = supabase.storage
-              .from("goodsale-data")
-              .getPublicUrl(`uploads/${fileName}`);
+          if (!signError && signed?.signedUrl) {
+            uploadedUrl = signed.signedUrl;
+            uploadSource = 'supabase-signed';
+          } else if (isDemoMode()) {
+            const { data: publicUrlData } = supabase.storage.from(bucket).getPublicUrl(fileName);
             uploadedUrl = publicUrlData.publicUrl;
-            uploadSource = "supabase-storage-fallback";
+            uploadSource = 'supabase-public-demo';
           } else {
-            console.warn("[Diagnostic] Supabase storage upload failed, using local fallback:", error || error2);
+            logger.warn('Could not create signed URL for ID upload', {
+              message: signError?.message,
+            });
           }
+        } else {
+          logger.warn('Supabase ID upload failed', { message: error.message });
         }
-      } catch (err: any) {
-        console.warn("[Diagnostic] Supabase storage upload exception, using local fallback:", err.message);
+      } catch (err) {
+        logger.warn('Supabase storage upload exception', { error: String(err) });
       }
     }
 
-    // 2. If Supabase is not configured or failed, save to public local uploads as backup
-    if (!uploadedUrl) {
+    // Local / base64 fallbacks are demo-only — never store government IDs in /public in production
+    if (!uploadedUrl && isDemoMode()) {
       try {
-        const publicUploadsDir = path.join(process.cwd(), "public", "uploads");
+        const publicUploadsDir = path.join(process.cwd(), 'public', 'uploads');
         if (!fs.existsSync(publicUploadsDir)) {
           fs.mkdirSync(publicUploadsDir, { recursive: true });
         }
         const localPath = path.join(publicUploadsDir, fileName);
         await fs.promises.writeFile(localPath, fileBuffer);
         uploadedUrl = `/uploads/${fileName}`;
-        uploadSource = "local-file-system";
+        uploadSource = 'local-file-system-demo';
       } catch (fsError) {
-        // Ultimate fallback to data URL base64 representation
-        console.warn("Local FS write failed, falling back to base64 Data URL:", fsError);
-        const base64Data = fileBuffer.toString("base64");
-        uploadedUrl = `data:${file.type};base64,${base64Data}`;
-        uploadSource = "base64-fallback";
+        logger.warn('Local FS write failed, using base64 demo fallback', {
+          error: String(fsError),
+        });
+        uploadedUrl = `data:${file.type};base64,${fileBuffer.toString('base64')}`;
+        uploadSource = 'base64-fallback-demo';
       }
+    }
+
+    if (!uploadedUrl) {
+      return NextResponse.json(
+        { success: false, error: 'Upload failed. Configure private Supabase storage.' },
+        { status: 502 }
+      );
     }
 
     return NextResponse.json({
       success: true,
       url: uploadedUrl,
       source: uploadSource,
-      fileName
+      fileName,
+      pendingReview: !isDemoMode(),
     });
-  } catch (error: any) {
-    console.error("Error in upload-id route:", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error) {
+    logger.error('Error in upload-id route', { error: String(error) });
+    return NextResponse.json(
+      { success: false, error: publicErrorMessage(error, 'Upload failed') },
+      { status: 500 }
+    );
   }
 }
