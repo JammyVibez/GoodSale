@@ -15,6 +15,19 @@ import {
   updatePartnerLocation,
   upsertDeliveryPartner,
 } from '@/lib/data/sync';
+import {
+  withClient,
+  insertBid,
+  insertReview,
+  upsertSafeMeetMeetup,
+  updateSafeMeetMeetup,
+  insertSponsoredAd,
+  insertBundle,
+  upsertRevenueSettings,
+  upsertPaymentSettings,
+  insertNotification,
+  insertFeaturedListing,
+} from '@/lib/data/persist';
 import { resolveCityCoords, bestCoords } from '@/lib/geo';
 import { isDemoMode, isOwnerAdminEmail } from '@/lib/demo';
 import type { GoodSaleDBState, User, Product, Order, Message } from '@/lib/types';
@@ -496,17 +509,35 @@ export const dbOperations = {
     });
 
     saveDBState(state);
+
+    withClient(async (client) => {
+      await insertBid(client, {
+        auctionId,
+        userId: state.currentUser!.id,
+        amount,
+      });
+      for (const bidderId of uniqueBidders) {
+        await insertNotification(client, {
+          userId: bidderId,
+          title: 'You’ve been outbid!',
+          message: `Another bidder placed ₦${amount.toLocaleString()} on ${product.title}.`,
+          type: 'BID',
+        });
+      }
+      await reloadFromSupabase();
+    });
+
     return { success: true };
   },
 
   // Escrow Orders
   async placeOrder(
-    productId: number, 
-    deliveryAddress: string, 
-    deliveryCity: string, 
-    deliveryState: string, 
-    paymentMethod: string, 
-    deliveryMethod: string, 
+    productId: number,
+    deliveryAddress: string,
+    deliveryCity: string,
+    deliveryState: string,
+    paymentMethod: string,
+    deliveryMethod: string,
     usePoints: boolean = false,
     selectedPartnerId?: number,
     serviceType: 'ECONOMY' | 'STANDARD' | 'EXPRESS' = 'STANDARD',
@@ -1302,6 +1333,17 @@ export const dbOperations = {
     });
 
     saveDBState(state);
+
+    withClient(async (client) => {
+      await insertReview(client, {
+        orderId,
+        reviewerId: state.currentUser!.id,
+        revieweeId: order.sellerId,
+        rating,
+        comment,
+      });
+      await reloadFromSupabase();
+    });
   },
 
   submitProductComment(productId: number, rating: number, comment: string) {
@@ -1341,6 +1383,18 @@ export const dbOperations = {
     });
 
     saveDBState(state);
+
+    withClient(async (client) => {
+      await insertReview(client, {
+        productId,
+        reviewerId: state.currentUser!.id,
+        revieweeId: product?.sellerId,
+        rating,
+        comment,
+      });
+      await reloadFromSupabase();
+    });
+
     return newRev;
   },
 
@@ -1557,6 +1611,28 @@ export const dbOperations = {
     }
 
     saveDBState(state);
+
+    withClient(async (client) => {
+      await upsertSafeMeetMeetup(client, {
+        orderId,
+        locationId,
+        scheduledAt,
+        status: 'PENDING_CONFIRMATION',
+        buyerConfirmedArrival: false,
+        sellerConfirmedArrival: false,
+      });
+      if (order) {
+        const notifyUserId = state.currentUser?.id === order.buyerId ? order.sellerId : order.buyerId;
+        await insertNotification(client, {
+          userId: notifyUserId,
+          title: 'SafeMeet™ Meetup Requested',
+          message: `SafeMeet proposed at "${loc?.name || 'Safe Location'}" for ${new Date(scheduledAt).toLocaleString()}.`,
+          type: 'ORDER',
+        });
+      }
+      await reloadFromSupabase();
+    });
+
     return meetup;
   },
 
@@ -1579,6 +1655,11 @@ export const dbOperations = {
         });
       }
       saveDBState(state);
+
+      withClient(async (client) => {
+        await updateSafeMeetMeetup(client, meetupId, { status: 'SCHEDULED' });
+        await reloadFromSupabase();
+      });
     }
   },
 
@@ -1634,6 +1715,18 @@ export const dbOperations = {
         }
       }
       saveDBState(state);
+
+      withClient(async (client) => {
+        await updateSafeMeetMeetup(client, meetupId, {
+          status: meetup.status,
+          buyer_confirmed_arrival: meetup.buyerConfirmedArrival,
+          seller_confirmed_arrival: meetup.sellerConfirmedArrival,
+        });
+        if (order && meetup.status === 'COMPLETED') {
+          await client.from('orders').update({ status: 'OUT_FOR_DELIVERY' }).eq('id', order.id);
+        }
+        await reloadFromSupabase();
+      });
     }
   },
 
@@ -1656,6 +1749,11 @@ export const dbOperations = {
         });
       }
       saveDBState(state);
+      withClient(async (client) => {
+        await updateSafeMeetMeetup(client, meetupId, { status: 'CANCELLED' });
+        await reloadFromSupabase();
+      });
+
     }
   },
 
@@ -2489,6 +2587,19 @@ export const dbOperations = {
     });
 
     saveDBState(state);
+    withClient(async (client) => {
+      const ends = new Date();
+      ends.setDate(ends.getDate() + durationDays);
+      await insertFeaturedListing(client, {
+        productId,
+        sellerId: product.sellerId,
+        featureType: 'FEATURED',
+        startsAt: new Date().toISOString(),
+        endsAt: ends.toISOString(),
+        amountPaid: cost,
+      });
+      await reloadFromSupabase();
+    });
     return { success: true };
   },
 
@@ -2525,6 +2636,19 @@ export const dbOperations = {
     });
 
     saveDBState(state);
+    withClient(async (client) => {
+      const ends = new Date();
+      ends.setHours(ends.getHours() + 24);
+      await insertFeaturedListing(client, {
+        productId,
+        sellerId: product.sellerId,
+        featureType: 'FLASH_SALE',
+        startsAt: new Date().toISOString(),
+        endsAt: ends.toISOString(),
+        amountPaid: cost,
+      });
+      await reloadFromSupabase();
+    });
     return { success: true };
   },
 
@@ -2587,6 +2711,17 @@ export const dbOperations = {
     }
 
     saveDBState(state);
+    withClient(async (client) => {
+      await insertSponsoredAd(client, {
+        sellerId: ad.sellerId,
+        type: ad.type,
+        targetId: ad.targetId,
+        title: ad.title,
+        budget: ad.budget,
+        bannerUrl: ad.bannerUrl,
+      });
+      await reloadFromSupabase();
+    });
     return ad;
   },
 
@@ -2653,6 +2788,29 @@ export const dbOperations = {
     };
     state.auditLogs.push(log);
     saveDBState(state);
+
+    withClient(async (client) => {
+      await upsertRevenueSettings(client, {
+        escrow_percentage_fee: state.revenueSettings.escrowPercentageFee,
+        escrow_min_fee: state.revenueSettings.escrowMinFee,
+        escrow_max_fee: state.revenueSettings.escrowMaxFee,
+        delivery_commission_percentage: state.revenueSettings.deliveryCommissionPercentage,
+        featured_3_days_price: state.revenueSettings.featured3DaysPrice,
+        featured_7_days_price: state.revenueSettings.featured7DaysPrice,
+        featured_14_days_price: state.revenueSettings.featured14DaysPrice,
+        featured_30_days_price: state.revenueSettings.featured30DaysPrice,
+        sub_pro_price: state.revenueSettings.subProPrice,
+        sub_premium_price: state.revenueSettings.subPremiumPrice,
+        sub_enterprise_price: state.revenueSettings.subEnterprisePrice,
+        verified_plus_price: state.revenueSettings.verifiedPlusPrice,
+        flash_sale_feature_price: state.revenueSettings.flashSaleFeaturePrice,
+        auction_success_fee_percentage: state.revenueSettings.auctionSuccessFeePercentage,
+        ad_cpc_price: state.revenueSettings.adCpcPrice,
+        good_sale_protect_fee: state.revenueSettings.goodSaleProtectFee,
+      });
+      await reloadFromSupabase();
+    });
+
     return { success: true, settings: state.revenueSettings, log };
   },
 
@@ -2675,6 +2833,14 @@ export const dbOperations = {
     };
     state.auditLogs.push(log);
     saveDBState(state);
+
+    withClient(async (client) => {
+      await upsertPaymentSettings(client, {
+        enabled_methods: state.paymentSettings.enabledMethods,
+      });
+      await reloadFromSupabase();
+    });
+
     return { success: true, settings: state.paymentSettings, log };
   },
 
@@ -2694,6 +2860,19 @@ export const dbOperations = {
     };
     state.productBundles.push(bundle);
     saveDBState(state);
+    withClient(async (client) => {
+      await insertBundle(client, {
+        sellerId: bundle.sellerId,
+        title: bundle.title,
+        description: bundle.description,
+        productIds: bundle.productIds,
+        price: bundle.price,
+        discountPercentage: bundle.discountPercentage,
+        quantity: bundle.quantity,
+      });
+      await reloadFromSupabase();
+    });
+
     return bundle;
   },
 

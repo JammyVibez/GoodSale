@@ -39,11 +39,9 @@ export default function BottomNavigation({
     { name: 'Books', icon: '📚', slug: 'books', desc: 'Academic, fiction & business titles' },
   ];
 
-  // Dynamic Badge calculation for "You" tab
-  // Defaults to 18 as shown in reference image for that aesthetic touch, or displays actual unread count if user has some!
-  const unreadAlertsCount = user 
-    ? db.notifications.filter(n => n.userId === user.id && !n.isRead).length || 18
-    : 18;
+  const unreadAlertsCount = user
+    ? db.notifications.filter((n) => n.userId === user.id && !n.isRead).length
+    : 0;
 
   const handleHomeClick = () => {
     onSearchChange(''); // Reset search

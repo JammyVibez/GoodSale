@@ -49,6 +49,9 @@ See **[PRODUCTION.md](./PRODUCTION.md)** for the full go-live checklist (credent
 3. `supabase/migrations/003_user_suspend.sql`
 4. `supabase/migrations/004_realtime_dispatch_geo.sql`
 5. `supabase/migrations/005_security_payments.sql` (RLS lockdown, disputes, refunds, withdrawals)
+6. `supabase/migrations/006_payouts_and_suspend.sql` (Paystack transfer columns + suspend)
+
+Paystack step-by-step: **[docs/PAYSTACK.md](./docs/PAYSTACK.md)**. Full env list: **`.env.example`**.
 
 ## What is live now
 

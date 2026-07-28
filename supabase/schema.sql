@@ -41,6 +41,7 @@ CREATE TABLE public.profiles (
   trust_score numeric NOT NULL DEFAULT 50,
   seller_level text NOT NULL DEFAULT 'BRONZE',
   good_points integer NOT NULL DEFAULT 0,
+  is_suspended boolean NOT NULL DEFAULT false,
   photo_url text NOT NULL DEFAULT '',
   cover_url text NOT NULL DEFAULT '',
   bio text NOT NULL DEFAULT '',
@@ -902,7 +903,11 @@ CREATE TABLE public.withdrawal_requests (
   bank_name text NOT NULL DEFAULT '',
   account_number text NOT NULL DEFAULT '',
   account_name text NOT NULL DEFAULT '',
+  bank_code text,
   status text NOT NULL DEFAULT 'PENDING',
+  admin_notes text,
+  paystack_transfer_code text,
+  paystack_reference text,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 

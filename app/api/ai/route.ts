@@ -215,6 +215,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Require authenticated session for Gemini-backed actions (cost control)
+    const { createServerSupabaseClient } = await import("@/lib/supabase/server");
+    const supabase = await createServerSupabaseClient();
+    if (supabase) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user && process.env.NEXT_PUBLIC_DEMO_MODE !== "true") {
+        return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+      }
+    } else if (process.env.NEXT_PUBLIC_DEMO_MODE !== "true") {
+      return NextResponse.json({ success: false, error: "Auth unavailable" }, { status: 503 });
+    }
+
     const body = await req.json();
     const { action, payload } = body;
 
