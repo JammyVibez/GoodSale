@@ -47,6 +47,8 @@ CREATE TABLE public.profiles (
   address text NOT NULL DEFAULT '',
   city text NOT NULL DEFAULT '',
   state text NOT NULL DEFAULT '',
+  lat double precision,
+  lng double precision,
   delivery_preference text NOT NULL DEFAULT '',
   push_enabled boolean NOT NULL DEFAULT true,
   email_enabled boolean NOT NULL DEFAULT true,
@@ -291,6 +293,10 @@ CREATE TABLE public.orders (
   delivery_address text NOT NULL DEFAULT '',
   delivery_city text NOT NULL DEFAULT '',
   delivery_state text NOT NULL DEFAULT '',
+  delivery_lat double precision,
+  delivery_lng double precision,
+  pickup_lat double precision,
+  pickup_lng double precision,
   delivery_pin text NOT NULL DEFAULT '',
   qr_code_token text NOT NULL DEFAULT '',
   status text NOT NULL DEFAULT 'PENDING',
@@ -627,6 +633,9 @@ CREATE TABLE public.delivery_partners (
   address text NOT NULL DEFAULT '',
   state text NOT NULL DEFAULT '',
   city text NOT NULL DEFAULT '',
+  last_lat double precision,
+  last_lng double precision,
+  last_location_at timestamptz,
   nin text NOT NULL DEFAULT '',
   selfie_url text NOT NULL DEFAULT '',
   license_url text,
@@ -638,6 +647,8 @@ CREATE INDEX idx_delivery_partners_user_id ON public.delivery_partners(user_id);
 CREATE INDEX idx_delivery_partners_status ON public.delivery_partners(status);
 CREATE INDEX idx_delivery_partners_is_available ON public.delivery_partners(is_available);
 CREATE INDEX idx_delivery_partners_city ON public.delivery_partners(city);
+CREATE INDEX idx_delivery_partners_last_lat_lng ON public.delivery_partners(last_lat, last_lng)
+  WHERE last_lat IS NOT NULL AND last_lng IS NOT NULL;
 
 CREATE TRIGGER delivery_partners_set_updated_at
   BEFORE UPDATE ON public.delivery_partners
@@ -673,6 +684,8 @@ CREATE TABLE public.delivery_jobs (
 CREATE INDEX idx_delivery_jobs_order_id ON public.delivery_jobs(order_id);
 CREATE INDEX idx_delivery_jobs_partner_id ON public.delivery_jobs(partner_id);
 CREATE INDEX idx_delivery_jobs_status ON public.delivery_jobs(status);
+CREATE INDEX idx_delivery_jobs_current_lat_lng ON public.delivery_jobs(current_lat, current_lng)
+  WHERE current_lat IS NOT NULL AND current_lng IS NOT NULL;
 
 CREATE TRIGGER delivery_jobs_set_updated_at
   BEFORE UPDATE ON public.delivery_jobs

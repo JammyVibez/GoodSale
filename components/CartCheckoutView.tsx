@@ -1,17 +1,25 @@
 // components/CartCheckoutView.tsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ShoppingCart, Shield, CreditCard, ChevronRight, CheckCircle2, 
   MapPin, Award, Trash2, KeyRound, QrCode, ClipboardCheck, ArrowLeft, RefreshCw,
   Truck, ExternalLink, Sparkles, ShieldAlert, ShieldCheck, CheckCircle,
-  Coins, FileText, Upload
+  Coins, FileText, Upload, Navigation
 } from 'lucide-react';
 import { 
   getDBState, saveDBState, dbOperations, Product, Order, OrderStatus 
 } from '../lib/store';
 import PaystackPayment from './PaystackPayment';
+import LiveDispatchMap from './LiveDispatchMap';
+import { useLiveLocation } from '@/lib/hooks/useLiveLocation';
+import {
+  LOCATION_PRESETS,
+  rankPartnersByProximity,
+  bestCoords,
+  formatDistanceKm,
+} from '@/lib/geo';
 
 interface CartCheckoutViewProps {
   onBack: () => void;
@@ -36,10 +44,22 @@ export default function CartCheckoutView({
   const [activeStep, setActiveStep] = useState<'cart' | 'checkout' | 'orders'>('cart');
   
   // Checkout Fields
-  const [deliveryAddress, setDeliveryAddress] = useState('14, Gbagada Phase-2, Gbagada, Lagos');
-  const [city, setCity] = useState('Gbagada');
-  const [state, setState] = useState('Lagos State');
+  const [deliveryAddress, setDeliveryAddress] = useState<string>(LOCATION_PRESETS.gbagada.address);
+  const [city, setCity] = useState<string>(LOCATION_PRESETS.gbagada.city);
+  const [state, setState] = useState<string>(LOCATION_PRESETS.gbagada.state);
   const [phoneNumber, setPhoneNumber] = useState('+234 812 345 6789');
+  const [deliveryLat, setDeliveryLat] = useState<number>(LOCATION_PRESETS.gbagada.lat);
+  const [deliveryLng, setDeliveryLng] = useState<number>(LOCATION_PRESETS.gbagada.lng);
+
+  const buyerGps = useLiveLocation({ watch: true, throttleMs: 10000, enabled: true });
+
+  // Prefer live GPS for delivery pin when available
+  useEffect(() => {
+    if (buyerGps.coords && buyerGps.source === 'gps') {
+      setDeliveryLat(buyerGps.coords.lat);
+      setDeliveryLng(buyerGps.coords.lng);
+    }
+  }, [buyerGps.coords, buyerGps.source]);
 
   // New States for GoodDispatch Marketplace & Protection
   const [deliveryMethod, setDeliveryMethod] = useState<'GOODSALE_PARTNER' | 'THIRD_PARTY_COURIER' | 'PICKUP'>('GOODSALE_PARTNER');
@@ -72,45 +92,42 @@ export default function CartCheckoutView({
   const [disputeReason, setDisputeReason] = useState('');
   const [showPaystackModal, setShowPaystackModal] = useState(false);
 
-  // Match algorithm details:
-  // We recommend the best courier based on Distance, Vehicle Type, Ratings, Traffic, Current Workload, Trust Score, Delivery Time, Acceptance Rate, Price
+  // Match algorithm: real GPS proximity + trust / workload
+  const deliveryOrigin = useMemo(
+    () =>
+      bestCoords(
+        { lat: deliveryLat, lng: deliveryLng },
+        buyerGps.coords,
+        city,
+        state,
+        deliveryAddress
+      ),
+    [deliveryLat, deliveryLng, buyerGps.coords, city, state, deliveryAddress]
+  );
+
+  const rankedCouriers = useMemo(() => {
+    const activePartners = db.deliveryPartners.filter((p) => p.status === 'APPROVED' && p.isAvailable);
+    return rankPartnersByProximity(deliveryOrigin, activePartners);
+  }, [db.deliveryPartners, deliveryOrigin]);
+
   const runSmartMatching = () => {
     setSmartMatchingActive(true);
     setSmartMatchResult(null);
     
     setTimeout(() => {
-      const activePartners = db.deliveryPartners.filter(p => p.status === 'APPROVED' && p.isAvailable);
-      if (activePartners.length === 0) {
+      if (rankedCouriers.length === 0) {
         setSmartMatchingActive(false);
-        setSmartMatchResult("No active dispatch riders are currently available in your region. Please assign manually or retry shortly.");
+        setSmartMatchResult("No active dispatch riders are currently available near your location. Please assign manually or retry shortly.");
         return;
       }
 
-      // Calculate matching scores
-      const ratedPartners = activePartners.map(p => {
-        const distance = parseFloat(((p.id * 1.3) % 4 + 1.2).toFixed(1));
-        const distanceScore = Math.max(0, 25 - distance * 4);
-        const ratingScore = p.rating ? (p.rating / 5) * 25 : 20;
-        const trustScoreValue = (p.trustScore / 100) * 20;
-        const acceptanceScore = (p.acceptanceRate / 100) * 15;
-        const workloadScore = Math.max(0, 15 - p.activeDeliveriesCount * 5);
-        
-        const totalScore = Math.round(distanceScore + ratingScore + trustScoreValue + acceptanceScore + workloadScore);
-        
-        return {
-          partner: p,
-          distance,
-          totalScore
-        };
-      });
-
-      ratedPartners.sort((a, b) => b.totalScore - a.totalScore);
-      const best = ratedPartners[0];
-      
+      const best = rankedCouriers[0];
       setSelectedPartnerId(best.partner.id);
-      setSmartMatchResult(`🚀 Smart Match Successful! Highly recommended ${best.partner.fullName} with compatibility score of ${best.totalScore}% based on excellent trust badge (${best.partner.trustScore}% trust), low workload, and high proximity (${best.distance}km away).`);
+      setSmartMatchResult(
+        `Smart Match Successful! Recommended ${best.partner.fullName} (${best.score}% fit) — ${formatDistanceKm(best.distanceKm)} away, ~${best.etaMinutes} mins ETA, trust ${best.partner.trustScore}%.`
+      );
       setSmartMatchingActive(false);
-    }, 1500);
+    }, 900);
   };
 
   useEffect(() => {
@@ -225,7 +242,8 @@ export default function CartCheckoutView({
         serviceType,
         hasGoodSaleProtect,
         bankTransferReceipt || undefined,
-        invoiceTerms
+        invoiceTerms,
+        { lat: deliveryOrigin.lat, lng: deliveryOrigin.lng }
       );
     }
 
@@ -251,13 +269,29 @@ export default function CartCheckoutView({
   // Preset location fillers for Lagos/Abuja
   const handlePresetLocation = (cityPreset: string) => {
     if (cityPreset === 'Lag') {
-      setDeliveryAddress('24, Admiralty Way, Lekki Phase 1, Lagos');
-      setCity('Lekki');
-      setState('Lagos State');
+      setDeliveryAddress(LOCATION_PRESETS.lekki.address);
+      setCity(LOCATION_PRESETS.lekki.city);
+      setState(LOCATION_PRESETS.lekki.state);
+      setDeliveryLat(LOCATION_PRESETS.lekki.lat);
+      setDeliveryLng(LOCATION_PRESETS.lekki.lng);
     } else {
-      setDeliveryAddress('Plot 502, Constitution Avenue, Central Business District, Abuja');
-      setCity('Abuja CBD');
-      setState('FCT Abuja');
+      setDeliveryAddress(LOCATION_PRESETS.abuja.address);
+      setCity(LOCATION_PRESETS.abuja.city);
+      setState(LOCATION_PRESETS.abuja.state);
+      setDeliveryLat(LOCATION_PRESETS.abuja.lat);
+      setDeliveryLng(LOCATION_PRESETS.abuja.lng);
+    }
+  };
+
+  const useMyGpsLocation = () => {
+    buyerGps.refresh();
+    if (buyerGps.coords) {
+      setDeliveryLat(buyerGps.coords.lat);
+      setDeliveryLng(buyerGps.coords.lng);
+      setDeliveryAddress(
+        `Live GPS pin ${buyerGps.coords.lat.toFixed(5)}, ${buyerGps.coords.lng.toFixed(5)}`
+      );
+      setCity(city || 'My location');
     }
   };
 
@@ -398,21 +432,46 @@ export default function CartCheckoutView({
               </h3>
 
               {/* Preset selectors */}
-              <div className="p-4 bg-gray-50 dark:bg-slate-800/40 rounded-2xl">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Delivery Location Presets</span>
+              <div className="p-4 bg-gray-50 dark:bg-slate-800/40 rounded-2xl space-y-3">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Delivery Location</span>
                 <div className="grid grid-cols-2 gap-2">
                   <button
+                    type="button"
                     onClick={() => handlePresetLocation('Lag')}
                     className="p-2.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl hover:border-emerald-500 text-xs font-bold transition-all cursor-pointer text-left"
                   >
-                    📍 Lagos Lekki Preset
+                    Lagos Lekki Preset
                   </button>
                   <button
+                    type="button"
                     onClick={() => handlePresetLocation('Abj')}
                     className="p-2.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl hover:border-emerald-500 text-xs font-bold transition-all cursor-pointer text-left"
                   >
-                    📍 Abuja CBD Preset
+                    Abuja CBD Preset
                   </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={useMyGpsLocation}
+                  className="w-full flex items-center justify-center gap-2 p-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs font-bold text-emerald-700 dark:text-emerald-400 cursor-pointer"
+                >
+                  <Navigation className="w-3.5 h-3.5" />
+                  Use my live GPS location
+                  {buyerGps.source === 'gps' && (
+                    <span className="font-mono text-[9px] opacity-80">
+                      {deliveryLat.toFixed(4)}, {deliveryLng.toFixed(4)}
+                    </span>
+                  )}
+                </button>
+                <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700">
+                  <LiveDispatchMap
+                    destination={deliveryOrigin}
+                    rider={buyerGps.coords}
+                    statusLabel="Your delivery pin"
+                    geoError={buyerGps.error}
+                    gpsLocked={buyerGps.source === 'gps'}
+                    height="180px"
+                  />
                 </div>
               </div>
 
@@ -625,20 +684,17 @@ export default function CartCheckoutView({
                     <div className="space-y-2.5">
                       <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Available Couriers Marketplace</span>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[220px] overflow-y-auto pr-1">
-                        {db.deliveryPartners
-                          .filter(p => p.status === 'APPROVED' && p.isAvailable)
-                          .map(courier => {
-                            const distance = parseFloat(((courier.id * 1.3) % 4 + 1.2).toFixed(1));
+                        {rankedCouriers.map(({ partner: courier, distanceKm: distance, etaMinutes, score }) => {
                             const isSelected = selectedPartnerId === courier.id;
                             
                             // Estimate dynamic times based on service type
-                            let pickup = '25 mins';
-                            let delivery = '3 hrs';
+                            let pickup = `${Math.max(10, etaMinutes)} mins`;
+                            let delivery = `${Math.max(etaMinutes + 20, 45)} mins`;
                             if (serviceType === 'EXPRESS') {
-                              pickup = '15 mins';
-                              delivery = '1 hr';
+                              pickup = `${Math.max(8, Math.round(etaMinutes * 0.7))} mins`;
+                              delivery = `${Math.max(etaMinutes + 10, 30)} mins`;
                             } else if (serviceType === 'ECONOMY') {
-                              pickup = '45 mins';
+                              pickup = `${Math.max(20, etaMinutes + 10)} mins`;
                               delivery = 'Same Day';
                             }
 
@@ -703,7 +759,7 @@ export default function CartCheckoutView({
                                   </div>
 
                                   <div className="flex items-center justify-between text-[9px] text-gray-500 pt-1 border-t border-gray-100 dark:border-slate-800/80 mt-1">
-                                    <span>📍 {distance}km away</span>
+                                    <span>{formatDistanceKm(distance)} · {score}% match</span>
                                     <span className="font-mono text-emerald-500 font-semibold">{pickup} / {delivery}</span>
                                   </div>
                                 </div>
@@ -717,7 +773,7 @@ export default function CartCheckoutView({
                   {/* Require selection lock warning */}
                   {!selectedPartnerId && (
                     <p className="text-[9px] font-semibold text-amber-500 flex items-center gap-1 animate-pulse">
-                      ⚠️ Please select a Courier Partner from the list or click &quot;Smart Match Me&quot; to unlock secure escrow assignment.
+                      Please select a Courier Partner from the list or click &quot;Smart Match Me&quot; to unlock secure escrow assignment.
                     </p>
                   )}
 
@@ -1225,6 +1281,39 @@ export default function CartCheckoutView({
                               </span>
                             </div>
                           )}
+
+                          {/* Live rider map when out for delivery */}
+                          {order.deliveryMethod === 'GOODSALE_PARTNER' &&
+                            [OrderStatus.OUT_FOR_DELIVERY, OrderStatus.SHIPPED].includes(order.status) && (() => {
+                              const job = db.deliveryJobs.find((j) => j.orderId === order.id);
+                              const dest = bestCoords(
+                                { lat: order.deliveryLat, lng: order.deliveryLng },
+                                null,
+                                order.deliveryCity,
+                                order.deliveryState,
+                                order.deliveryAddress
+                              );
+                              const pickup = bestCoords(
+                                { lat: order.pickupLat, lng: order.pickupLng },
+                                null
+                              );
+                              const rider =
+                                job?.currentLat != null && job?.currentLng != null
+                                  ? { lat: job.currentLat, lng: job.currentLng }
+                                  : null;
+                              return (
+                                <div className="pt-3">
+                                  <LiveDispatchMap
+                                    rider={rider}
+                                    destination={dest}
+                                    pickup={pickup}
+                                    speedKmh={job?.currentSpeed}
+                                    statusLabel={rider ? 'Rider live on map' : 'Awaiting rider GPS'}
+                                    height="200px"
+                                  />
+                                </div>
+                              );
+                            })()}
                           
                           {/* Printable digital receipt click */}
                           <div className="pt-2">

@@ -11,6 +11,9 @@ import { motion } from 'motion/react';
 import { 
   getDBState, saveDBState, dbOperations, DeliveryPartner, DeliveryJob, DeliveryJobStatus, OrderStatus, UserRole, DeliveryVehicleType
 } from '../lib/store';
+import LiveDispatchMap from './LiveDispatchMap';
+import { useLiveLocation } from '@/lib/hooks/useLiveLocation';
+import { bestCoords, formatDistanceKm, haversineKm, estimateEtaMinutes, resolveCityCoords } from '@/lib/geo';
 
 export default function DispatchDashboardView() {
   const [db, setDb] = useState(getDBState());
@@ -46,11 +49,17 @@ export default function DispatchDashboardView() {
   const [pinError, setPinError] = useState<string | null>(null);
   const [pinSuccess, setPinSuccess] = useState(false);
 
-  // Tracking details
-  const [mapLat, setMapLat] = useState(6.5244);
-  const [mapLng, setMapLng] = useState(3.3792);
-  const [simSpeed, setSimSpeed] = useState(0);
-  const [simEta, setSimEta] = useState(25);
+  // Live GPS (rider)
+  const liveGps = useLiveLocation({
+    watch: true,
+    throttleMs: 5000,
+    enabled: true,
+    highAccuracy: true,
+  });
+
+  const mapLat = liveGps.coords?.lat ?? simulatedJob?.currentLat ?? 6.5244;
+  const mapLng = liveGps.coords?.lng ?? simulatedJob?.currentLng ?? 3.3792;
+  const simSpeed = simulatedJob?.currentSpeed ?? (liveGps.watching ? 25 : 0);
 
   // GoodDispatch Safety & SOS states
   const [sosActive, setSosActive] = useState(false);
@@ -139,7 +148,11 @@ export default function DispatchDashboardView() {
   // Toggle Driver Active Availability Status
   const toggleAvailability = () => {
     if (!user || !courier) return;
-    dbOperations.togglePartnerAvailability(user.id, !courier.isAvailable);
+    dbOperations.togglePartnerAvailability(
+      user.id,
+      !courier.isAvailable,
+      liveGps.coords || undefined
+    );
   };
 
   // Claim/Accept Delivery Job from Marketplace list
@@ -149,65 +162,81 @@ export default function DispatchDashboardView() {
       alert('Only approved dispatch riders can accept delivery jobs.');
       return;
     }
+    if (liveGps.coords) {
+      dbOperations.updatePartnerLiveLocation(courier.id, liveGps.coords.lat, liveGps.coords.lng);
+    }
     const updatedJob = dbOperations.acceptDeliveryJob(jobId, courier.id);
     if (updatedJob) {
       setSimulatedJob(updatedJob);
       setActiveSubTab('active_jobs');
-      dbOperations.addAuditLog(user?.id || 0, 'ACCEPT_DELIVERY_JOB', 'deliveryJobs', jobId, `Courier Dele Coker accepted delivery request`);
+      dbOperations.addAuditLog(user?.id || 0, 'ACCEPT_DELIVERY_JOB', 'deliveryJobs', jobId, `Courier accepted delivery request`);
     }
   };
 
-  // Simulated GPS route progress updater
+  // Publish live GPS while job is in transit / picked up
   useEffect(() => {
-    let interval: any = null;
-    if (simulationActive && simulatedJob) {
-      let progressStep = 0;
-      interval = setInterval(() => {
-        progressStep += 1;
-        // Lagos state target movement coordinates simulation (moving from Seller to Buyer location)
-        // Starts at Ikeja (6.59), moves towards Victoria Island (6.42)
-        const currentLat = 6.5920 - (progressStep * 0.015);
-        const currentLng = 3.3540 + (progressStep * 0.012);
-        const speed = Math.round(35 + Math.random() * 25); // Speed between 35-60 km/h
-        const eta = Math.max(0, 25 - progressStep * 2);
+    if (!simulationActive || !simulatedJob || !liveGps.coords) return;
+    const speed =
+      typeof (liveGps as { accuracy?: number | null }).accuracy === 'number'
+        ? Math.max(8, Math.min(55, 40 - ((liveGps.accuracy || 20) / 5)))
+        : 28;
 
-        setMapLat(currentLat);
-        setMapLng(currentLng);
-        setSimSpeed(speed);
-        setSimEta(eta);
+    dbOperations.updateDeliveryJobStatus(simulatedJob.id, DeliveryJobStatus.IN_TRANSIT, {
+      lat: liveGps.coords.lat,
+      lng: liveGps.coords.lng,
+      speed,
+    });
 
-        // Update central state so customers see real-time updates too!
-        dbOperations.updateDeliveryJobStatus(simulatedJob.id, DeliveryJobStatus.IN_TRANSIT, {
-          lat: currentLat,
-          lng: currentLng,
-          speed
-        });
-
-        if (progressStep >= 12) {
-          // Arrived at destination
-          setSimulationActive(false);
-          setSimSpeed(0);
-          setSimEta(0);
-          dbOperations.updateDeliveryJobStatus(simulatedJob.id, DeliveryJobStatus.ARRIVED);
-          clearInterval(interval);
-        }
-      }, 4000);
+    if (courier) {
+      dbOperations.updatePartnerLiveLocation(courier.id, liveGps.coords.lat, liveGps.coords.lng);
     }
+  }, [liveGps.coords, simulationActive, simulatedJob?.id, courier?.id]);
 
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [simulationActive, simulatedJob]);
+  // Keep active job synced from store (Realtime)
+  useEffect(() => {
+    if (!courier) return;
+    const activeJob = db.deliveryJobs.find(
+      (j) => j.partnerId === courier.id && j.status !== DeliveryJobStatus.COMPLETED
+    );
+    if (activeJob) setSimulatedJob(activeJob);
+  }, [db.deliveryJobs, courier?.id]);
 
   // Transition Active Job status
   const transitionJobStatus = (status: DeliveryJobStatus) => {
     if (!simulatedJob) return;
     
     if (status === DeliveryJobStatus.PICKED_UP) {
-      dbOperations.updateDeliveryJobStatus(simulatedJob.id, DeliveryJobStatus.PICKED_UP);
+      if (liveGps.coords) {
+        dbOperations.updateDeliveryJobStatus(simulatedJob.id, DeliveryJobStatus.PICKED_UP, {
+          lat: liveGps.coords.lat,
+          lng: liveGps.coords.lng,
+          speed: 0,
+        });
+      } else {
+        dbOperations.updateDeliveryJobStatus(simulatedJob.id, DeliveryJobStatus.PICKED_UP);
+      }
     } else if (status === DeliveryJobStatus.IN_TRANSIT) {
       setSimulationActive(true);
-      dbOperations.updateDeliveryJobStatus(simulatedJob.id, DeliveryJobStatus.IN_TRANSIT);
+      if (liveGps.coords) {
+        dbOperations.updateDeliveryJobStatus(simulatedJob.id, DeliveryJobStatus.IN_TRANSIT, {
+          lat: liveGps.coords.lat,
+          lng: liveGps.coords.lng,
+          speed: 25,
+        });
+      } else {
+        dbOperations.updateDeliveryJobStatus(simulatedJob.id, DeliveryJobStatus.IN_TRANSIT);
+      }
+    } else if (status === DeliveryJobStatus.ARRIVED) {
+      setSimulationActive(false);
+      if (liveGps.coords) {
+        dbOperations.updateDeliveryJobStatus(simulatedJob.id, DeliveryJobStatus.ARRIVED, {
+          lat: liveGps.coords.lat,
+          lng: liveGps.coords.lng,
+          speed: 0,
+        });
+      } else {
+        dbOperations.updateDeliveryJobStatus(simulatedJob.id, DeliveryJobStatus.ARRIVED);
+      }
     }
   };
 
@@ -282,16 +311,70 @@ export default function DispatchDashboardView() {
     }
   };
 
-  // Get matching delivery jobs in courier's state/city
-  const availableJobs = db.deliveryJobs.filter(j => {
-    if (j.status !== DeliveryJobStatus.PENDING) return false;
-    // Show all or match to same city/state
-    return true;
-  });
+  // Get matching delivery jobs sorted by proximity to rider GPS
+  const riderOrigin = liveGps.coords ||
+    (courier
+      ? bestCoords(
+          { lat: courier.lastLat, lng: courier.lastLng },
+          null,
+          courier.city,
+          courier.state,
+          courier.address
+        )
+      : resolveCityCoords('Lagos'));
+
+  const availableJobs = db.deliveryJobs
+    .filter((j) => j.status === DeliveryJobStatus.PENDING)
+    .map((job) => {
+      const order = db.orders.find((o) => o.id === job.orderId);
+      const dest = bestCoords(
+        { lat: order?.deliveryLat, lng: order?.deliveryLng },
+        { lat: order?.pickupLat, lng: order?.pickupLng },
+        order?.deliveryCity,
+        order?.deliveryState,
+        order?.deliveryAddress
+      );
+      const distanceKm = parseFloat(haversineKm(riderOrigin, dest).toFixed(1));
+      const etaMinutes = estimateEtaMinutes(distanceKm);
+      const smartScore = Math.max(
+        55,
+        Math.round(100 - distanceKm * 3 + (courier?.trustScore || 80) / 10)
+      );
+      return { job, order, dest, distanceKm, etaMinutes, smartScore };
+    })
+    .sort((a, b) => a.distanceKm - b.distanceKm);
 
   const activeJob = db.deliveryJobs.find(j => j.partnerId === courier?.id && j.status !== DeliveryJobStatus.COMPLETED);
   const myCompletedJobs = db.deliveryJobs.filter(j => j.partnerId === courier?.id && j.status === DeliveryJobStatus.COMPLETED);
   const courierEarningsSum = myCompletedJobs.reduce((acc, j) => acc + j.courierEarnings, 0);
+
+  const activeOrder = simulatedJob
+    ? db.orders.find((o) => o.id === simulatedJob.orderId)
+    : undefined;
+  const activeDest = activeOrder
+    ? bestCoords(
+        { lat: activeOrder.deliveryLat, lng: activeOrder.deliveryLng },
+        null,
+        activeOrder.deliveryCity,
+        activeOrder.deliveryState,
+        activeOrder.deliveryAddress
+      )
+    : null;
+  const activePickup = activeOrder
+    ? bestCoords(
+        { lat: activeOrder.pickupLat, lng: activeOrder.pickupLng },
+        null,
+        undefined,
+        undefined,
+        undefined
+      )
+    : null;
+  const simEta =
+    liveGps.coords && activeDest
+      ? estimateEtaMinutes(haversineKm(liveGps.coords, activeDest), simSpeed || 30)
+      : activePickup && activeDest
+        ? estimateEtaMinutes(haversineKm(activePickup, activeDest))
+        : 25;
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 font-sans" id="gooddispatch-dashboard">
@@ -800,11 +883,9 @@ export default function DispatchDashboardView() {
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {availableJobs.map(job => {
-                        const order = db.orders.find(o => o.id === job.orderId);
+                      {availableJobs.map(({ job, order, distanceKm, etaMinutes, smartScore }) => {
                         const buyer = db.users.find(u => u.id === order?.buyerId);
                         const seller = db.users.find(u => u.id === order?.sellerId);
-                        const smartScore = 90 + (job.id % 10);
                         
                         return (
                           <div 
@@ -812,12 +893,15 @@ export default function DispatchDashboardView() {
                             className="bg-slate-50 dark:bg-slate-950 rounded-2xl p-5 border border-gray-100 dark:border-slate-800/80 hover:shadow-md transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
                           >
                             <div className="space-y-2 flex-1">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-[10px] font-bold bg-indigo-100 dark:bg-indigo-950/40 text-indigo-500 dark:text-indigo-400 px-2 py-0.5 rounded">
                                   {job.serviceType}
                                 </span>
                                 <span className="text-[10px] font-mono text-slate-400">
                                   Job ID: #JOB-{job.id}
+                                </span>
+                                <span className="text-[10px] font-mono font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded">
+                                  {formatDistanceKm(distanceKm)} · ~{etaMinutes} mins
                                 </span>
                               </div>
 
@@ -825,13 +909,13 @@ export default function DispatchDashboardView() {
                                 <div>
                                   <span className="font-bold text-slate-400 block text-[9px] uppercase font-mono">Pickup Point (Seller)</span>
                                   <span className="font-medium text-slate-800 dark:text-slate-200">
-                                    {seller?.fullName || 'Ikeja Vendor'} — Lagos, NG
+                                    {seller?.fullName || 'Seller'} — {order?.deliveryCity || 'Lagos'}
                                   </span>
                                 </div>
                                 <div>
                                   <span className="font-bold text-slate-400 block text-[9px] uppercase font-mono">Delivery Point (Buyer)</span>
                                   <span className="font-medium text-slate-800 dark:text-slate-200">
-                                    {buyer?.fullName || 'Victoria Island Client'} — Lagos, NG
+                                    {order?.deliveryAddress || buyer?.fullName || 'Buyer destination'}
                                   </span>
                                 </div>
                               </div>
@@ -843,12 +927,14 @@ export default function DispatchDashboardView() {
                                     {smartScore}%
                                   </div>
                                   <div>
-                                    <span className="font-bold text-slate-800 dark:text-white block text-[10px]">Smart Matching Suitability</span>
-                                    <span className="text-[9px] text-slate-400">Rider matches cargo payload (Motorcycle) and current zone proximity.</span>
+                                    <span className="font-bold text-slate-800 dark:text-white block text-[10px]">Proximity Smart Match</span>
+                                    <span className="text-[9px] text-slate-400">
+                                      Ranked by live GPS distance to buyer ({formatDistanceKm(distanceKm)} away).
+                                    </span>
                                   </div>
                                 </div>
                                 <span className="text-[9px] font-mono text-emerald-600 font-bold bg-emerald-500/10 px-2 py-0.5 rounded shrink-0">
-                                  RECOMMENDED
+                                  NEAR YOU
                                 </span>
                               </div>
                             </div>
@@ -910,82 +996,27 @@ export default function DispatchDashboardView() {
                         </div>
                       </div>
 
-                      {/* Simulated Interactive Tracking controls */}
+                      {/* Live Google Maps tracking */}
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         
-                        {/* LEFT COLUMN: Map View simulation */}
-                        <div className="md:col-span-2 bg-slate-900 border border-slate-800 rounded-3xl p-4 overflow-hidden relative min-h-[350px] shadow-lg flex flex-col justify-between text-white">
-                          
-                          {/* Map Widget Header overlay */}
-                          <div className="absolute top-4 left-4 z-10 bg-slate-950/90 border border-slate-800 px-3 py-2 rounded-xl text-[10px] text-slate-400 font-mono space-y-0.5 shadow-md">
-                            <div>📍 Dispatch Coordinates</div>
-                            <div className="text-emerald-400 font-bold">
-                              {mapLat.toFixed(5)}° N, {mapLng.toFixed(5)}° E
-                            </div>
-                          </div>
-
-                          <div className="absolute top-4 right-4 z-10 bg-slate-950/90 border border-slate-800 px-3 py-2 rounded-xl text-[10px] text-slate-400 font-mono space-y-0.5 shadow-md text-right">
-                            <div>⚡ Telemetry</div>
-                            <div className="text-amber-400 font-bold">
-                              {simSpeed} km/h • ETA: {simEta} mins
-                            </div>
-                          </div>
-
-                          {/* Map canvas simulation layout */}
-                          <div className="flex-1 flex items-center justify-center relative p-8">
-                            <div className="absolute inset-0 bg-slate-950 opacity-20 bg-[radial-gradient(#334155_1px,transparent_1px)] [background-size:16px_16px]" />
-                            
-                            {/* Vector polyline line representing routing path */}
-                            <svg className="absolute w-full h-full inset-0 pointer-events-none opacity-40">
-                              <path 
-                                d="M 120 120 Q 200 180, 280 240 T 400 300" 
-                                fill="none" 
-                                stroke="#10b981" 
-                                strokeWidth="3" 
-                                strokeDasharray="8 4" 
-                                className="animate-[dash_40s_linear_infinite]"
-                              />
-                            </svg>
-
-                            {/* Node 1: Pickup Point */}
-                            <div className="absolute top-1/4 left-1/4 flex flex-col items-center">
-                              <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500 flex items-center justify-center text-xs font-bold text-emerald-400 relative">
-                                Vendor
-                                <span className="absolute -top-1 -right-1 bg-emerald-500 w-2.5 h-2.5 rounded-full border border-slate-950" />
-                              </div>
-                            </div>
-
-                            {/* Node 2: Courier active rider indicator */}
-                            <div className="absolute top-1/2 left-1/2 flex flex-col items-center animate-pulse z-10">
-                              <div className="w-10 h-10 rounded-full bg-indigo-500/30 border border-indigo-400 flex items-center justify-center text-xs shadow-xl relative">
-                                🛵
-                                <span className="absolute -top-1 -right-1 bg-indigo-500 w-3.5 h-3.5 rounded-full flex items-center justify-center border border-slate-950 text-[8px] font-bold">
-                                  GPS
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Node 3: Buyer destination */}
-                            <div className="absolute bottom-1/4 right-1/4 flex flex-col items-center">
-                              <div className="w-8 h-8 rounded-full bg-indigo-500/10 border border-indigo-500/40 flex items-center justify-center text-xs text-indigo-300 relative">
-                                Buyer
-                                <span className="absolute -top-1 -right-1 bg-red-500 w-2.5 h-2.5 rounded-full border border-slate-950" />
-                              </div>
-                            </div>
-
-                          </div>
-
-                          {/* Map bottom stats */}
-                          <div className="relative z-10 bg-slate-950 border border-slate-800 p-3 rounded-2xl flex items-center justify-between text-xs">
-                            <span className="flex items-center gap-1.5 text-slate-400">
-                              <Compass className="w-4 h-4 text-emerald-400 animate-spin" />
-                              GoodDispatch™ GPS Active Connection
-                            </span>
-                            <span className="text-[10px] text-emerald-400 font-mono">
-                              ONLINE
-                            </span>
-                          </div>
-
+                        {/* LEFT COLUMN: Real Google Map */}
+                        <div className="md:col-span-2">
+                          <LiveDispatchMap
+                            rider={{ lat: mapLat, lng: mapLng }}
+                            destination={activeDest}
+                            pickup={activePickup}
+                            speedKmh={simSpeed}
+                            statusLabel={
+                              simulationActive
+                                ? 'Broadcasting live GPS'
+                                : simulatedJob.status === DeliveryJobStatus.ARRIVED
+                                  ? 'Arrived at destination'
+                                  : 'Rider location'
+                            }
+                            geoError={liveGps.error}
+                            gpsLocked={liveGps.source === 'gps'}
+                            height="350px"
+                          />
                         </div>
 
                         {/* RIGHT COLUMN: Journey log & Action panels */}
@@ -1011,18 +1042,24 @@ export default function DispatchDashboardView() {
                                   className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-transform active:scale-95 flex items-center justify-center gap-2"
                                 >
                                   <Navigation className="w-4 h-4" />
-                                  Trigger GPS Transit Simulation
+                                  Start Live GPS Transit
                                 </button>
                               )}
 
                               {simulatedJob.status === DeliveryJobStatus.IN_TRANSIT && (
                                 <div className="p-3 bg-slate-100 dark:bg-slate-850 rounded-xl text-center text-xs text-slate-500 space-y-2">
                                   <div className="font-extrabold text-slate-700 dark:text-slate-300">
-                                    Simulating GPS Routing...
+                                    Live GPS sharing active
                                   </div>
                                   <p className="text-[10px] text-slate-400">
-                                    Driver is navigating Lagos roads. Coordinates, Speed, and ETAs are updating dynamically.
+                                    Your phone location is streaming to buyer & seller maps. ETA ~{simEta} mins.
                                   </p>
+                                  <button
+                                    onClick={() => transitionJobStatus(DeliveryJobStatus.ARRIVED)}
+                                    className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs rounded-xl cursor-pointer"
+                                  >
+                                    Mark Arrived at Buyer
+                                  </button>
                                 </div>
                               )}
 

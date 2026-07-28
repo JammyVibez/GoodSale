@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { useDBState, dbOperations, getDBState, saveDBState, OrderStatus, Order } from '../lib/store';
 import LiveSafeMeetMap from './LiveSafeMeetMap';
+import LiveDispatchMap from './LiveDispatchMap';
+import { bestCoords } from '@/lib/geo';
 
 interface BuyerProfileViewProps {
   onBack?: () => void;
@@ -665,6 +667,33 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                       {/* Expanded PIN entering UI */}
                       {isSelected && (
                         <div className="border-t border-orange-200 dark:border-orange-500/20 p-5 bg-orange-500/[0.02] space-y-4">
+                          {order.deliveryMethod === 'GOODSALE_PARTNER' &&
+                            [OrderStatus.OUT_FOR_DELIVERY, OrderStatus.SHIPPED].includes(order.status) && (() => {
+                              const job = db.deliveryJobs.find((j) => j.orderId === order.id);
+                              const dest = bestCoords(
+                                { lat: order.deliveryLat, lng: order.deliveryLng },
+                                null,
+                                order.deliveryCity,
+                                order.deliveryState,
+                                order.deliveryAddress
+                              );
+                              const pickup = bestCoords({ lat: order.pickupLat, lng: order.pickupLng }, null);
+                              const rider =
+                                job?.currentLat != null && job?.currentLng != null
+                                  ? { lat: job.currentLat, lng: job.currentLng }
+                                  : null;
+                              return (
+                                <LiveDispatchMap
+                                  rider={rider}
+                                  destination={dest}
+                                  pickup={pickup}
+                                  speedKmh={job?.currentSpeed}
+                                  statusLabel={rider ? 'Your dispatch rider is live' : 'Waiting for rider GPS'}
+                                  height="220px"
+                                />
+                              );
+                            })()}
+
                           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 bg-white dark:bg-slate-900 border border-orange-100 dark:border-orange-950 rounded-2xl">
                             <div>
                               <span className="text-[9px] text-slate-400 uppercase tracking-widest font-mono font-bold block mb-0.5">My Delivery PIN Code</span>

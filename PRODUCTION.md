@@ -19,7 +19,7 @@
    - `NEXT_PUBLIC_DEMO_MODE=false`
 
 4. **Optional**
-   - `GEMINI_API_KEY`, `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`
+   - `GEMINI_API_KEY`, `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` (enable Maps JavaScript, Embed, and Geocoding APIs for live GoodDispatch tracking)
 
 ## Already implemented in code
 

@@ -11,7 +11,11 @@ import {
   insertOrderWithEscrow,
   insertMessage,
   upsertProduct,
+  updateDeliveryJobLocation,
+  updatePartnerLocation,
+  upsertDeliveryPartner,
 } from '@/lib/data/sync';
+import { resolveCityCoords, bestCoords } from '@/lib/geo';
 import { isDemoMode, isOwnerAdminEmail } from '@/lib/demo';
 import type { GoodSaleDBState, User, Product, Order, Message } from '@/lib/types';
 import {
@@ -508,7 +512,8 @@ export const dbOperations = {
     serviceType: 'ECONOMY' | 'STANDARD' | 'EXPRESS' = 'STANDARD',
     hasGoodSaleProtect: boolean = false,
     bankReceipt?: string,
-    invoiceTerms?: string
+    invoiceTerms?: string,
+    deliveryCoords?: { lat: number; lng: number }
   ) {
     const state = getDBState();
     if (!state.currentUser) return null;
@@ -599,6 +604,10 @@ export const dbOperations = {
       deliveryAddress,
       deliveryCity,
       deliveryState,
+      deliveryLat: deliveryCoords?.lat ?? resolveCityCoords(deliveryCity, deliveryState, deliveryAddress).lat,
+      deliveryLng: deliveryCoords?.lng ?? resolveCityCoords(deliveryCity, deliveryState, deliveryAddress).lng,
+      pickupLat: undefined,
+      pickupLng: undefined,
       deliveryPin,
       qrCodeToken: `QR-GS-${orderNumber}`,
       status: initialStatus,
@@ -617,6 +626,24 @@ export const dbOperations = {
       bankTransferReceipt: bankReceipt,
       invoiceTerms
     };
+
+    // Infer seller pickup from seller profile when available
+    const sellerProfile = state.profiles.find((p) => p.userId === product.sellerId);
+    if (sellerProfile) {
+      const pickup = bestCoords(
+        { lat: sellerProfile.lat, lng: sellerProfile.lng },
+        null,
+        sellerProfile.city,
+        sellerProfile.state,
+        sellerProfile.address
+      );
+      newOrder.pickupLat = pickup.lat;
+      newOrder.pickupLng = pickup.lng;
+    } else {
+      const lagos = resolveCityCoords('Lagos', 'Lagos');
+      newOrder.pickupLat = lagos.lat;
+      newOrder.pickupLng = lagos.lng;
+    }
 
     // Add order
     state.orders.unshift(newOrder);
@@ -775,13 +802,16 @@ export const dbOperations = {
         if (deliveryMethod === 'GOODSALE_PARTNER') {
           await client.from('delivery_jobs').insert({
             order_id: saved.id,
-            status: 'PENDING',
+            partner_id: selectedPartnerId || null,
+            status: selectedPartnerId ? 'ACCEPTED' : 'PENDING',
             service_type: serviceType,
             delivery_fee: deliveryFee,
             platform_commission: Math.round(deliveryFee * ((state.revenueSettings?.deliveryCommissionPercentage || 10) / 100)),
             courier_earnings: deliveryFee - Math.round(deliveryFee * ((state.revenueSettings?.deliveryCommissionPercentage || 10) / 100)),
             pin: deliveryPin,
-            tracking_history: [{ status: 'PENDING', time: new Date().toISOString(), note: 'Awaiting courier' }],
+            current_lat: newOrder.pickupLat ?? null,
+            current_lng: newOrder.pickupLng ?? null,
+            tracking_history: [{ status: selectedPartnerId ? 'ACCEPTED' : 'PENDING', time: new Date().toISOString(), note: selectedPartnerId ? 'Courier pre-assigned near buyer' : 'Awaiting courier' }],
           });
         }
         saveDBState(state);
@@ -1955,6 +1985,7 @@ export const dbOperations = {
   registerDeliveryPartner(partnerData: any) {
     const state = getDBState();
     const newId = Math.max(...state.deliveryPartners.map(p => p.id), 0) + 1;
+    const seedLoc = resolveCityCoords(partnerData.city, partnerData.state, partnerData.address);
     const partner: DeliveryPartner = {
       id: newId,
       userId: partnerData.userId,
@@ -1979,6 +2010,9 @@ export const dbOperations = {
       address: partnerData.address,
       state: partnerData.state,
       city: partnerData.city,
+      lastLat: partnerData.lastLat ?? seedLoc.lat,
+      lastLng: partnerData.lastLng ?? seedLoc.lng,
+      lastLocationAt: new Date().toISOString(),
       nin: partnerData.nin,
       selfieUrl: partnerData.selfieUrl || 'https://picsum.photos/seed/selfie/200',
       licenseUrl: partnerData.licenseUrl,
@@ -1997,6 +2031,41 @@ export const dbOperations = {
     });
 
     saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      void upsertDeliveryPartner(client, {
+        user_id: partner.userId,
+        full_name: partner.fullName,
+        phone: partner.phone,
+        email: partner.email,
+        vehicle_type: partner.vehicleType,
+        brand: partner.brand,
+        model: partner.model,
+        plate_number: partner.plateNumber,
+        color: partner.color,
+        year: partner.year,
+        capacity: partner.capacity,
+        photo_url: partner.photoUrl,
+        status: partner.status,
+        is_available: partner.isAvailable,
+        trust_score: partner.trustScore,
+        rating: partner.rating,
+        completed_deliveries: partner.completedDeliveries,
+        acceptance_rate: partner.acceptanceRate,
+        active_deliveries_count: partner.activeDeliveriesCount,
+        address: partner.address,
+        state: partner.state,
+        city: partner.city,
+        last_lat: partner.lastLat,
+        last_lng: partner.lastLng,
+        last_location_at: partner.lastLocationAt,
+        nin: partner.nin,
+        selfie_url: partner.selfieUrl,
+        license_url: partner.licenseUrl ?? null,
+      }).then(() => reloadFromSupabase()).catch((err) => console.error('Failed to persist partner:', err));
+    }
+
     return partner;
   },
 
@@ -2032,13 +2101,54 @@ export const dbOperations = {
     return partner;
   },
 
-  togglePartnerAvailability(userId: number, isAvailable: boolean) {
+  togglePartnerAvailability(userId: number, isAvailable: boolean, coords?: { lat: number; lng: number }) {
     const state = getDBState();
     const partner = state.deliveryPartners.find(p => p.userId === userId);
     if (!partner) return null;
 
     partner.isAvailable = isAvailable;
+    if (coords) {
+      partner.lastLat = coords.lat;
+      partner.lastLng = coords.lng;
+      partner.lastLocationAt = new Date().toISOString();
+    }
     saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      const payload: Record<string, unknown> = { is_available: isAvailable };
+      if (coords) {
+        payload.last_lat = coords.lat;
+        payload.last_lng = coords.lng;
+        payload.last_location_at = partner.lastLocationAt;
+      }
+      void (async () => {
+        try {
+          await client.from('delivery_partners').update(payload).eq('id', partner.id);
+          await reloadFromSupabase();
+        } catch (err) {
+          console.error('Failed to update partner availability:', err);
+        }
+      })();
+    }
+    return partner;
+  },
+
+  updatePartnerLiveLocation(partnerId: number, lat: number, lng: number) {
+    const state = getDBState();
+    const partner = state.deliveryPartners.find((p) => p.id === partnerId);
+    if (!partner) return null;
+    partner.lastLat = lat;
+    partner.lastLng = lng;
+    partner.lastLocationAt = new Date().toISOString();
+    saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      void updatePartnerLocation(client, partnerId, lat, lng).catch((err) =>
+        console.error('Failed to persist partner GPS:', err)
+      );
+    }
     return partner;
   },
 
@@ -2082,6 +2192,10 @@ export const dbOperations = {
 
     job.partnerId = partnerId;
     job.status = DeliveryJobStatus.ACCEPTED;
+    if (partner.lastLat != null && partner.lastLng != null) {
+      job.currentLat = partner.lastLat;
+      job.currentLng = partner.lastLng;
+    }
     job.trackingHistory.push({
       status: 'ACCEPTED',
       time: new Date().toISOString(),
@@ -2105,6 +2219,35 @@ export const dbOperations = {
     }
 
     saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      void (async () => {
+        try {
+          await client
+            .from('delivery_jobs')
+            .update({
+              partner_id: partnerId,
+              status: DeliveryJobStatus.ACCEPTED,
+              current_lat: job.currentLat ?? null,
+              current_lng: job.currentLng ?? null,
+              tracking_history: job.trackingHistory,
+            })
+            .eq('id', jobId);
+          await client
+            .from('delivery_partners')
+            .update({ active_deliveries_count: partner.activeDeliveriesCount })
+            .eq('id', partnerId);
+          if (order) {
+            await client.from('orders').update({ status: OrderStatus.OUT_FOR_DELIVERY }).eq('id', order.id);
+          }
+          await reloadFromSupabase();
+        } catch (err) {
+          console.error('Failed to persist job accept:', err);
+        }
+      })();
+    }
+
     return job;
   },
 
@@ -2124,16 +2267,69 @@ export const dbOperations = {
     if (status === DeliveryJobStatus.PICKED_UP) {
       note = 'Package picked up from seller location.';
     } else if (status === DeliveryJobStatus.IN_TRANSIT) {
-      note = 'Package is currently in transit to destination.';
+      note = currentLoc
+        ? `Package in transit. Live GPS ${currentLoc.lat.toFixed(5)}, ${currentLoc.lng.toFixed(5)} @ ${Math.round(currentLoc.speed)} km/h.`
+        : 'Package is currently in transit to destination.';
+    } else if (status === DeliveryJobStatus.ARRIVED) {
+      note = 'Dispatch rider arrived at buyer destination.';
     }
 
-    job.trackingHistory.push({
-      status,
-      time: new Date().toISOString(),
-      note
-    });
+    // Avoid flooding tracking history on every GPS tick
+    const last = job.trackingHistory[job.trackingHistory.length - 1];
+    const shouldAppendNote =
+      !currentLoc ||
+      !last ||
+      last.status !== status ||
+      status === DeliveryJobStatus.PICKED_UP ||
+      status === DeliveryJobStatus.ARRIVED;
+
+    if (shouldAppendNote && note) {
+      job.trackingHistory.push({
+        status,
+        time: new Date().toISOString(),
+        note
+      });
+    }
+
+    // Mirror rider coords onto partner last-known for Smart Match
+    if (currentLoc && job.partnerId) {
+      const partner = state.deliveryPartners.find((p) => p.id === job.partnerId);
+      if (partner) {
+        partner.lastLat = currentLoc.lat;
+        partner.lastLng = currentLoc.lng;
+        partner.lastLocationAt = new Date().toISOString();
+      }
+    }
 
     saveDBState(state);
+
+    const client = createClient();
+    if (client && currentLoc) {
+      void updateDeliveryJobLocation(client, jobId, {
+        lat: currentLoc.lat,
+        lng: currentLoc.lng,
+        speed: currentLoc.speed,
+        status,
+        trackingHistory: shouldAppendNote ? job.trackingHistory : undefined,
+      }).catch((err) => console.error('Failed to persist job GPS:', err));
+
+      if (job.partnerId) {
+        void updatePartnerLocation(client, job.partnerId, currentLoc.lat, currentLoc.lng).catch(() => undefined);
+      }
+    } else if (client) {
+      void (async () => {
+        try {
+          await client
+            .from('delivery_jobs')
+            .update({ status, tracking_history: job.trackingHistory })
+            .eq('id', jobId);
+          await reloadFromSupabase();
+        } catch (err) {
+          console.error('Failed to persist job status:', err);
+        }
+      })();
+    }
+
     return job;
   },
 
