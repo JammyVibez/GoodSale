@@ -65,6 +65,7 @@ export function profileToUser(row: Record<string, unknown>): User {
     trustScore: n(row.trust_score, 50),
     sellerLevel: s(row.seller_level, 'BRONZE'),
     goodPoints: n(row.good_points),
+    isSuspended: b(row.is_suspended, false),
   };
 }
 

@@ -302,7 +302,13 @@ export default function Header({
               <span>Chats</span>
             </button>
             <button
-              onClick={() => onNavigate('cart')}
+              onClick={() => {
+                if (!user) {
+                  onOpenAuth?.('register');
+                  return;
+                }
+                onNavigate('cart');
+              }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold tracking-wide transition-all cursor-pointer ${
                 currentView === 'cart'
                   ? 'bg-emerald-500 text-white shadow-sm'
@@ -331,7 +337,13 @@ export default function Header({
             {/* Always Visible Core: Cart Widget */}
             <button
               id="cart-widget"
-              onClick={() => onNavigate('cart')}
+              onClick={() => {
+                if (!user) {
+                  onOpenAuth?.('register');
+                  return;
+                }
+                onNavigate('cart');
+              }}
               className="p-2 text-slate-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-xl transition-colors relative cursor-pointer"
             >
               <ShoppingCart className="w-5 h-5" />

@@ -47,6 +47,12 @@ export default function Home() {
   };
 
   const handleAddToCart = (productId: number) => {
+    if (!db.currentUser) {
+      setAuthModalMode('register');
+      setAuthModalOpen(true);
+      triggerToast('Create an account to add items to your cart.');
+      return;
+    }
     setCart(prev => {
       if (prev.includes(productId)) {
         triggerToast('Item is already in your shopping cart!');
@@ -70,8 +76,32 @@ export default function Home() {
     handleNavigate('product', { id });
   };
 
-  // Safe navigation proxy
+  // Safe navigation proxy — guests may browse catalog; profile & cart require an account
   const handleNavigate = (view: string, payload?: any) => {
+    const authRequired = [
+      'cart',
+      'buyer-profile',
+      'settings',
+      'chats',
+      'loyalty',
+      'dashboard',
+      'admin',
+      'dispatch',
+      'revenue',
+      'verification',
+      'checkout',
+    ];
+    if (!db.currentUser && authRequired.includes(view)) {
+      setAuthModalMode(view === 'cart' || view === 'checkout' ? 'register' : 'login');
+      setAuthModalOpen(true);
+      triggerToast(
+        view === 'cart' || view === 'checkout'
+          ? 'Create an account to view your cart and checkout.'
+          : 'Sign in to access your account.'
+      );
+      return;
+    }
+
     // Save current view in history
     setHistory(prev => [...prev, currentView]);
 
@@ -147,6 +177,10 @@ export default function Home() {
             searchQuery={searchQuery}
             onNavigate={handleNavigate}
             onAddToCart={handleAddToCart}
+            onOpenAuth={(mode?: 'login' | 'register') => {
+              setAuthModalMode(mode || 'login');
+              setAuthModalOpen(true);
+            }}
           />
         )}
 

@@ -65,6 +65,10 @@ export default function BottomNavigation({
   };
 
   const handleCartClick = () => {
+    if (!user) {
+      onOpenAuth('register');
+      return;
+    }
     onNavigate('cart');
   };
 

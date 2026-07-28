@@ -301,8 +301,12 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
                           <input placeholder="Optional admin notes" value={notes} onChange={(e) => setVerNotes((s) => ({ ...s, [v.id]: e.target.value }))} className={inp} />
                           <div className="flex gap-2">
                             <button disabled={busy} className={btnOk} onClick={() => run(async () => {
-                              await dbOperations.handleVerificationApproval(v.id, VerificationStatus.APPROVED, notes || 'Your verification is approved successfully by admin.');
-                              if (applicant && applicant.role !== target) await dbOperations.adminSetUserRole(v.userId, target);
+                              await dbOperations.handleVerificationApproval(
+                                v.id,
+                                VerificationStatus.APPROVED,
+                                notes || 'Your verification is approved successfully by admin.',
+                                target
+                              );
                             }, 'Verification approved')}>
                               <ShieldCheck className="w-3.5 h-3.5" /> Approve
                             </button>

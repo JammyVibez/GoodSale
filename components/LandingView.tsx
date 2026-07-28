@@ -14,6 +14,7 @@ interface LandingViewProps {
   searchQuery: string;
   onNavigate: (view: string, payload?: any) => void;
   onAddToCart: (productId: number) => void;
+  onOpenAuth?: (mode?: 'login' | 'register') => void;
 }
 
 const CATEGORIES = [
@@ -33,6 +34,7 @@ export default function LandingView({
   searchQuery,
   onNavigate,
   onAddToCart,
+  onOpenAuth,
 }: LandingViewProps) {
   const db = useDBState();
   const [activeMainTab, setActiveMainTab] = useState<'marketplace' | 'flash_sale' | 'auction'>('marketplace');
@@ -584,6 +586,10 @@ export default function LandingView({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
+                            if (!db.currentUser) {
+                              onOpenAuth?.('login');
+                              return;
+                            }
                             if (auction) {
                               dbOperations.submitBid(auction.id, highestBid + 5000);
                             }
@@ -596,6 +602,10 @@ export default function LandingView({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
+                            if (!db.currentUser) {
+                              onOpenAuth?.('login');
+                              return;
+                            }
                             if (auction) {
                               dbOperations.submitBid(auction.id, highestBid + 20000);
                             }

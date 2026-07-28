@@ -223,6 +223,13 @@ export const dbOperations = {
     await reloadFromSupabase();
     const user = getDBState().currentUser;
     if (!user) throw new Error('Profile not found. Ensure supabase/schema.sql has been applied.');
+    if (user.isSuspended) {
+      await client.auth.signOut();
+      const state = getDBState();
+      state.currentUser = null;
+      saveDBState(state);
+      throw new Error('This account has been suspended by an administrator.');
+    }
     return user;
   },
 
@@ -1053,7 +1060,12 @@ export const dbOperations = {
   },
 
   // Approve / Reject Verification (Admin tool)
-  async handleVerificationApproval(verId: number, status: VerificationStatus, notes: string) {
+  async handleVerificationApproval(
+    verId: number,
+    status: VerificationStatus,
+    notes: string,
+    targetRole?: UserRole
+  ) {
     const state = getDBState();
     const ver = state.verifications.find((v) => v.id === verId);
     if (!ver) return;
@@ -1063,18 +1075,17 @@ export const dbOperations = {
 
     const user = state.users.find((u) => u.id === ver.userId);
     if (user && status === VerificationStatus.APPROVED) {
-      if (user.role === UserRole.BUYER) {
-        user.role = UserRole.VERIFIED_SELLER;
-      } else if (user.role === UserRole.BUSINESS) {
-        user.role = UserRole.VERIFIED_BUSINESS;
-      }
+      const resolvedRole =
+        targetRole ||
+        (user.role === UserRole.BUSINESS ? UserRole.VERIFIED_BUSINESS : UserRole.VERIFIED_SELLER);
+      user.role = resolvedRole;
+      if (state.currentUser?.id === user.id) state.currentUser.role = resolvedRole;
 
-      // If business exists, mark as verified
       const biz = state.businesses.find(b => b.ownerId === user.id);
       if (biz) biz.isVerified = true;
 
       user.trustScore = 100;
-      user.goodPoints += 200; // bonus for verification
+      user.goodPoints += 200;
 
       state.goodPoints.push({
         id: state.goodPoints.length + 1,
@@ -1088,7 +1099,7 @@ export const dbOperations = {
         id: state.notifications.length + 1,
         userId: user.id,
         title: 'Identity Verification Approved!',
-        message: 'Congratulations! Your identity has been verified. You received a gold trust badge, search ranking boost, and 200 GoodPoints!',
+        message: `Congratulations! Your identity has been verified as ${resolvedRole}. You received a gold trust badge and 200 GoodPoints!`,
         type: 'VERIFICATION',
         isRead: false,
         createdAt: new Date().toISOString(),
@@ -1114,9 +1125,14 @@ export const dbOperations = {
         admin_notes: notes,
       }).eq('id', verId);
       if (status === VerificationStatus.APPROVED && ver) {
+        const roleToSet =
+          targetRole ||
+          (user?.role === UserRole.VERIFIED_BUSINESS
+            ? UserRole.VERIFIED_BUSINESS
+            : UserRole.VERIFIED_SELLER);
         const { error: roleErr } = await client.rpc('admin_set_profile_role', {
           p_user_id: ver.userId,
-          p_role: 'VERIFIED_SELLER',
+          p_role: roleToSet,
         });
         if (roleErr) {
           console.warn('admin_set_profile_role failed (apply 002 migration):', roleErr.message);
@@ -2613,6 +2629,218 @@ export const dbOperations = {
     state.productBundles.push(bundle);
     saveDBState(state);
     return bundle;
+  },
+
+  // ---------- Admin CRUD ----------
+  requireAdmin() {
+    const state = getDBState();
+    const role = state.currentUser?.role;
+    if (!state.currentUser || (role !== UserRole.ADMIN && role !== UserRole.SUPER_ADMIN)) {
+      throw new Error('Admin privileges required');
+    }
+    return state;
+  },
+
+  async adminSetUserRole(userId: number, role: UserRole) {
+    const state = dbOperations.requireAdmin();
+    const user = state.users.find((u) => u.id === userId);
+    if (!user) return { error: 'User not found' };
+    user.role = role;
+    if (state.currentUser?.id === userId) state.currentUser.role = role;
+    dbOperations.addAuditLog(state.currentUser!.id, 'ADMIN_SET_ROLE', 'USER', userId, `Role set to ${role}`);
+    saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      const { error } = await client.rpc('admin_set_profile_role', { p_user_id: userId, p_role: role });
+      if (error) {
+        await client.from('profiles').update({ role }).eq('id', userId);
+      }
+      await reloadFromSupabase();
+    }
+    return { success: true, user };
+  },
+
+  async adminSuspendUser(userId: number, suspended: boolean) {
+    const state = dbOperations.requireAdmin();
+    const user = state.users.find((u) => u.id === userId);
+    if (!user) return { error: 'User not found' };
+    user.isSuspended = suspended;
+    if (suspended) user.trustScore = Math.min(user.trustScore, 20);
+    dbOperations.addAuditLog(
+      state.currentUser!.id,
+      suspended ? 'ADMIN_SUSPEND_USER' : 'ADMIN_UNSUSPEND_USER',
+      'USER',
+      userId,
+      suspended ? 'User suspended' : 'User reinstated'
+    );
+    state.notifications.push({
+      id: state.notifications.length + 1,
+      userId,
+      title: suspended ? 'Account Suspended' : 'Account Reinstated',
+      message: suspended
+        ? 'Your GoodSale account has been suspended by an administrator.'
+        : 'Your GoodSale account has been reinstated. You may trade again.',
+      type: 'SYSTEM',
+      isRead: false,
+      createdAt: new Date().toISOString(),
+    });
+    saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      await client.from('profiles').update({
+        trust_score: user.trustScore,
+        is_suspended: suspended,
+      }).eq('id', userId);
+      await reloadFromSupabase();
+    }
+    return { success: true, user };
+  },
+
+  async adminDeleteProduct(productId: number) {
+    const state = dbOperations.requireAdmin();
+    const product = state.products.find((p) => p.id === productId);
+    if (!product) return { error: 'Product not found' };
+    state.products = state.products.filter((p) => p.id !== productId);
+    state.auctions = state.auctions.filter((a) => a.productId !== productId);
+    dbOperations.addAuditLog(state.currentUser!.id, 'ADMIN_DELETE_PRODUCT', 'PRODUCT', productId, product.title);
+    saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      await client.from('products').delete().eq('id', productId);
+      await reloadFromSupabase();
+    }
+    return { success: true };
+  },
+
+  async adminUpdateProduct(
+    productId: number,
+    patch: Partial<{ title: string; price: number; quantity: number; stockStatus: Product['stockStatus']; category: string }>
+  ) {
+    const state = dbOperations.requireAdmin();
+    const product = state.products.find((p) => p.id === productId);
+    if (!product) return { error: 'Product not found' };
+    Object.assign(product, patch);
+    dbOperations.addAuditLog(state.currentUser!.id, 'ADMIN_UPDATE_PRODUCT', 'PRODUCT', productId, JSON.stringify(patch));
+    saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      await client.from('products').update({
+        title: product.title,
+        price: product.price,
+        quantity: product.quantity,
+        stock_status: product.stockStatus,
+        category: product.category,
+      }).eq('id', productId);
+      await reloadFromSupabase();
+    }
+    return { success: true, product };
+  },
+
+  async adminForceEscrowAction(orderId: number, action: 'RELEASE_SELLER' | 'REFUND_BUYER', notes: string) {
+    const state = dbOperations.requireAdmin();
+    const order = state.orders.find((o) => o.id === orderId);
+    if (!order) return { error: 'Order not found' };
+    const escrow = state.escrows.find((e) => e.orderId === orderId);
+
+    if (action === 'RELEASE_SELLER') {
+      order.status = OrderStatus.DELIVERED_SUCCESS;
+      if (escrow) escrow.isReleased = true;
+    } else {
+      order.status = OrderStatus.REFUNDED;
+      if (escrow) escrow.isRefunded = true;
+    }
+    order.updatedAt = new Date().toISOString();
+
+    dbOperations.addAuditLog(state.currentUser!.id, `ADMIN_ESCROW_${action}`, 'ORDER', orderId, notes);
+    state.notifications.push({
+      id: state.notifications.length + 1,
+      userId: order.buyerId,
+      title: 'Admin Escrow Action',
+      message: `Order ${order.orderNumber}: ${notes}`,
+      type: 'ESCROW',
+      isRead: false,
+      createdAt: new Date().toISOString(),
+    });
+    state.notifications.push({
+      id: state.notifications.length + 1,
+      userId: order.sellerId,
+      title: 'Admin Escrow Action',
+      message: `Order ${order.orderNumber}: ${notes}`,
+      type: 'ESCROW',
+      isRead: false,
+      createdAt: new Date().toISOString(),
+    });
+    saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      if (action === 'RELEASE_SELLER') {
+        // Prefer RPC if buyer PIN not needed for admin force
+        await client.from('orders').update({ status: 'DELIVERED_SUCCESS' }).eq('id', orderId);
+        await client.from('escrows').update({ is_released: true }).eq('order_id', orderId);
+      } else {
+        await client.from('orders').update({ status: 'REFUNDED' }).eq('id', orderId);
+        await client.from('escrows').update({ is_refunded: true }).eq('order_id', orderId);
+      }
+      await reloadFromSupabase();
+    }
+    return { success: true };
+  },
+
+  async adminUpdateOrderStatus(orderId: number, status: OrderStatus) {
+    const state = dbOperations.requireAdmin();
+    const order = state.orders.find((o) => o.id === orderId);
+    if (!order) return { error: 'Order not found' };
+    order.status = status;
+    order.updatedAt = new Date().toISOString();
+    dbOperations.addAuditLog(state.currentUser!.id, 'ADMIN_ORDER_STATUS', 'ORDER', orderId, status);
+    saveDBState(state);
+
+    try {
+      if (status === OrderStatus.SHIPPED || status === OrderStatus.OUT_FOR_DELIVERY) {
+        await fetch('/api/orders/update-status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId, status }),
+        });
+      } else {
+        const client = createClient();
+        if (client) await client.from('orders').update({ status }).eq('id', orderId);
+      }
+      await reloadFromSupabase();
+    } catch (err) {
+      console.error(err);
+    }
+    return { success: true };
+  },
+
+  async adminRejectDeliveryPartner(partnerId: number) {
+    const state = dbOperations.requireAdmin();
+    const partner = state.deliveryPartners.find((p) => p.id === partnerId);
+    if (!partner) return { error: 'Partner not found' };
+    partner.status = 'REJECTED';
+    partner.isAvailable = false;
+    dbOperations.addAuditLog(state.currentUser!.id, 'ADMIN_REJECT_PARTNER', 'DELIVERY_PARTNER', partnerId, partner.fullName);
+    state.notifications.push({
+      id: state.notifications.length + 1,
+      userId: partner.userId,
+      title: 'Delivery Partner Application Rejected',
+      message: 'Your GoodDispatch application was rejected. Contact support for details.',
+      type: 'VERIFICATION',
+      isRead: false,
+      createdAt: new Date().toISOString(),
+    });
+    saveDBState(state);
+    const client = createClient();
+    if (client) {
+      await client.from('delivery_partners').update({ status: 'REJECTED', is_available: false }).eq('id', partnerId);
+      await reloadFromSupabase();
+    }
+    return { success: true };
   },
 };
 
