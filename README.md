@@ -1,20 +1,78 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# GoodSale
 
-# Run and deploy your AI Studio app
+Nigeria's escrow-backed C2C marketplace with **live Supabase Auth**, realtime catalog/orders/chat/dispatch, and Paystack checkout.
 
-This contains everything you need to run your app locally.
+Mock seed users/products/orders have been **removed**. The app loads empty until you connect Supabase.
 
-View your app in AI Studio: https://ai.studio/apps/8e24ae4b-6495-4d5f-9c71-92c96df23fa6
+## 1. Create a Supabase project
 
-## Run Locally
+1. Create a project at [supabase.com](https://supabase.com)
+2. Open **SQL Editor** → paste and run [`supabase/schema.sql`](./supabase/schema.sql)
+3. (Optional) Create storage buckets: `government-ids` (private), `product-images` (public), `chat-media` (public)
+4. Authentication → Providers → enable **Email**
+5. Authentication → URL config → add `http://localhost:3000/auth/callback` (and your production URL)
 
-**Prerequisites:**  Node.js
+## 2. Add credentials
 
+```bash
+cp .env.example .env.local
+```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Fill in at minimum:
+
+| Variable | Where to find it |
+|----------|------------------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Project Settings → API → Project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Project Settings → API → `anon` `public` |
+| `SUPABASE_SERVICE_ROLE_KEY` | Project Settings → API → `service_role` (server only) |
+| `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` | Paystack Dashboard → Settings → API Keys |
+| `PAYSTACK_SECRET_KEY` | Paystack secret key |
+| `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` locally |
+
+Restart the dev server after saving `.env.local`.
+
+## 3. Run
+
+```bash
+npm install
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000). Sign up → create listings → checkout → chat → GoodDispatch jobs all hit Supabase with Realtime subscriptions.
+
+See **[PRODUCTION.md](./PRODUCTION.md)** for the full go-live checklist (credentials only you can supply + what is already coded).
+
+## SQL to run (order matters)
+
+1. `supabase/schema.sql`
+2. `supabase/migrations/002_production_hardening.sql`
+
+## What is live now
+
+- **Auth**: Supabase email/password signup & login (`AuthModal`)
+- **Profiles**: created by DB trigger on `auth.users` insert
+- **Catalog / orders / escrow / chat / delivery jobs**: loaded from Postgres; writes for products, orders, messages, chat rooms persist to Supabase
+- **Realtime**: `messages`, `orders`, `delivery_jobs`, `products`, `notifications`, `bids`, `chat_rooms`, …
+- **Payments**: Paystack Inline + `/api/payments/verify` (configure keys for live charges)
+- **Setup banner**: shown until Supabase URL/anon key are present
+
+## Scripts
+
+```bash
+npm run dev
+npm run build && npm run start
+npm run lint
+npm run typecheck
+```
+
+## Docker
+
+```bash
+docker compose up --build
+```
+
+Pass the same env vars into the compose service.
+
+## Need help wiring credentials?
+
+Add the Supabase + Paystack values to Cursor / Vercel / Docker secrets (or `.env.local`) and re-run. Without them the UI stays empty and the amber setup banner explains what is missing.

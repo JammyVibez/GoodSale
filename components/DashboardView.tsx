@@ -277,7 +277,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
 
 
   // Create new listing with full verification, duplicate-checking and prohibited-terms scanning
-  const handleCreateListing = (e: React.FormEvent) => {
+  const handleCreateListing = async (e: React.FormEvent) => {
     e.preventDefault();
     setStepValidationErrors(null);
     setDuplicateDetected(false);
@@ -315,7 +315,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
     }
 
     // Save product via store operation
-    const newProd = dbOperations.addProduct(
+    const newProd = await dbOperations.addProduct(
       title,
       description,
       category,
@@ -1572,9 +1572,9 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                     <div className="space-y-4 text-xs">
                       
                       <div className="p-3 bg-amber-500/5 border border-amber-500/10 rounded-2xl">
-                        <span className="text-[10px] font-mono text-amber-500 font-bold block mb-0.5 uppercase tracking-widest">Sandbox Demo Helper Tip</span>
+                        <span className="text-[10px] font-mono text-slate-500 font-bold block mb-0.5 uppercase tracking-widest">Buyer PIN required</span>
                         <p className="text-[10px] text-slate-500 leading-relaxed font-sans">
-                          Normally, the buyer has this PIN in their order card. For testing purposes, the correct PIN for this order is: <strong className="font-mono text-emerald-500 text-xs">{selectedOrderForPin.deliveryPin}</strong>.
+                          Ask the buyer for their delivery PIN from the order card. The PIN is never shown to sellers.
                         </p>
                       </div>
 
@@ -1922,12 +1922,23 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                           return;
                         }
                         
-                        files.forEach(file => {
-                          const reader = new FileReader();
-                          reader.onloadend = () => {
-                            setUploadedImages(prev => [...prev, reader.result as string]);
-                          };
-                          reader.readAsDataURL(file);
+                        files.forEach((file) => {
+                          void (async () => {
+                            try {
+                              const { uploadMedia } = await import('@/lib/upload');
+                              const url = await uploadMedia(file, 'product-images');
+                              setUploadedImages((prev) => [...prev, url]);
+                            } catch (err) {
+                              console.error(err);
+                              // Fallback preview so sellers are not blocked if storage is not ready
+                              const reader = new FileReader();
+                              reader.onloadend = () => {
+                                setUploadedImages((prev) => [...prev, reader.result as string]);
+                              };
+                              reader.readAsDataURL(file);
+                              alert('Cloud upload unavailable — using local preview. Apply storage migration and sign in.');
+                            }
+                          })();
                         });
                       }}
                       className="hidden"

@@ -84,11 +84,11 @@ export default function SellerProfileView({
     });
   };
 
-  const handleStartChat = () => {
+  const handleStartChat = async () => {
     // Look for existing product or first product of this seller to initiate chat room
     const dummyProduct = sellerProducts[0] || db.products[0];
     if (dummyProduct) {
-      const roomId = dbOperations.getOrCreateChatRoom(dummyProduct.id);
+      const roomId = await dbOperations.getOrCreateChatRoom(dummyProduct.id);
       if (roomId) {
         onNavigate('chats', { roomId });
       }

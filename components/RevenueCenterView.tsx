@@ -11,6 +11,7 @@ import { motion } from 'motion/react';
 import { 
   getDBState, saveDBState, dbOperations, RevenueSettings, Wallet, WalletTransaction, UserRole
 } from '../lib/store';
+import { isDemoMode } from '@/lib/demo';
 
 export default function RevenueCenterView() {
   const [db, setDb] = useState(getDBState());
@@ -56,8 +57,12 @@ export default function RevenueCenterView() {
   // Retrieve user's wallet (create if doesn't exist)
   let wallet = user ? db.wallets.find(w => w.userId === user.id) : null;
   if (user && !wallet) {
-    // Lazy auto initialize wallet
-    wallet = { id: db.wallets.length + 1, userId: user.id, balance: 120000 }; // Boost with a demo credit balance so user can test premium features right away!
+    // Lazy auto initialize wallet — demo starts with seed credit; production starts at 0
+    wallet = {
+      id: db.wallets.length + 1,
+      userId: user.id,
+      balance: isDemoMode() ? 120000 : 0,
+    };
     db.wallets.push(wallet);
     saveDBState(db);
   }
@@ -71,10 +76,15 @@ export default function RevenueCenterView() {
   const isBusinessSubbed = user?.role === UserRole.BUSINESS || user?.role === UserRole.VERIFIED_BUSINESS;
   const isVerifiedPlus = user?.role === UserRole.VERIFIED_SELLER || user?.role === UserRole.VERIFIED_BUSINESS;
 
-  // Deposit Cash to Wallet Simulator
+  // Deposit Cash to Wallet
   const handleDeposit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !wallet) return;
+
+    if (!isDemoMode()) {
+      setWalletError('Wallet top-ups require verified Paystack checkout in production. Demo deposits are disabled.');
+      return;
+    }
 
     const amt = parseFloat(depositAmount);
     if (isNaN(amt) || amt <= 0) {
@@ -84,7 +94,7 @@ export default function RevenueCenterView() {
 
     setWalletError(null);
     dbOperations.depositToWallet(user.id, amt);
-    setWalletSuccess(`Success! ₦${amt.toLocaleString()} has been added to your wallet securely via mock Paystack checkout.`);
+    setWalletSuccess(`Success! ₦${amt.toLocaleString()} has been added to your wallet (demo mode).`);
     setDepositAmount('15000');
     setTimeout(() => setWalletSuccess(null), 5000);
   };

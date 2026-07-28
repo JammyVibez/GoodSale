@@ -1,73 +1,127 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import fs from "fs";
-import path from "path";
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import fs from 'fs';
+import path from 'path';
+import { isDemoMode, getEnvStatus } from '@/lib/env';
+import { logger, publicErrorMessage } from '@/lib/logger';
+import { rateLimit, clientIpFromRequest } from '@/lib/rate-limit';
 
-// Path to durable local storage file
-const DB_FILE_PATH = path.join(process.cwd(), "goodsale_persistent_db.json");
+const DB_FILE_PATH = path.join(process.cwd(), 'goodsale_persistent_db.json');
+const MAX_STATE_BYTES = 2 * 1024 * 1024; // 2 MB hard cap
 
-// In-memory fallback if writing fails
-let inMemoryDB: any = null;
+let inMemoryDB: unknown = null;
 
-// Initialize Supabase if keys exist
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabaseUrl, supabaseAnonKey) : null;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabase =
+  supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
-export async function GET() {
-  // 1. Try pulling state from Supabase Database
+function denyProductionSync() {
+  return NextResponse.json(
+    {
+      success: false,
+      error:
+        'Full-state database sync is disabled outside demo mode. Use authenticated domain APIs with row-level security.',
+    },
+    { status: 403 }
+  );
+}
+
+export async function GET(req: NextRequest) {
+  const ip = clientIpFromRequest(req);
+  const limited = rateLimit(`db:get:${ip}`, 60, 60_000);
+  if (!limited.allowed) {
+    return NextResponse.json(
+      { success: false, error: 'Too many requests' },
+      { status: 429, headers: { 'Retry-After': String(Math.ceil(limited.retryAfterMs / 1000)) } }
+    );
+  }
+
+  // In production, do not expose the shared marketplace blob
+  if (!isDemoMode()) {
+    return denyProductionSync();
+  }
+
   if (supabase) {
     try {
       const { data, error } = await supabase
-        .from("market_state")
-        .select("state")
-        .eq("id", 1)
+        .from('market_state')
+        .select('state')
+        .eq('id', 1)
         .single();
-      
-      if (!error && data && data.state) {
-        return NextResponse.json({ success: true, state: data.state, source: "supabase-db" });
+
+      if (!error && data?.state) {
+        return NextResponse.json({ success: true, state: data.state, source: 'supabase-db' });
       }
 
-      // 2. Try pulling state from Supabase Cloud Storage
-      const { data: fileData, error: fileError } = await supabase
-        .storage
-        .from("goodsale-data")
-        .download("database.json");
+      const { data: fileData, error: fileError } = await supabase.storage
+        .from('goodsale-data')
+        .download('database.json');
 
       if (!fileError && fileData) {
         const text = await fileData.text();
         const state = JSON.parse(text);
-        return NextResponse.json({ success: true, state, source: "supabase-storage" });
+        return NextResponse.json({ success: true, state, source: 'supabase-storage' });
       }
     } catch (supabaseError) {
-      console.warn("Supabase query failed, falling back to local storage:", supabaseError);
+      logger.warn('Supabase query failed, falling back to local storage', {
+        error: String(supabaseError),
+      });
     }
   }
 
-  // 3. Fallback to Local Filesystem
   try {
     if (fs.existsSync(DB_FILE_PATH)) {
-      const data = await fs.promises.readFile(DB_FILE_PATH, "utf-8");
+      const data = await fs.promises.readFile(DB_FILE_PATH, 'utf-8');
       const state = JSON.parse(data);
-      return NextResponse.json({ success: true, state, source: "local-file" });
+      return NextResponse.json({ success: true, state, source: 'local-file' });
     }
   } catch (error) {
-    console.error("Error reading persistent database file:", error);
+    logger.error('Error reading persistent database file', { error: String(error) });
   }
 
-  // 4. Fallback to Memory
   if (inMemoryDB) {
-    return NextResponse.json({ success: true, state: inMemoryDB, source: "memory" });
+    return NextResponse.json({ success: true, state: inMemoryDB, source: 'memory' });
   }
 
-  return NextResponse.json({ success: false, message: "No persistent data found" });
+  return NextResponse.json({ success: false, message: 'No persistent data found' });
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const { state } = await req.json();
-    if (!state) {
-      return NextResponse.json({ success: false, error: "State is required" }, { status: 400 });
+    if (!isDemoMode()) {
+      return denyProductionSync();
+    }
+
+    const ip = clientIpFromRequest(req);
+    const limited = rateLimit(`db:post:${ip}`, 30, 60_000);
+    if (!limited.allowed) {
+      return NextResponse.json(
+        { success: false, error: 'Too many requests' },
+        { status: 429, headers: { 'Retry-After': String(Math.ceil(limited.retryAfterMs / 1000)) } }
+      );
+    }
+
+    const contentLength = Number(req.headers.get('content-length') || 0);
+    if (contentLength > MAX_STATE_BYTES) {
+      return NextResponse.json(
+        { success: false, error: 'Payload too large' },
+        { status: 413 }
+      );
+    }
+
+    const body = await req.json();
+    const { state } = body;
+    if (!state || typeof state !== 'object') {
+      return NextResponse.json({ success: false, error: 'State is required' }, { status: 400 });
+    }
+
+    const serialized = JSON.stringify(state);
+    if (serialized.length > MAX_STATE_BYTES) {
+      return NextResponse.json(
+        { success: false, error: 'State payload exceeds size limit' },
+        { status: 413 }
+      );
     }
 
     inMemoryDB = state;
@@ -75,74 +129,58 @@ export async function POST(req: NextRequest) {
     let supabasePersistedDb = false;
     let supabasePersistedStorage = false;
 
-    // 1. Save to Supabase Cloud Database & Storage if configured
     if (supabase) {
       try {
-        // Upsert state into "market_state" table
         const { error: dbError } = await supabase
-          .from("market_state")
+          .from('market_state')
           .upsert({ id: 1, state, updated_at: new Date().toISOString() });
-        
+
         if (!dbError) {
           supabasePersistedDb = true;
         } else {
-          console.log("Supabase db upsert skipped (table might need creation in SQL editor):", dbError.message);
+          logger.debug('Supabase db upsert skipped', { message: dbError.message });
         }
 
-        // Upload/Overwrite state file in "goodsale-data" Storage bucket
-        const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
-        let { error: storageError } = await supabase
-          .storage
-          .from("goodsale-data")
-          .upload("database.json", blob, { upsert: true });
-
-        // Self-healing: If bucket doesn't exist, try creating it automatically
-        if (storageError && (storageError.message?.includes("not found") || storageError.message?.includes("Bucket"))) {
-          try {
-            console.log("Attempting to auto-create 'goodsale-data' bucket...");
-            const { error: createError } = await supabase.storage.createBucket("goodsale-data", { public: true });
-            if (!createError) {
-              const retryRes = await supabase
-                .storage
-                .from("goodsale-data")
-                .upload("database.json", blob, { upsert: true });
-              storageError = retryRes.error;
-            }
-          } catch (bucketCreateErr: any) {
-            console.log("Could not auto-create storage bucket:", bucketCreateErr.message);
-          }
-        }
+        const blob = new Blob([JSON.stringify(state)], { type: 'application/json' });
+        const { error: storageError } = await supabase.storage
+          .from('goodsale-data')
+          .upload('database.json', blob, { upsert: true });
 
         if (!storageError) {
           supabasePersistedStorage = true;
         } else {
-          console.log("Supabase storage upload skipped (bucket might need public activation):", storageError.message);
+          logger.debug('Supabase storage upload skipped', { message: storageError.message });
         }
-      } catch (err: any) {
-        console.log("Failed to synchronize with Supabase services:", err.message);
+      } catch (err) {
+        logger.warn('Failed to synchronize with Supabase services', { error: String(err) });
       }
     }
 
-    // 2. Always write to local filesystem as a reliable backup
     try {
-      await fs.promises.writeFile(DB_FILE_PATH, JSON.stringify(state, null, 2), "utf-8");
-      return NextResponse.json({ 
-        success: true, 
-        persisted: supabase ? "supabase-and-file" : "file",
+      await fs.promises.writeFile(DB_FILE_PATH, JSON.stringify(state), 'utf-8');
+      return NextResponse.json({
+        success: true,
+        persisted: supabase ? 'supabase-and-file' : 'file',
         supabaseDb: supabasePersistedDb,
-        supabaseStorage: supabasePersistedStorage
+        supabaseStorage: supabasePersistedStorage,
+        env: getEnvStatus().demoMode ? 'demo' : 'production',
       });
     } catch (fsError) {
-      console.warn("Could not write to local filesystem, falling back to memory:", fsError);
-      return NextResponse.json({ 
-        success: true, 
-        persisted: "memory",
+      logger.warn('Could not write to local filesystem, falling back to memory', {
+        error: String(fsError),
+      });
+      return NextResponse.json({
+        success: true,
+        persisted: 'memory',
         supabaseDb: supabasePersistedDb,
-        supabaseStorage: supabasePersistedStorage
+        supabaseStorage: supabasePersistedStorage,
       });
     }
-  } catch (error: any) {
-    console.error("Error writing to database:", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error) {
+    logger.error('Error writing to database', { error: String(error) });
+    return NextResponse.json(
+      { success: false, error: publicErrorMessage(error) },
+      { status: 500 }
+    );
   }
 }

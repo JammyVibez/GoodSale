@@ -12,6 +12,7 @@ import {
 import { 
   getDBState, saveDBState, dbOperations, User, UserRole, VerificationStatus 
 } from '../lib/store';
+import { isOwnerAdminEmail } from '@/lib/demo';
 
 export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void }) {
   const [db, setDb] = useState(getDBState());
@@ -73,12 +74,9 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
 
   useEffect(() => {
     const user = db.currentUser;
-    if (user) {
-      const emailLower = user.email.toLowerCase();
-      if (emailLower === 'lightingstar79@gmail.com' || emailLower === 'admin@goodsale.ng') {
-        if (user.role !== UserRole.SUPER_ADMIN && user.role !== UserRole.ADMIN) {
-          dbOperations.updateCurrentUserRole(UserRole.SUPER_ADMIN);
-        }
+    if (user && isOwnerAdminEmail(user.email)) {
+      if (user.role !== UserRole.SUPER_ADMIN && user.role !== UserRole.ADMIN) {
+        dbOperations.updateCurrentUserRole(UserRole.SUPER_ADMIN);
       }
     }
   }, [db.currentUser]);

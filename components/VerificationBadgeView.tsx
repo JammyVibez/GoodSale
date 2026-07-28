@@ -7,6 +7,7 @@ import {
   Loader2, FileText, Sparkles, Award, MapPin, Eye, Info
 } from 'lucide-react';
 import { getDBState, saveDBState, dbOperations, UserRole, DocumentType } from '../lib/store';
+import { isDemoMode } from '@/lib/demo';
 
 export default function VerificationBadgeView() {
   const [db, setDb] = useState(getDBState());
@@ -146,9 +147,11 @@ export default function VerificationBadgeView() {
     // Submit verification to state
     dbOperations.submitVerification(documentType, nin, uploadedUrl);
 
-    // Instant high-fidelity workflow update: instantly verify profile as 'Verified'
-    const targetRole = userRoleSelection === 'SELLER' ? UserRole.VERIFIED_SELLER : UserRole.VERIFIED_BUSINESS;
-    dbOperations.verifyUserImmediately(user.id, targetRole);
+    // Instant verify is demo-only; production waits for admin review
+    if (isDemoMode()) {
+      const targetRole = userRoleSelection === 'SELLER' ? UserRole.VERIFIED_SELLER : UserRole.VERIFIED_BUSINESS;
+      dbOperations.verifyUserImmediately(user.id, targetRole);
+    }
     setIsSubmitted(true);
   };
 

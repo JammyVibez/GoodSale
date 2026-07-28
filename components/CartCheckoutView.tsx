@@ -206,43 +206,43 @@ export default function CartCheckoutView({
   const totalDue = subtotal + escrowFee + deliveryCharge + protectFee;
 
   // Process payment securely into escrow
-  const handlePayIntoEscrow = (customMethod?: string) => {
+  const handlePayIntoEscrow = async (customMethod?: string) => {
     if (cartItems.length === 0) return;
 
     const pm = customMethod || selectedPaymentMethod || 'escrow';
 
-    // Create Escrow Order for each item
-    cartItems.forEach(item => {
-      dbOperations.placeOrder(
+    // Create Escrow Order for each item (persisted to Supabase)
+    for (const item of cartItems) {
+      await dbOperations.placeOrder(
         item.id,
         deliveryAddress,
         city,
         state,
-        pm, // paymentMethod
-        deliveryMethod, // deliveryMethod
-        false, // usePoints
+        pm,
+        deliveryMethod,
+        false,
         deliveryMethod === 'GOODSALE_PARTNER' && selectedPartnerId ? selectedPartnerId : undefined,
         serviceType,
         hasGoodSaleProtect,
         bankTransferReceipt || undefined,
         invoiceTerms
       );
-    });
+    }
 
     onClearCart();
     setActiveStep('orders');
   };
 
   // Submit Secret PIN Verification to release funds
-  const handleVerifyDeliveryPin = (orderId: number) => {
+  const handleVerifyDeliveryPin = async (orderId: number) => {
     setPinError(null);
     setPinSuccess(null);
 
-    const result = dbOperations.completeDelivery(orderId, enteredPin);
+    const result = await dbOperations.completeDelivery(orderId, enteredPin);
     if (result && 'error' in result) {
       setPinError(result.error || 'Verification failed');
     } else {
-      setPinSuccess('PIN verified! Neutral escrow capital payout dispatched immediately to merchant.');
+      setPinSuccess('PIN verified! Escrow funds released to the merchant wallet.');
       setEnteredPin('');
       setTimeout(() => setPinSuccess(null), 4000);
     }

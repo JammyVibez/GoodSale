@@ -19,6 +19,7 @@ import SettingsView from '../components/SettingsView';
 import BuyerProfileView from '../components/BuyerProfileView';
 import AuthModal from '../components/AuthModal';
 import BottomNavigation from '../components/BottomNavigation';
+import SetupBanner from '../components/SetupBanner';
 import { getDBState, useDBState } from '../lib/store';
 
 export default function Home() {
@@ -115,6 +116,7 @@ export default function Home() {
 
   return (
     <div className="bg-gray-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-h-screen transition-colors duration-300">
+      <SetupBanner />
       
       {/* Header element */}
       <Header

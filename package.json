@@ -1,15 +1,22 @@
 {
-  "name": "ai-studio-applet",
-  "version": "0.1.0",
+  "name": "goodsale",
+  "version": "0.2.0",
   "private": true,
+  "description": "GoodSale — Nigeria's escrow-backed C2C marketplace",
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "lint": "next lint"
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "healthcheck": "curl -fsS http://localhost:3000/api/health"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "dependencies": {
     "@google/genai": "^2.11.0",
+    "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.2",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.469.0",
