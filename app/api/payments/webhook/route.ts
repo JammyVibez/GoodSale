@@ -37,9 +37,14 @@ export async function POST(req: NextRequest) {
       const metaOrderId = Number(
         event.data?.metadata?.order_id || event.data?.metadata?.orderId || 0
       ) || null;
+      const metaOrderIdsRaw = String(event.data?.metadata?.order_ids || '');
+      const metaOrderIds = metaOrderIdsRaw
+        ? metaOrderIdsRaw.split(',').map((s: string) => Number(s.trim())).filter((n: number) => n > 0)
+        : null;
 
       const reconciliation = await reconcilePaystackPayment({
         orderId: metaOrderId,
+        orderIds: metaOrderIds,
         reference: event.data.reference,
         amountKobo: event.data.amount,
         channel: event.data.channel,

@@ -241,22 +241,21 @@ export default function DispatchDashboardView() {
   };
 
   // PIN code delivery completion handler
-  const handleVerifyPin = () => {
+  const handleVerifyPin = async () => {
     if (!simulatedJob) return;
     if (!pinCode) {
-      setPinError('Please enter the 4-digit security delivery PIN.');
+      setPinError('Please enter the delivery PIN from the buyer.');
       return;
     }
 
     setPinError(null);
     setPinSuccess(false);
 
-    const result = dbOperations.completeDeliveryJobWithPin(simulatedJob.id, pinCode);
+    const result = await dbOperations.completeDeliveryJobWithPin(simulatedJob.id, pinCode);
     if (result.success) {
       setPinSuccess(true);
       setSimulatedJob(null);
       setPinCode('');
-      // Show success screen or tab redirect
       setTimeout(() => {
         setPinSuccess(false);
         setActiveSubTab('earnings');

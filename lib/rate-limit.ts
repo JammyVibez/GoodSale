@@ -1,6 +1,5 @@
 /**
- * Simple in-memory sliding-window rate limiter.
- * Suitable for single-instance Node deployments. Use Redis/Upstash for multi-instance.
+ * Rate limiter — uses Upstash Redis when configured, else in-memory (single instance).
  */
 
 type Bucket = {
@@ -15,11 +14,7 @@ export type RateLimitResult = {
   retryAfterMs: number;
 };
 
-export function rateLimit(
-  key: string,
-  limit: number,
-  windowMs: number
-): RateLimitResult {
+function memoryRateLimit(key: string, limit: number, windowMs: number): RateLimitResult {
   const now = Date.now();
   const bucket = buckets.get(key) || { timestamps: [] };
   bucket.timestamps = bucket.timestamps.filter((t) => now - t < windowMs);
@@ -43,6 +38,71 @@ export function rateLimit(
   };
 }
 
+async function upstashRateLimit(
+  key: string,
+  limit: number,
+  windowMs: number
+): Promise<RateLimitResult | null> {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+
+  const windowSec = Math.max(1, Math.ceil(windowMs / 1000));
+  const redisKey = `rl:${key}`;
+
+  try {
+    // INCR + EXPIRE via Upstash pipeline
+    const pipeline = [
+      ['INCR', redisKey],
+      ['EXPIRE', redisKey, String(windowSec), 'NX'],
+      ['TTL', redisKey],
+    ];
+    const res = await fetch(`${url}/pipeline`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(pipeline),
+    });
+    const data = (await res.json()) as { result?: unknown }[];
+    const count = Number(data?.[0]?.result ?? 0);
+    const ttl = Number(data?.[2]?.result ?? windowSec);
+    if (count > limit) {
+      return {
+        allowed: false,
+        remaining: 0,
+        retryAfterMs: Math.max(ttl, 1) * 1000,
+      };
+    }
+    return {
+      allowed: true,
+      remaining: Math.max(limit - count, 0),
+      retryAfterMs: 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Sync rate limit (in-memory). Prefer rateLimitAsync when Upstash may be configured.
+ */
+export function rateLimit(key: string, limit: number, windowMs: number): RateLimitResult {
+  return memoryRateLimit(key, limit, windowMs);
+}
+
+/** Async rate limit — Upstash when configured, else memory. */
+export async function rateLimitAsync(
+  key: string,
+  limit: number,
+  windowMs: number
+): Promise<RateLimitResult> {
+  const remote = await upstashRateLimit(key, limit, windowMs);
+  if (remote) return remote;
+  return memoryRateLimit(key, limit, windowMs);
+}
+
 export function clientIpFromRequest(req: Request): string {
   const forwarded = req.headers.get('x-forwarded-for');
   if (forwarded) return forwarded.split(',')[0]?.trim() || 'unknown';
@@ -51,7 +111,6 @@ export function clientIpFromRequest(req: Request): string {
   return 'unknown';
 }
 
-/** Periodically prune empty/stale buckets to avoid unbounded growth. */
 setInterval(() => {
   const now = Date.now();
   for (const [key, bucket] of buckets.entries()) {

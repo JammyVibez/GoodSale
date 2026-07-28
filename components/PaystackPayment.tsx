@@ -1,12 +1,16 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Shield, CreditCard, Landmark, X, Lock, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Shield, CreditCard, Landmark, X, Lock, CheckCircle2, AlertCircle } from 'lucide-react';
 import { isDemoMode } from '@/lib/demo';
+import { buildPaystackReference } from '@/lib/payments/helpers';
 
 interface PaystackPaymentProps {
   email: string;
   amount: number; // in NGN
+  orderId: number;
+  /** Optional extra order ids for multi-item cart paid in one charge */
+  orderIds?: number[];
   onSuccess: (reference: string) => void;
   onCancel: () => void;
   metadata?: Record<string, string | number | boolean>;
@@ -46,19 +50,21 @@ function loadPaystackScript(): Promise<void> {
   });
 }
 
-async function verifyPayment(reference: string): Promise<boolean> {
+async function verifyPayment(reference: string, orderId: number, orderIds?: number[]): Promise<boolean> {
   const res = await fetch('/api/payments/verify', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ reference }),
+    body: JSON.stringify({ reference, orderId, orderIds }),
   });
   const data = await res.json();
-  return Boolean(res.ok && data.success);
+  return Boolean(res.ok && data.success && data.reconciliation?.reconciled !== false);
 }
 
 export default function PaystackPayment({
   email,
   amount,
+  orderId,
+  orderIds,
   onSuccess,
   onCancel,
   metadata,
@@ -82,7 +88,7 @@ export default function PaystackPayment({
       setStep('PROCESSING');
       setError(null);
       try {
-        const ok = await verifyPayment(reference);
+        const ok = await verifyPayment(reference, orderId, orderIds);
         if (!ok) {
           setStep('ERROR');
           setError('Payment could not be verified with Paystack. Funds were not released to escrow.');
@@ -95,11 +101,19 @@ export default function PaystackPayment({
         setError('Verification request failed. Please contact support with your payment reference.');
       }
     },
-    [onSuccess]
+    [onSuccess, orderId, orderIds]
   );
 
   const handlePaystackInline = async () => {
     setError(null);
+
+    if (!orderId || orderId <= 0) {
+      setError('Missing order id — create the order before paying.');
+      setStep('ERROR');
+      return;
+    }
+
+    const reference = buildPaystackReference(orderId);
 
     if (!publicKey) {
       if (!demo) {
@@ -107,9 +121,7 @@ export default function PaystackPayment({
         setStep('ERROR');
         return;
       }
-      // Demo fallback without collecting card PAN/CVV/PIN
-      const reference = `DEMO_${Date.now().toString(36).toUpperCase()}`;
-      await completeVerified(reference);
+      await completeVerified(`DEMO_${reference}`);
       return;
     }
 
@@ -123,12 +135,15 @@ export default function PaystackPayment({
       const handler = window.PaystackPop.setup({
         key: publicKey,
         email,
-        amount: Math.round(amount * 100), // kobo
+        amount: Math.round(amount * 100),
         currency: 'NGN',
-        ref: `GS_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        ref: reference,
         metadata: {
+          order_id: orderId,
+          order_ids: (orderIds || [orderId]).join(','),
           custom_fields: [
             { display_name: 'Platform', variable_name: 'platform', value: 'GoodSale' },
+            { display_name: 'Order ID', variable_name: 'order_id', value: String(orderId) },
           ],
           ...(metadata || {}),
         },
@@ -154,7 +169,7 @@ export default function PaystackPayment({
       return;
     }
     setDemoTransfer(true);
-    const reference = `DEMO_BANK_${Date.now().toString(36).toUpperCase()}`;
+    const reference = `DEMO_BANK_${buildPaystackReference(orderId)}`;
     await completeVerified(reference);
     setDemoTransfer(false);
   };
@@ -170,7 +185,7 @@ export default function PaystackPayment({
             <div>
               <p className="font-sans font-black text-xs text-white uppercase tracking-wider">Paystack Secured</p>
               <p className="text-[10px] text-slate-400 font-mono">
-                {publicKey ? 'Live Inline Checkout' : demo ? 'Demo Mode' : 'Not Configured'}
+                Order #{orderId} · {publicKey ? 'Live Inline' : demo ? 'Demo Mode' : 'Not Configured'}
               </p>
             </div>
           </div>

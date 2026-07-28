@@ -15,6 +15,19 @@ import {
   updatePartnerLocation,
   upsertDeliveryPartner,
 } from '@/lib/data/sync';
+import {
+  withClient,
+  insertBid,
+  insertReview,
+  upsertSafeMeetMeetup,
+  updateSafeMeetMeetup,
+  insertSponsoredAd,
+  insertBundle,
+  upsertRevenueSettings,
+  upsertPaymentSettings,
+  insertNotification,
+  insertFeaturedListing,
+} from '@/lib/data/persist';
 import { resolveCityCoords, bestCoords } from '@/lib/geo';
 import { isDemoMode, isOwnerAdminEmail } from '@/lib/demo';
 import type { GoodSaleDBState, User, Product, Order, Message } from '@/lib/types';
@@ -496,17 +509,35 @@ export const dbOperations = {
     });
 
     saveDBState(state);
+
+    withClient(async (client) => {
+      await insertBid(client, {
+        auctionId,
+        userId: state.currentUser!.id,
+        amount,
+      });
+      for (const bidderId of uniqueBidders) {
+        await insertNotification(client, {
+          userId: bidderId,
+          title: 'You’ve been outbid!',
+          message: `Another bidder placed ₦${amount.toLocaleString()} on ${product.title}.`,
+          type: 'BID',
+        });
+      }
+      await reloadFromSupabase();
+    });
+
     return { success: true };
   },
 
   // Escrow Orders
   async placeOrder(
-    productId: number, 
-    deliveryAddress: string, 
-    deliveryCity: string, 
-    deliveryState: string, 
-    paymentMethod: string, 
-    deliveryMethod: string, 
+    productId: number,
+    deliveryAddress: string,
+    deliveryCity: string,
+    deliveryState: string,
+    paymentMethod: string,
+    deliveryMethod: string,
     usePoints: boolean = false,
     selectedPartnerId?: number,
     serviceType: 'ECONOMY' | 'STANDARD' | 'EXPRESS' = 'STANDARD',
@@ -560,7 +591,8 @@ export const dbOperations = {
     const totalAmount = product.price + deliveryFee + taxAmount + protectFee - pointsDiscount;
 
     // Determine initial order status based on payment channel chosen
-    let initialStatus = OrderStatus.PAID_ESCROW;
+    // Card/escrow start PENDING — Paystack verify/webhook marks PAID_ESCROW
+    let initialStatus = OrderStatus.PENDING;
     const pmLower = paymentMethod.toLowerCase();
     if (pmLower === 'bank') {
       initialStatus = OrderStatus.PENDING_BANK_TRANSFER;
@@ -569,7 +601,9 @@ export const dbOperations = {
     } else if (pmLower === 'invoice') {
       initialStatus = OrderStatus.INVOICE_SENT;
     } else if (pmLower === 'partial') {
-      initialStatus = OrderStatus.PARTIAL_DEPOSIT_PAID;
+      initialStatus = OrderStatus.PENDING; // deposit paid after Paystack verify
+    } else if (pmLower === 'escrow' || pmLower === 'card') {
+      initialStatus = OrderStatus.PENDING;
     }
 
     // Set custom payment parameters
@@ -648,10 +682,13 @@ export const dbOperations = {
     // Add order
     state.orders.unshift(newOrder);
 
-    // Add to Escrow Fund Ledger (if escrow/card/partial/bank, funds held)
-    const heldEscrowAmount = pmLower === 'partial' 
-      ? (depositAmountPaid || totalAmount)
-      : (pmLower === 'bank' || pmLower === 'invoice' || pmLower === 'cod') ? 0 : totalAmount;
+    // Escrow ledger: held amount recorded; release only after PAID_ESCROW via payment verify
+    const heldEscrowAmount =
+      pmLower === 'partial'
+        ? depositAmountPaid || totalAmount
+        : pmLower === 'invoice' || pmLower === 'cod'
+          ? 0
+          : totalAmount;
 
     state.escrows.push({
       id: state.escrows.length + 1,
@@ -661,9 +698,15 @@ export const dbOperations = {
       isRefunded: false,
     });
 
-    // Create Payment transaction log
+    // Create Payment transaction log (pending until Paystack verify for card/escrow)
     const txId = `TX-${Math.floor(100000 + Math.random() * 900000)}`;
-    const txStatus = (pmLower === 'bank' ? 'PENDING' : (pmLower === 'invoice' || pmLower === 'cod') ? 'PENDING' : 'SUCCESS') as 'PENDING' | 'REFUNDED' | 'SUCCESS' | 'FAILED';
+    const txStatus = (
+      pmLower === 'escrow' || pmLower === 'card' || pmLower === 'partial' || pmLower === 'bank'
+        ? 'PENDING'
+        : pmLower === 'invoice' || pmLower === 'cod'
+          ? 'PENDING'
+          : 'PENDING'
+    ) as 'PENDING' | 'REFUNDED' | 'SUCCESS' | 'FAILED';
     state.transactions.push({
       id: state.transactions.length + 1,
       transactionId: txId,
@@ -740,9 +783,9 @@ export const dbOperations = {
           newJob.trackingHistory.push({
             status: 'ACCEPTED',
             time: new Date().toISOString(),
-            note: `Assigned automatically: Courier ${partner.fullName} matches buyer marketplace selection.`
+            note: `Pre-assigned courier ${partner.fullName} (activates after escrow payment).`
           });
-          newOrder.status = OrderStatus.OUT_FOR_DELIVERY;
+          // Do NOT mark OUT_FOR_DELIVERY until payment is verified
         }
       }
 
@@ -762,17 +805,20 @@ export const dbOperations = {
         amount: -protectFee,
         type: 'DEBIT_PROTECT',
         description: `Purchased optional GoodSale Protect™ for Order ${orderNumber}`,
-        status: 'COMPLETED',
+        status: 'PENDING',
         createdAt: new Date().toISOString()
       });
     }
 
-    // Notify Buyer
+    // Notify Buyer — awaiting payment for card/escrow
+    const awaitingPay = [OrderStatus.PENDING, OrderStatus.PENDING_BANK_TRANSFER].includes(initialStatus);
     state.notifications.push({
       id: state.notifications.length + 1,
       userId: state.currentUser.id,
-      title: 'Escrow Secured Successfully!',
-      message: `Your payment of ₦${totalAmount.toLocaleString()} is locked securely in GoodSale Escrow. Your Delivery verification PIN is: ${deliveryPin}. Verify and reveal this ONLY to the courier/seller once you have inspected the physical product!`,
+      title: awaitingPay ? 'Order Created — Complete Payment' : 'Order Created',
+      message: awaitingPay
+        ? `Order ${orderNumber} is ready. Complete Paystack checkout to lock ₦${totalAmount.toLocaleString()} in escrow. Your delivery PIN will be ${deliveryPin}.`
+        : `Order ${orderNumber} created. Delivery PIN: ${deliveryPin}.`,
       type: 'ORDER',
       isRead: false,
       createdAt: new Date().toISOString(),
@@ -782,8 +828,10 @@ export const dbOperations = {
     state.notifications.push({
       id: state.notifications.length + 1,
       userId: product.sellerId,
-      title: 'New Escrow Order Recieved!',
-      message: `A buyer paid ₦${product.price.toLocaleString()} into GoodSale escrow for your listing "${product.title}". Please prepare for delivery.`,
+      title: awaitingPay ? 'New Pending Order' : 'New Order',
+      message: awaitingPay
+        ? `A buyer started checkout for "${product.title}". Escrow funds lock after payment verification.`
+        : `A buyer placed an order for "${product.title}".`,
       type: 'ORDER',
       isRead: false,
       createdAt: new Date().toISOString(),
@@ -903,109 +951,60 @@ export const dbOperations = {
   },
 
 
-  openDispute(orderId: number, reason: string) {
-    const state = getDBState();
-    const order = state.orders.find((o) => o.id === orderId);
-    if (!order) return;
-
-    order.status = OrderStatus.DISPUTED;
-    order.updatedAt = new Date().toISOString();
-
-    const newDispute: Dispute = {
-      id: state.disputes.length + 1,
-      orderId,
-      orderNumber: order.orderNumber,
-      openedById: order.buyerId,
-      openedByName: state.users.find((u) => u.id === order.buyerId)?.fullName || 'Buyer',
-      reason,
-      resolution: 'PENDING',
-      createdAt: new Date().toISOString(),
-    };
-
-    state.disputes.push(newDispute);
-
-    // Notify seller
-    state.notifications.push({
-      id: state.notifications.length + 1,
-      userId: order.sellerId,
-      title: 'Escrow Dispute Opened!',
-      message: `Buyer has opened a official escrow dispute for Order ${order.orderNumber}. Escrow payouts are frozen until admin investigation resolves.`,
-      type: 'DISPUTE',
-      isRead: false,
-      createdAt: new Date().toISOString(),
-    });
-
-    saveDBState(state);
+  async openDispute(orderId: number, reason: string) {
+    try {
+      const res = await fetch('/api/disputes/open', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, reason }),
+      });
+      const payload = await res.json();
+      if (!res.ok || !payload.success) {
+        // Local fallback for offline/demo without RPC
+        const state = getDBState();
+        const order = state.orders.find((o) => o.id === orderId);
+        if (!order) return { error: payload.error || 'Order not found' };
+        order.status = OrderStatus.DISPUTED;
+        order.updatedAt = new Date().toISOString();
+        state.disputes.push({
+          id: state.disputes.length + 1,
+          orderId,
+          orderNumber: order.orderNumber,
+          openedById: order.buyerId,
+          openedByName: state.users.find((u) => u.id === order.buyerId)?.fullName || 'Buyer',
+          reason,
+          resolution: 'PENDING',
+          createdAt: new Date().toISOString(),
+        });
+        saveDBState(state);
+        return { success: true, local: true, error: payload.error };
+      }
+      await reloadFromSupabase();
+      return { success: true, data: payload.data };
+    } catch (err) {
+      console.error('Open dispute failed:', err);
+      return { error: 'Could not open dispute' };
+    }
   },
 
-  resolveDispute(disputeId: number, resolution: 'REFUND_BUYER' | 'RELEASE_SELLER', adminNotes: string) {
-    const state = getDBState();
-    const dispute = state.disputes.find((d) => d.id === disputeId);
-    if (!dispute) return;
-
-    const order = state.orders.find((o) => o.id === dispute.orderId);
-    if (!order) return;
-
-    dispute.resolution = resolution;
-    dispute.adminNotes = adminNotes;
-
-    const escrow = state.escrows.find((e) => e.orderId === dispute.orderId);
-
-    if (resolution === 'REFUND_BUYER') {
-      order.status = OrderStatus.REFUNDED;
-      if (escrow) escrow.isRefunded = true;
-
-      // Penalize seller trust score
-      const seller = state.users.find(u => u.id === order.sellerId);
-      if (seller) seller.trustScore = Math.max(seller.trustScore - 15, 10);
-
-      // Notify Buyer
-      state.notifications.push({
-        id: state.notifications.length + 1,
-        userId: order.buyerId,
-        title: 'Dispute Resolved: Refunded',
-        message: `Admin has ruled in your favor for Order ${order.orderNumber}. ₦${order.totalAmount.toLocaleString()} has been refunded.`,
-        type: 'DISPUTE',
-        isRead: false,
-        createdAt: new Date().toISOString(),
+  async resolveDispute(disputeId: number, resolution: 'REFUND_BUYER' | 'RELEASE_SELLER', adminNotes: string) {
+    dbOperations.requireAdmin();
+    try {
+      const res = await fetch('/api/disputes/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ disputeId, resolution, notes: adminNotes }),
       });
-      // Notify Seller
-      state.notifications.push({
-        id: state.notifications.length + 1,
-        userId: order.sellerId,
-        title: 'Dispute Resolved against you',
-        message: `Admin has refunded Order ${order.orderNumber} back to the buyer. Your seller trust score has declined.`,
-        type: 'DISPUTE',
-        isRead: false,
-        createdAt: new Date().toISOString(),
-      });
-    } else {
-      order.status = OrderStatus.DELIVERED_SUCCESS;
-      if (escrow) escrow.isReleased = true;
-
-      // Notify Buyer
-      state.notifications.push({
-        id: state.notifications.length + 1,
-        userId: order.buyerId,
-        title: 'Dispute Ruled: Escrow Released',
-        message: `Admin has completed review on Order ${order.orderNumber} and released funds to the seller. Case closed.`,
-        type: 'DISPUTE',
-        isRead: false,
-        createdAt: new Date().toISOString(),
-      });
-      // Notify Seller
-      state.notifications.push({
-        id: state.notifications.length + 1,
-        userId: order.sellerId,
-        title: 'Dispute Resolved: Funds Released!',
-        message: `Admin has ruled in your favor for Order ${order.orderNumber}. Frozen escrow funds of ₦${order.totalAmount.toLocaleString()} are released to your balance!`,
-        type: 'DISPUTE',
-        isRead: false,
-        createdAt: new Date().toISOString(),
-      });
+      const payload = await res.json();
+      if (!res.ok || !payload.success) {
+        return { error: payload.error || 'Failed to resolve dispute' };
+      }
+      await reloadFromSupabase();
+      return { success: true, data: payload.data };
+    } catch (err) {
+      console.error('Resolve dispute failed:', err);
+      return { error: 'Could not resolve dispute' };
     }
-
-    saveDBState(state);
   },
 
   // Submit User Verification — persisted for admin review
@@ -1334,6 +1333,17 @@ export const dbOperations = {
     });
 
     saveDBState(state);
+
+    withClient(async (client) => {
+      await insertReview(client, {
+        orderId,
+        reviewerId: state.currentUser!.id,
+        revieweeId: order.sellerId,
+        rating,
+        comment,
+      });
+      await reloadFromSupabase();
+    });
   },
 
   submitProductComment(productId: number, rating: number, comment: string) {
@@ -1373,6 +1383,18 @@ export const dbOperations = {
     });
 
     saveDBState(state);
+
+    withClient(async (client) => {
+      await insertReview(client, {
+        productId,
+        reviewerId: state.currentUser!.id,
+        revieweeId: product?.sellerId,
+        rating,
+        comment,
+      });
+      await reloadFromSupabase();
+    });
+
     return newRev;
   },
 
@@ -1589,6 +1611,28 @@ export const dbOperations = {
     }
 
     saveDBState(state);
+
+    withClient(async (client) => {
+      await upsertSafeMeetMeetup(client, {
+        orderId,
+        locationId,
+        scheduledAt,
+        status: 'PENDING_CONFIRMATION',
+        buyerConfirmedArrival: false,
+        sellerConfirmedArrival: false,
+      });
+      if (order) {
+        const notifyUserId = state.currentUser?.id === order.buyerId ? order.sellerId : order.buyerId;
+        await insertNotification(client, {
+          userId: notifyUserId,
+          title: 'SafeMeet™ Meetup Requested',
+          message: `SafeMeet proposed at "${loc?.name || 'Safe Location'}" for ${new Date(scheduledAt).toLocaleString()}.`,
+          type: 'ORDER',
+        });
+      }
+      await reloadFromSupabase();
+    });
+
     return meetup;
   },
 
@@ -1611,6 +1655,11 @@ export const dbOperations = {
         });
       }
       saveDBState(state);
+
+      withClient(async (client) => {
+        await updateSafeMeetMeetup(client, meetupId, { status: 'SCHEDULED' });
+        await reloadFromSupabase();
+      });
     }
   },
 
@@ -1666,6 +1715,18 @@ export const dbOperations = {
         }
       }
       saveDBState(state);
+
+      withClient(async (client) => {
+        await updateSafeMeetMeetup(client, meetupId, {
+          status: meetup.status,
+          buyer_confirmed_arrival: meetup.buyerConfirmedArrival,
+          seller_confirmed_arrival: meetup.sellerConfirmedArrival,
+        });
+        if (order && meetup.status === 'COMPLETED') {
+          await client.from('orders').update({ status: 'OUT_FOR_DELIVERY' }).eq('id', order.id);
+        }
+        await reloadFromSupabase();
+      });
     }
   },
 
@@ -1688,6 +1749,11 @@ export const dbOperations = {
         });
       }
       saveDBState(state);
+      withClient(async (client) => {
+        await updateSafeMeetMeetup(client, meetupId, { status: 'CANCELLED' });
+        await reloadFromSupabase();
+      });
+
     }
   },
 
@@ -1783,49 +1849,85 @@ export const dbOperations = {
   },
 
   payPendingOrder(orderId: number) {
-    const state = getDBState();
-    const order = state.orders.find(o => o.id === orderId);
-    if (!order) return null;
+    // Never mark paid client-side — buyer must complete Paystack verify
+    return {
+      error: 'Complete payment via Paystack checkout. Orders cannot be marked paid from the client.',
+      orderId,
+    };
+  },
 
-    order.status = OrderStatus.PAID_ESCROW;
-    order.updatedAt = new Date().toISOString();
-
-    // Add to Escrow Fund Ledger
-    let escrow = state.escrows.find(e => e.orderId === orderId);
-    if (!escrow) {
-      state.escrows.push({
-        id: state.escrows.length + 1,
-        orderId: order.id,
-        heldAmount: order.totalAmount - order.deliveryFee - order.taxAmount,
-        isReleased: false,
-        isRefunded: false,
+  async completeDeliveryJobWithPin(jobId: number, pin: string) {
+    try {
+      const res = await fetch('/api/orders/complete-delivery-job', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId, pin }),
       });
+      const payload = await res.json();
+      if (!res.ok || !payload.success) {
+        return { success: false, message: payload.error || 'Invalid delivery pin code. Please verify with buyer.' };
+      }
+      await reloadFromSupabase();
+      return { success: true, message: 'Delivery completed. Escrow released.' };
+    } catch (err) {
+      console.error('completeDeliveryJobWithPin failed:', err);
+      return { success: false, message: 'Could not reach delivery service.' };
     }
+  },
 
-    // Add notification for Buyer
-    state.notifications.push({
-      id: state.notifications.length + 1,
-      userId: order.buyerId,
-      title: 'Escrow Secured Successfully!',
-      message: `Your payment of ₦${order.totalAmount.toLocaleString()} is locked securely in GoodSale Escrow. Your Delivery verification PIN is: ${order.deliveryPin}. Verify and reveal this ONLY to the courier/seller once you have inspected the physical product!`,
-      type: 'ORDER',
-      isRead: false,
-      createdAt: new Date().toISOString(),
-    });
+  async withdrawFromWallet(
+    userId: number,
+    amount: number,
+    bankDetails: { name: string; number: string; bank: string }
+  ) {
+    try {
+      const res = await fetch('/api/wallet/withdraw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount,
+          bankName: bankDetails.bank,
+          accountName: bankDetails.name,
+          accountNumber: bankDetails.number,
+        }),
+      });
+      const payload = await res.json();
+      if (!res.ok || !payload.success) {
+        return { success: false, message: payload.error || 'Withdrawal failed' };
+      }
+      await reloadFromSupabase();
+      return { success: true, data: payload.data };
+    } catch (err) {
+      console.error('withdrawFromWallet failed:', err);
+      return { success: false, message: 'Could not reach wallet service' };
+    }
+  },
 
-    // Add notification for Seller
-    state.notifications.push({
-      id: state.notifications.length + 1,
-      userId: order.sellerId,
-      title: 'Escrow Payment Received!',
-      message: `The buyer completed the payment of ₦${order.totalAmount.toLocaleString()} for order ${order.orderNumber}. Please prepare for delivery!`,
-      type: 'ORDER',
-      isRead: false,
-      createdAt: new Date().toISOString(),
-    });
-
-    saveDBState(state);
-    return order;
+  async adminForceEscrowAction(orderId: number, action: 'RELEASE_SELLER' | 'REFUND_BUYER', notes: string) {
+    dbOperations.requireAdmin();
+    try {
+      const res = await fetch('/api/admin/escrow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, action, notes }),
+      });
+      const payload = await res.json();
+      if (!res.ok || !payload.success) {
+        return { error: payload.error || 'Admin escrow action failed' };
+      }
+      dbOperations.addAuditLog(
+        getDBState().currentUser!.id,
+        `ADMIN_ESCROW_${action}`,
+        'ORDER',
+        orderId,
+        notes
+      );
+      await reloadFromSupabase();
+      return { success: true, data: payload.data };
+    } catch (err) {
+      console.error('adminForceEscrowAction failed:', err);
+      return { error: 'Could not reach admin escrow service' };
+    }
   },
 
   sendNegotiationOffer(roomId: number, productId: number, amount: number) {
@@ -2333,114 +2435,6 @@ export const dbOperations = {
     return job;
   },
 
-  completeDeliveryJobWithPin(jobId: number, pin: string) {
-    const state = getDBState();
-    const job = state.deliveryJobs.find(j => j.id === jobId);
-    if (!job) return { success: false, message: 'Job not found' };
-
-    if (job.pin !== pin) {
-      return { success: false, message: 'Invalid delivery pin code. Please verify with buyer.' };
-    }
-
-    job.status = DeliveryJobStatus.COMPLETED;
-    job.trackingHistory.push({
-      status: 'COMPLETED',
-      time: new Date().toISOString(),
-      note: 'Delivery successfully completed and verified by PIN verification.'
-    });
-
-    const partner = state.deliveryPartners.find(p => p.id === job.partnerId);
-    if (partner) {
-      partner.activeDeliveriesCount = Math.max(0, partner.activeDeliveriesCount - 1);
-      partner.completedDeliveries += 1;
-      
-      let wallet = state.wallets.find(w => w.userId === partner.userId);
-      if (!wallet) {
-        wallet = { id: state.wallets.length + 1, userId: partner.userId, balance: 0 };
-        state.wallets.push(wallet);
-      }
-      wallet.balance += job.courierEarnings;
-
-      state.walletTransactions.push({
-        id: state.walletTransactions.length + 1,
-        walletId: wallet.id,
-        amount: job.courierEarnings,
-        type: 'CREDIT_DELIVERY',
-        description: `Earnings for delivery job #${job.id} (Order #${job.orderId})`,
-        status: 'COMPLETED',
-        createdAt: new Date().toISOString(),
-      });
-    }
-
-    const order = state.orders.find(o => o.id === job.orderId);
-    if (order) {
-      order.status = OrderStatus.DELIVERED_SUCCESS;
-      order.updatedAt = new Date().toISOString();
-
-      const escrow = state.escrows.find(e => e.orderId === order.id);
-      if (escrow && !escrow.isReleased) {
-        escrow.isReleased = true;
-
-        const settings = state.revenueSettings;
-        const product = state.products.find(p => p.id === order.productId);
-        const isAuctionItem = product ? product.isAuction : false;
-
-        const rawFee = order.totalAmount * (settings.escrowPercentageFee / 100);
-        const escrowFee = Math.max(settings.escrowMinFee, Math.min(settings.escrowMaxFee, rawFee));
-        
-        let auctionSuccessFee = 0;
-        if (isAuctionItem) {
-          auctionSuccessFee = Math.round(order.totalAmount * (settings.auctionSuccessFeePercentage / 100));
-        }
-
-        const sellerPayout = order.totalAmount - order.deliveryFee - escrowFee - auctionSuccessFee;
-
-        let sellerWallet = state.wallets.find(w => w.userId === order.sellerId);
-        if (!sellerWallet) {
-          sellerWallet = { id: state.wallets.length + 1, userId: order.sellerId, balance: 0 };
-          state.wallets.push(sellerWallet);
-        }
-        sellerWallet.balance += sellerPayout;
-
-        const feeBreakdown = isAuctionItem 
-          ? `Escrow fee: ₦${escrowFee.toLocaleString()} & Auction Success fee: ₦${auctionSuccessFee.toLocaleString()} deducted`
-          : `Escrow fee: ₦${escrowFee.toLocaleString()} deducted`;
-
-        state.walletTransactions.push({
-          id: state.walletTransactions.length + 1,
-          walletId: sellerWallet.id,
-          amount: sellerPayout,
-          type: 'CREDIT_SALE',
-          description: `Payout for order ${order.orderNumber} (${feeBreakdown})`,
-          status: 'COMPLETED',
-          createdAt: new Date().toISOString(),
-        });
-
-        state.notifications.push({
-          id: state.notifications.length + 1,
-          userId: order.sellerId,
-          title: '💰 Escrow Released - Payout Credited!',
-          message: `Delivery complete! ₦${sellerPayout.toLocaleString()} has been credited to your GoodSale Wallet after deducting escrow service fee.`,
-          type: 'ESCROW',
-          isRead: false,
-          createdAt: new Date().toISOString(),
-        });
-      }
-
-      state.notifications.push({
-        id: state.notifications.length + 1,
-        userId: order.buyerId,
-        title: '🎉 Delivery Complete!',
-        message: `Your package for order ${order.orderNumber} has been successfully verified, delivered, and escrow funds released. Thank you for using GoodSale!`,
-        type: 'ORDER',
-        isRead: false,
-        createdAt: new Date().toISOString(),
-      });
-    }
-
-    saveDBState(state);
-    return { success: true, job };
-  },
 
   subscribeBusiness(userId: number, plan: 'FREE' | 'PRO' | 'PREMIUM' | 'ENTERPRISE') {
     const state = getDBState();
@@ -2593,6 +2587,19 @@ export const dbOperations = {
     });
 
     saveDBState(state);
+    withClient(async (client) => {
+      const ends = new Date();
+      ends.setDate(ends.getDate() + durationDays);
+      await insertFeaturedListing(client, {
+        productId,
+        sellerId: product.sellerId,
+        featureType: 'FEATURED',
+        startsAt: new Date().toISOString(),
+        endsAt: ends.toISOString(),
+        amountPaid: cost,
+      });
+      await reloadFromSupabase();
+    });
     return { success: true };
   },
 
@@ -2629,6 +2636,19 @@ export const dbOperations = {
     });
 
     saveDBState(state);
+    withClient(async (client) => {
+      const ends = new Date();
+      ends.setHours(ends.getHours() + 24);
+      await insertFeaturedListing(client, {
+        productId,
+        sellerId: product.sellerId,
+        featureType: 'FLASH_SALE',
+        startsAt: new Date().toISOString(),
+        endsAt: ends.toISOString(),
+        amountPaid: cost,
+      });
+      await reloadFromSupabase();
+    });
     return { success: true };
   },
 
@@ -2691,6 +2711,17 @@ export const dbOperations = {
     }
 
     saveDBState(state);
+    withClient(async (client) => {
+      await insertSponsoredAd(client, {
+        sellerId: ad.sellerId,
+        type: ad.type,
+        targetId: ad.targetId,
+        title: ad.title,
+        budget: ad.budget,
+        bannerUrl: ad.bannerUrl,
+      });
+      await reloadFromSupabase();
+    });
     return ad;
   },
 
@@ -2715,32 +2746,6 @@ export const dbOperations = {
 
     saveDBState(state);
     return wallet;
-  },
-
-  withdrawFromWallet(userId: number, amount: number, bankDetails: { name: string, number: string, bank: string }) {
-    const state = getDBState();
-    const wallet = state.wallets.find(w => w.userId === userId);
-    if (!wallet || wallet.balance < amount) {
-      return { success: false, message: 'Insufficient balance for withdrawal' };
-    }
-
-    wallet.balance -= amount;
-    wallet.bankName = bankDetails.bank;
-    wallet.bankAccountName = bankDetails.name;
-    wallet.bankAccountNumber = bankDetails.number;
-
-    state.walletTransactions.push({
-      id: state.walletTransactions.length + 1,
-      walletId: wallet.id,
-      amount: -amount,
-      type: 'DEBIT_WITHDRAWAL',
-      description: `Withdrawal request to ${bankDetails.bank} (${bankDetails.number})`,
-      status: 'PENDING',
-      createdAt: new Date().toISOString(),
-    });
-
-    saveDBState(state);
-    return { success: true, wallet };
   },
 
   addAuditLog(userId: number, action: string, entityType: string, entityId: number, details: string) {
@@ -2783,6 +2788,29 @@ export const dbOperations = {
     };
     state.auditLogs.push(log);
     saveDBState(state);
+
+    withClient(async (client) => {
+      await upsertRevenueSettings(client, {
+        escrow_percentage_fee: state.revenueSettings.escrowPercentageFee,
+        escrow_min_fee: state.revenueSettings.escrowMinFee,
+        escrow_max_fee: state.revenueSettings.escrowMaxFee,
+        delivery_commission_percentage: state.revenueSettings.deliveryCommissionPercentage,
+        featured_3_days_price: state.revenueSettings.featured3DaysPrice,
+        featured_7_days_price: state.revenueSettings.featured7DaysPrice,
+        featured_14_days_price: state.revenueSettings.featured14DaysPrice,
+        featured_30_days_price: state.revenueSettings.featured30DaysPrice,
+        sub_pro_price: state.revenueSettings.subProPrice,
+        sub_premium_price: state.revenueSettings.subPremiumPrice,
+        sub_enterprise_price: state.revenueSettings.subEnterprisePrice,
+        verified_plus_price: state.revenueSettings.verifiedPlusPrice,
+        flash_sale_feature_price: state.revenueSettings.flashSaleFeaturePrice,
+        auction_success_fee_percentage: state.revenueSettings.auctionSuccessFeePercentage,
+        ad_cpc_price: state.revenueSettings.adCpcPrice,
+        good_sale_protect_fee: state.revenueSettings.goodSaleProtectFee,
+      });
+      await reloadFromSupabase();
+    });
+
     return { success: true, settings: state.revenueSettings, log };
   },
 
@@ -2805,6 +2833,14 @@ export const dbOperations = {
     };
     state.auditLogs.push(log);
     saveDBState(state);
+
+    withClient(async (client) => {
+      await upsertPaymentSettings(client, {
+        enabled_methods: state.paymentSettings.enabledMethods,
+      });
+      await reloadFromSupabase();
+    });
+
     return { success: true, settings: state.paymentSettings, log };
   },
 
@@ -2824,6 +2860,19 @@ export const dbOperations = {
     };
     state.productBundles.push(bundle);
     saveDBState(state);
+    withClient(async (client) => {
+      await insertBundle(client, {
+        sellerId: bundle.sellerId,
+        title: bundle.title,
+        description: bundle.description,
+        productIds: bundle.productIds,
+        price: bundle.price,
+        discountPercentage: bundle.discountPercentage,
+        quantity: bundle.quantity,
+      });
+      await reloadFromSupabase();
+    });
+
     return bundle;
   },
 
@@ -2936,56 +2985,6 @@ export const dbOperations = {
     return { success: true, product };
   },
 
-  async adminForceEscrowAction(orderId: number, action: 'RELEASE_SELLER' | 'REFUND_BUYER', notes: string) {
-    const state = dbOperations.requireAdmin();
-    const order = state.orders.find((o) => o.id === orderId);
-    if (!order) return { error: 'Order not found' };
-    const escrow = state.escrows.find((e) => e.orderId === orderId);
-
-    if (action === 'RELEASE_SELLER') {
-      order.status = OrderStatus.DELIVERED_SUCCESS;
-      if (escrow) escrow.isReleased = true;
-    } else {
-      order.status = OrderStatus.REFUNDED;
-      if (escrow) escrow.isRefunded = true;
-    }
-    order.updatedAt = new Date().toISOString();
-
-    dbOperations.addAuditLog(state.currentUser!.id, `ADMIN_ESCROW_${action}`, 'ORDER', orderId, notes);
-    state.notifications.push({
-      id: state.notifications.length + 1,
-      userId: order.buyerId,
-      title: 'Admin Escrow Action',
-      message: `Order ${order.orderNumber}: ${notes}`,
-      type: 'ESCROW',
-      isRead: false,
-      createdAt: new Date().toISOString(),
-    });
-    state.notifications.push({
-      id: state.notifications.length + 1,
-      userId: order.sellerId,
-      title: 'Admin Escrow Action',
-      message: `Order ${order.orderNumber}: ${notes}`,
-      type: 'ESCROW',
-      isRead: false,
-      createdAt: new Date().toISOString(),
-    });
-    saveDBState(state);
-
-    const client = createClient();
-    if (client) {
-      if (action === 'RELEASE_SELLER') {
-        // Prefer RPC if buyer PIN not needed for admin force
-        await client.from('orders').update({ status: 'DELIVERED_SUCCESS' }).eq('id', orderId);
-        await client.from('escrows').update({ is_released: true }).eq('order_id', orderId);
-      } else {
-        await client.from('orders').update({ status: 'REFUNDED' }).eq('id', orderId);
-        await client.from('escrows').update({ is_refunded: true }).eq('order_id', orderId);
-      }
-      await reloadFromSupabase();
-    }
-    return { success: true };
-  },
 
   async adminUpdateOrderStatus(orderId: number, status: OrderStatus) {
     const state = dbOperations.requireAdmin();

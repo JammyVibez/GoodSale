@@ -22,6 +22,9 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const reference = typeof body.reference === 'string' ? body.reference.trim() : '';
     const orderId = body.orderId != null ? Number(body.orderId) : null;
+    const orderIds = Array.isArray(body.orderIds)
+      ? body.orderIds.map((n: unknown) => Number(n)).filter((n: number) => Number.isFinite(n) && n > 0)
+      : null;
     if (!reference || reference.length > 128) {
       return NextResponse.json({ success: false, error: 'Valid reference is required' }, { status: 400 });
     }
@@ -35,22 +38,36 @@ export async function POST(req: NextRequest) {
           { status: 503 }
         );
       }
-      if (!reference.startsWith('DEMO_') && !reference.startsWith('PAY_REF_')) {
+      if (
+        !reference.startsWith('DEMO_') &&
+        !reference.startsWith('PAY_REF_') &&
+        !/^GS_\d+_/i.test(reference)
+      ) {
         return NextResponse.json(
           { success: false, error: 'Invalid demo payment reference' },
           { status: 400 }
         );
       }
-      const reconciliation = orderId
-        ? await reconcilePaystackPayment({ orderId, reference, amountKobo: null, channel: 'demo' })
-        : { reconciled: false, reason: 'demo_no_order' as const };
+      if (!orderId && !(orderIds && orderIds.length)) {
+        return NextResponse.json(
+          { success: false, error: 'orderId is required to reconcile payment' },
+          { status: 400 }
+        );
+      }
+      const reconciliation = await reconcilePaystackPayment({
+        orderId,
+        orderIds,
+        reference,
+        amountKobo: null,
+        channel: 'demo',
+      });
 
       return NextResponse.json({
-        success: true,
+        success: Boolean(reconciliation.reconciled),
         demo: true,
         reconciliation,
         data: {
-          status: 'success',
+          status: reconciliation.reconciled ? 'success' : 'failed',
           reference,
           amount: null,
           currency: 'NGN',
@@ -87,9 +104,14 @@ export async function POST(req: NextRequest) {
       orderId ||
       Number(payload.data?.metadata?.order_id || payload.data?.metadata?.orderId || 0) ||
       null;
+    const metaOrderIdsRaw = String(payload.data?.metadata?.order_ids || '');
+    const metaOrderIds = metaOrderIdsRaw
+      ? metaOrderIdsRaw.split(',').map((s: string) => Number(s.trim())).filter((n: number) => n > 0)
+      : orderIds;
 
     const reconciliation = await reconcilePaystackPayment({
       orderId: metaOrderId,
+      orderIds: metaOrderIds,
       reference: payload.data.reference,
       amountKobo: payload.data.amount,
       channel: payload.data.channel,
@@ -97,7 +119,7 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({
-      success: true,
+      success: Boolean(reconciliation.reconciled),
       reconciliation,
       data: {
         status: payload.data.status,

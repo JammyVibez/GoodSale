@@ -51,63 +51,58 @@ export default function LandingView({
   // Flash sale countdown timer state
   const [timeLeft, setTimeLeft] = useState({ hours: 4, minutes: 34, seconds: 12 });
 
-  // Live Feed & Real-time users states
-  const [liveActivities, setLiveActivities] = useState<string[]>([
-    "₦125,000 bid placed on iPhone 13 Pro by @Chidi_A",
-    "Secure payout released for Order #39281 to @Wuse_Tech",
-    "New verified listing 'Toyota Corolla 2012' created by @Nneka_Deals",
-    "Buyer @Lagos_Femi generated safe delivery escrow PIN",
-    "Authorized refund processed for disputed shipment #84931",
-  ]);
+  // Live feed + traders derived from real marketplace data (no fake activity)
+  const liveActivities = React.useMemo(() => {
+    const lines: string[] = [];
+    const recentProducts = [...db.products]
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+      .slice(0, 4);
+    for (const p of recentProducts) {
+      const seller = db.users.find((u) => u.id === p.sellerId);
+      lines.push(
+        `New listing "${p.title}" by @${seller?.username || 'seller'} — ₦${p.price.toLocaleString()} under escrow`
+      );
+    }
+    const recentOrders = [...db.orders]
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+      .slice(0, 4);
+    for (const o of recentOrders) {
+      lines.push(`Order ${o.orderNumber} → ${o.status.replace(/_/g, ' ')}`);
+    }
+    const recentBids = [...(db.bids || [])]
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+      .slice(0, 3);
+    for (const bid of recentBids) {
+      const bidder = db.users.find((u) => u.id === bid.userId);
+      lines.push(`₦${bid.amount.toLocaleString()} bid by @${bidder?.username || 'buyer'}`);
+    }
+    if (lines.length === 0) {
+      return ['Marketplace is live — list an item or place a bid to appear here'];
+    }
+    return lines.slice(0, 6);
+  }, [db.products, db.orders, db.bids, db.users]);
 
-  const [onlineTraders, setOnlineTraders] = useState([
-    { id: 1, name: "Chidi_A", city: "Abuja", photo: "https://picsum.photos/seed/avatar1/50", isPulsing: true },
-    { id: 2, name: "Wuse_Tech", city: "Ikeja", photo: "https://picsum.photos/seed/avatar2/50", isPulsing: true },
-    { id: 3, name: "Lagos_Femi", city: "Lagos", photo: "https://picsum.photos/seed/avatar3/50", isPulsing: true },
-    { id: 4, name: "Nneka_Deals", city: "Gbagada", photo: "https://picsum.photos/seed/avatar4/50", isPulsing: true },
-  ]);
-
-  useEffect(() => {
-    const activityTemplates = [
-      "₦{amount} bid placed on {product} by @{username}",
-      "Escrow payout of ₦{amount} completed successfully to @{username}",
-      "New verified seller registered in {city}",
-      "Order #{order} marked as SHIPPED to {city}",
-      "Safe Delivery PIN verified for deal #{order}",
-      "New listing '{product}' uploaded under escrow protection",
-    ];
-
-    const usernames = ["Nkem_Shop", "Ola_Deals", "Gbagada_Hub", "Yaba_Gadgets", "Tomi_Style", "Bayo_Wheels"];
-    const products = ["iPad Air 5", "Sony WH-1000XM4", "Designer Agbada", "Dell XPS 13", "Sofa Cushion", "Samsung S22"];
-    const cities = ["Lagos", "Abuja", "Ikeja", "Port Harcourt", "Kano", "Gbagada"];
-
-    const interval = setInterval(() => {
-      const template = activityTemplates[Math.floor(Math.random() * activityTemplates.length)];
-      const username = usernames[Math.floor(Math.random() * usernames.length)];
-      const product = products[Math.floor(Math.random() * products.length)];
-      const city = cities[Math.floor(Math.random() * cities.length)];
-      const amount = (10 + Math.floor(Math.random() * 90)) * 5000;
-      const order = 40000 + Math.floor(Math.random() * 9999);
-
-      const resolved = template
-        .replace("{username}", username)
-        .replace("{product}", product)
-        .replace("{city}", city)
-        .replace("{amount}", amount.toLocaleString())
-        .replace("{order}", order.toString());
-
-      setLiveActivities(prev => [resolved, ...prev.slice(0, 4)]);
-
-      setOnlineTraders(prev => prev.map(t => {
-        if (t.id === Math.floor(Math.random() * 4) + 1) {
-          return { ...t, isPulsing: !t.isPulsing };
-        }
-        return t;
-      }));
-    }, 4000);
-
-    return () => clearInterval(interval);
-  }, []);
+  const onlineTraders = React.useMemo(() => {
+    return db.users
+      .filter((u) =>
+        u.role === UserRole.VERIFIED_SELLER ||
+        u.role === UserRole.VERIFIED_BUSINESS ||
+        u.role === UserRole.SELLER ||
+        u.role === UserRole.BUYER ||
+        u.role === UserRole.BUSINESS
+      )
+      .slice(0, 6)
+      .map((u) => {
+        const profile = db.profiles.find((p) => p.userId === u.id);
+        return {
+          id: u.id,
+          name: u.username || u.fullName || 'trader',
+          city: profile?.city || 'Nigeria',
+          photo: profile?.photoUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(u.username || String(u.id))}`,
+          isPulsing: true,
+        };
+      });
+  }, [db.users, db.profiles]);
 
   // Promo Carousel Auto-Play Loop
   useEffect(() => {
@@ -672,19 +667,34 @@ export default function LandingView({
 
             <div className="flex items-center gap-3 my-4">
               <div className="flex -space-x-2.5 overflow-hidden">
-                {onlineTraders.map((trader) => (
-                  <div key={trader.id} className="relative w-10 h-10 rounded-full border-2 border-white dark:border-slate-900 overflow-hidden shrink-0 group">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={trader.photo} alt={trader.name} className="w-full h-full object-cover" />
-                    {trader.isPulsing && (
-                      <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900" />
-                    )}
+                {onlineTraders.length > 0 ? (
+                  onlineTraders.map((trader) => (
+                    <div
+                      key={trader.id}
+                      className="relative w-10 h-10 rounded-full border-2 border-white dark:border-slate-900 overflow-hidden shrink-0 group"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={trader.photo} alt={trader.name} className="w-full h-full object-cover" />
+                      {trader.isPulsing && (
+                        <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900" />
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="h-10 flex items-center text-[10px] text-slate-400 font-mono">
+                    Waiting for first traders…
                   </div>
-                ))}
+                )}
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-bold text-slate-800 dark:text-slate-200">247 Traders Online</p>
-                <p className="text-[10px] text-slate-400 truncate">Escrow channels fully operational</p>
+                <p className="text-[11px] font-bold text-slate-800 dark:text-slate-200">
+                  {onlineTraders.length > 0
+                    ? `${db.users.length} registered trader${db.users.length === 1 ? '' : 's'}`
+                    : 'No traders yet'}
+                </p>
+                <p className="text-[10px] text-slate-400 truncate">
+                  {onlineTraders.length > 0 ? 'Escrow channels ready' : 'Be the first to list'}
+                </p>
               </div>
             </div>
           </div>
@@ -751,11 +761,23 @@ export default function LandingView({
                 const sellerProfile = db.profiles.find(p => p.userId === product.sellerId);
                 const isSellerVerified = seller?.role === UserRole.VERIFIED_SELLER || seller?.role === UserRole.VERIFIED_BUSINESS;
                 
-                // Calculate mock ratings & sold counts dynamically for e-commerce realism
-                const mockRating = (4.3 + (product.id % 8) * 0.1).toFixed(1);
-                const mockSoldCount = Math.round(18 + (product.id * 144) % 1200);
-                const discountPercent = 15 + (product.id % 4) * 5;
-                const originalPrice = Math.round(product.price * (1 + discountPercent / 100));
+                const productReviews = (db.reviews || []).filter(
+                  (r) => r.productId === product.id && r.rating > 0
+                );
+                const avgRating =
+                  productReviews.length > 0
+                    ? (
+                        productReviews.reduce((sum, r) => sum + r.rating, 0) / productReviews.length
+                      ).toFixed(1)
+                    : null;
+                const soldCount = (db.orders || []).filter(
+                  (o) =>
+                    o.productId === product.id &&
+                    ['COMPLETED', 'DELIVERED', 'PAID_ESCROW', 'SHIPPED', 'OUT_FOR_DELIVERY'].includes(
+                      String(o.status)
+                    )
+                ).length;
+                const stockLeft = Math.max(0, product.quantity ?? 0);
 
                 const handleQuickAddToCart = (e: React.MouseEvent) => {
                   e.stopPropagation();
@@ -779,15 +801,16 @@ export default function LandingView({
                         referrerPolicy="no-referrer"
                       />
                       
-                      {/* AliExpress/Temu style Red discount banner overlay */}
-                      <div className="absolute top-1.5 left-1.5 px-2 py-0.5 bg-orange-600 dark:bg-orange-500 text-white text-[9px] font-mono font-black tracking-wider rounded shadow-md flex items-center gap-0.5">
-                        <span>-{discountPercent}%</span>
-                      </div>
+                      {/* Discount banner only when seller set a compare-at style deal via low stock flash */}
+                      {product.stockStatus === 'LOW_STOCK' && (
+                        <div className="absolute top-1.5 left-1.5 px-2 py-0.5 bg-orange-600 dark:bg-orange-500 text-white text-[9px] font-mono font-black tracking-wider rounded shadow-md flex items-center gap-0.5">
+                          <span>LOW STOCK</span>
+                        </div>
+                      )}
 
-                      {/* Temu-style "ONLY X LEFT" warning on top of the image */}
-                      {product.id % 2 === 0 && (
-                        <div className="absolute bottom-1.5 right-1.5 px-2 py-0.5 bg-amber-500 text-slate-950 text-[8px] font-mono font-black uppercase tracking-wider rounded shadow-sm animate-pulse">
-                          Only {(product.id % 5) + 2} Left
+                      {stockLeft > 0 && stockLeft <= 5 && (
+                        <div className="absolute bottom-1.5 right-1.5 px-2 py-0.5 bg-amber-500 text-slate-950 text-[8px] font-mono font-black uppercase tracking-wider rounded shadow-sm">
+                          Only {stockLeft} left
                         </div>
                       )}
 
@@ -830,7 +853,7 @@ export default function LandingView({
                             )}
                           </div>
                           <span className="text-[9px] font-mono font-bold text-gray-400 shrink-0 uppercase tracking-tight bg-white dark:bg-slate-900 px-1 py-0.5 rounded border border-gray-150 dark:border-slate-800 ml-1">
-                            {sellerProfile?.city || 'Lagos'}
+                            {sellerProfile?.city || 'Nigeria'}
                           </span>
                         </div>
 
@@ -844,52 +867,62 @@ export default function LandingView({
                           {product.title}
                         </h4>
 
-                        {/* 4. Rating & Sold Metrics (Temu/AliExpress style with review count + rating word) */}
+                        {/* 4. Rating & sold metrics from real reviews/orders */}
                         <div className="space-y-1">
                           <div className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400 font-sans">
-                            <div className="flex text-amber-500 text-[11px]">
-                              {"★".repeat(Math.round(parseFloat(mockRating)))}
-                              {"☆".repeat(5 - Math.round(parseFloat(mockRating)))}
-                            </div>
-                            <span className="font-bold text-[10px] text-amber-600 dark:text-amber-400">{mockRating}</span>
-                            <span className="text-slate-400 text-[9px]">({Math.round((product.id * 77) % 500 + 42)})</span>
-                            <span className="text-emerald-600 dark:text-emerald-400 font-bold text-[8px] bg-emerald-500/10 dark:bg-emerald-500/20 px-1 py-0.2 rounded">
-                              {parseFloat(mockRating) >= 4.7 ? "Excellent" : "Good"}
-                            </span>
+                            {avgRating ? (
+                              <>
+                                <div className="flex text-amber-500 text-[11px]">
+                                  {"★".repeat(Math.round(parseFloat(avgRating)))}
+                                  {"☆".repeat(5 - Math.round(parseFloat(avgRating)))}
+                                </div>
+                                <span className="font-bold text-[10px] text-amber-600 dark:text-amber-400">
+                                  {avgRating}
+                                </span>
+                                <span className="text-slate-400 text-[9px]">
+                                  ({productReviews.length})
+                                </span>
+                              </>
+                            ) : (
+                              <span className="text-slate-400 text-[9px]">No reviews yet</span>
+                            )}
+                            {soldCount > 0 && (
+                              <span className="text-slate-400 text-[9px] ml-auto">{soldCount} sold</span>
+                            )}
                           </div>
                           
                           {/* Escrow Delivery Badge */}
                           <div className="flex items-center justify-between text-[10px] font-mono mt-0.5">
                             <span className="text-emerald-600 dark:text-emerald-400 font-sans font-medium flex items-center gap-0.5">
-                              🚚 Escrow Delivery
+                              Escrow Delivery
                             </span>
                           </div>
                         </div>
 
-                        {/* 5. Jumia-style limited quantity countdown progress bar */}
-                        {product.id % 2 === 0 && (
+                        {stockLeft > 0 && stockLeft <= 8 && (
                           <div className="pt-0.5">
                             <div className="flex items-center justify-between text-[9px] font-mono text-gray-400">
-                              <span className="text-orange-600 dark:text-orange-400 font-bold">🔥 Only {(product.id * 3) % 15 + 2} left</span>
-                              <span>{mockSoldCount} sold</span>
+                              <span className="text-orange-600 dark:text-orange-400 font-bold">
+                                {stockLeft} in stock
+                              </span>
+                              {soldCount > 0 && <span>{soldCount} sold</span>}
                             </div>
                             <div className="w-full bg-gray-150 dark:bg-slate-800 h-1 rounded-full overflow-hidden mt-1">
-                              <div 
-                                className="bg-orange-500 h-full rounded-full transition-all duration-500" 
-                                style={{ width: `${30 + (product.id * 15) % 60}%` }}
+                              <div
+                                className="bg-orange-500 h-full rounded-full transition-all duration-500"
+                                style={{
+                                  width: `${Math.min(100, Math.max(8, (stockLeft / Math.max(stockLeft + soldCount, 1)) * 100))}%`,
+                                }}
                               />
                             </div>
                           </div>
                         )}
 
-                        {/* 6. Price stamps: AliExpress high contrast bold look */}
+                        {/* 6. Price */}
                         <div className="pt-1">
                           <div className="flex items-baseline gap-1.5 flex-wrap">
                             <span className="font-mono font-extrabold text-sm sm:text-base text-orange-600 dark:text-orange-400 leading-none">
                               ₦{product.price.toLocaleString()}
-                            </span>
-                            <span className="font-mono text-[10px] text-gray-400 line-through leading-none">
-                              ₦{originalPrice.toLocaleString()}
                             </span>
                           </div>
                         </div>

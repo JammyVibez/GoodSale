@@ -17,6 +17,17 @@ function shouldLog(level: LogLevel): boolean {
   return LEVEL_ORDER[level] >= LEVEL_ORDER[currentLevel()];
 }
 
+function emitSentry(level: LogLevel, message: string, meta?: Record<string, unknown>) {
+  const dsn = process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN;
+  if (!dsn || typeof fetch === 'undefined') return;
+  // Lightweight envelope-less capture via Sentry Store API is complex;
+  // log a structured hook that Sentry SDK can wrap when installed.
+  if (typeof globalThis !== 'undefined') {
+    const g = globalThis as { __goodsaleSentry?: { captureMessage?: (m: string, ctx?: unknown) => void } };
+    g.__goodsaleSentry?.captureMessage?.(message, { level, extra: meta });
+  }
+}
+
 function emit(level: LogLevel, message: string, meta?: Record<string, unknown>) {
   if (!shouldLog(level)) return;
 
@@ -30,6 +41,7 @@ function emit(level: LogLevel, message: string, meta?: Record<string, unknown>) 
   const line = JSON.stringify(entry);
   if (level === 'error') {
     console.error(line);
+    emitSentry(level, message, meta);
   } else if (level === 'warn') {
     console.warn(line);
   } else {

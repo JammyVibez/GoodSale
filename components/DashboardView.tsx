@@ -439,47 +439,58 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
     setDb(getDBState());
   };
 
-  // 3. Customer PIN Handshake Verification (unlocked held funds immediately)
-  const handlePinHandshake = () => {
+  // Seller cannot release escrow client-side — buyer/courier PIN via server RPC only
+  const handlePinHandshake = async () => {
     if (!selectedOrderForPin) return;
     setPinError(null);
     setPinSuccess(false);
 
-    if (handshakePin.trim() !== selectedOrderForPin.deliveryPin) {
-      setPinError('Invalid 6-digit customer verification code. Please request the correct PIN from the buyer.');
+    setPinError(
+      'Sellers cannot release escrow. Ask the buyer to enter their delivery PIN, or have the courier complete delivery with the buyer PIN.'
+    );
+  };
+
+  // FINANCIAL WALLET METHODS:
+  // Submit bank payout withdrawal via server RPC
+  const handleProcessPayout = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPayoutError(null);
+    setPayoutSuccess(false);
+
+    const amt = Number(payoutAmount);
+    if (isNaN(amt) || amt <= 0) {
+      setPayoutError('Please enter a valid numeric payout amount.');
+      return;
+    }
+    if (amt > withdrawableEarnings) {
+      setPayoutError(`Insufficient balance. Your maximum withdrawable amount is ₦${withdrawableEarnings.toLocaleString()}.`);
+      return;
+    }
+    if (payoutAccountNum.length !== 10 || isNaN(Number(payoutAccountNum))) {
+      setPayoutError('Nigerian NUBAN account numbers must be exactly 10 digits.');
       return;
     }
 
-    const state = getDBState();
-    const ord = state.orders.find(o => o.id === selectedOrderForPin.id);
-    if (ord) {
-      ord.status = OrderStatus.DELIVERED_SUCCESS;
-      ord.updatedAt = new Date().toISOString();
-
-      // Set associated escrow as released
-      const esc = state.escrows.find(e => e.orderId === ord.id);
-      if (esc) esc.isReleased = true;
-
-      // Notify buyer & reward good points
-      state.notifications.push({
-        id: state.notifications.length + 1,
-        userId: ord.buyerId,
-        title: 'Escrow Funds Released!',
-        message: `PIN verification handshake matched for Order: ${ord.orderNumber}. Secured funds have been released to the seller wallet successfully. Thank you for using GoodSale!`,
-        type: 'ORDER',
-        isRead: false,
-        createdAt: new Date().toISOString(),
-      });
-
-      saveDBState(state);
-      setDb(state);
-      setPinSuccess(true);
-      setTimeout(() => {
-        setSelectedOrderForPin(null);
-        setHandshakePin('');
-        setPinSuccess(false);
-      }, 2000);
+    if (!user) {
+      setPayoutError('Please log in to request a payout.');
+      return;
     }
+
+    const result = await dbOperations.withdrawFromWallet(user.id, amt, {
+      name: user.fullName,
+      number: payoutAccountNum,
+      bank: payoutBank,
+    });
+
+    if (!result.success) {
+      setPayoutError(result.message || 'Withdrawal request failed.');
+      return;
+    }
+
+    setPayoutSuccess(true);
+    setPayoutAmount('');
+    setTimeout(() => setPayoutSuccess(false), 4000);
+    setDb(getDBState());
   };
 
   // INVENTORY OPERATIONS:
@@ -528,49 +539,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
     setDb(state);
   };
 
-  // FINANCIAL WALLET METHODS:
-  // Submit bank payout withdrawal
-  const handleProcessPayout = (e: React.FormEvent) => {
-    e.preventDefault();
-    setPayoutError(null);
-    setPayoutSuccess(false);
-
-    const amt = Number(payoutAmount);
-    if (isNaN(amt) || amt <= 0) {
-      setPayoutError('Please enter a valid numeric payout amount.');
-      return;
-    }
-    if (amt > withdrawableEarnings) {
-      setPayoutError(`Insufficient balance. Your maximum withdrawable amount is ₦${withdrawableEarnings.toLocaleString()}.`);
-      return;
-    }
-    if (payoutAccountNum.length !== 10 || isNaN(Number(payoutAccountNum))) {
-      setPayoutError('Nigerian NUBAN account numbers must be exactly 10 digits.');
-      return;
-    }
-
-    // Process simulated bank settlement
-    const transactionId = `GS-PAY-${Math.floor(100000 + Math.random() * 900000)}`;
-    const newPayout = {
-      id: payoutHistory.length + 1,
-      transactionId,
-      amount: amt,
-      bank: payoutBank,
-      accountNumber: payoutAccountNum,
-      status: 'SUCCESS',
-      createdAt: new Date().toISOString()
-    };
-
-    const nextHistory = [newPayout, ...payoutHistory];
-    savePayoutHistory(nextHistory);
-
-    setPayoutSuccess(true);
-    setPayoutAmount('');
-    setTimeout(() => {
-      setShowPayoutModal(false);
-      setPayoutSuccess(false);
-    }, 2000);
-  };
+;
 
   if (!user) {
     return (

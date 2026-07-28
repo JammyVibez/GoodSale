@@ -14,11 +14,11 @@ const securityHeaders = [
     key: 'Content-Security-Policy',
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.paystack.co https://maps.googleapis.com",
+      "script-src 'self' 'unsafe-inline' https://js.paystack.co https://maps.googleapis.com",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "img-src 'self' data: blob: https: http:",
       "font-src 'self' data: https://fonts.gstatic.com",
-      "connect-src 'self' https://api.paystack.co https://*.supabase.co wss://*.supabase.co https://generativelanguage.googleapis.com https://maps.googleapis.com https://*.googleapis.com https://*.gstatic.com",
+      "connect-src 'self' https://api.paystack.co https://*.supabase.co wss://*.supabase.co https://generativelanguage.googleapis.com https://maps.googleapis.com https://*.googleapis.com https://*.gstatic.com https://api.resend.com https://*.upstash.io",
       "frame-src 'self' https://js.paystack.co https://checkout.paystack.com https://*.paystack.co https://www.google.com https://maps.google.com https://www.google.com/maps/ https://maps.googleapis.com",
       "object-src 'none'",
       "base-uri 'self'",

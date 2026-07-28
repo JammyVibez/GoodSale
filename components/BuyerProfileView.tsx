@@ -153,64 +153,24 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
     });
   };
 
-  const handleReleaseEscrow = (orderId: number, deliveryPin: string) => {
+  const handleReleaseEscrow = async (orderId: number, _deliveryPin: string) => {
     setPinError('');
     setPinSuccess('');
-    
-    if (typedPin !== deliveryPin) {
-      setPinError('Invalid delivery PIN token! Please check your 6-digit verification PIN.');
+
+    if (!typedPin || typedPin.length < 4) {
+      setPinError('Enter your delivery PIN token.');
       return;
     }
 
-    // Correct PIN matching -> Release Escrow in Local Storage
-    const state = getDBState();
-    const order = state.orders.find(o => o.id === orderId);
-    if (order) {
-      order.status = OrderStatus.DELIVERED_SUCCESS;
-      order.updatedAt = new Date().toISOString();
-      
-      // Release corresponding Escrow funds
-      const escrow = state.escrows.find(e => e.orderId === orderId);
-      if (escrow) {
-        escrow.isReleased = true;
-      }
-
-      // Add GoodPoints as completion bonus
-      if (state.currentUser && state.currentUser.id === order.buyerId) {
-        state.currentUser.goodPoints += 100; // completion bonus
-        
-        // Push completion notification
-        state.notifications.push({
-          id: state.notifications.length + 1,
-          userId: order.buyerId,
-          title: 'Escrow Funds Released Successfully!',
-          message: `Your payment of ₦${order.totalAmount.toLocaleString()} has been securely released to the merchant. You earned a +100 GP completion loyalty reward!`,
-          type: 'ORDER',
-          isRead: false,
-          createdAt: new Date().toISOString(),
-        });
-
-        // Also notify the seller
-        state.notifications.push({
-          id: state.notifications.length + 1,
-          userId: order.sellerId,
-          title: 'Escrow Payment Released!',
-          message: `The buyer confirmed receipt and matched the 6-digit Delivery PIN. Your payment of ₦${order.totalAmount.toLocaleString()} is cleared.`,
-          type: 'ORDER',
-          isRead: false,
-          createdAt: new Date().toISOString(),
-        });
-      }
-
-      saveDBState(state);
-      setPinSuccess('Delivery verified! Payment released to merchant and escrow completed.');
-      setTypedPin('');
-      
-      setTimeout(() => {
-        setPinSuccess('');
-        setSelectedOrderForPin(null);
-      }, 3000);
+    const result = await dbOperations.completeDelivery(orderId, typedPin);
+    if (result && 'error' in result) {
+      setPinError(result.error || 'Invalid delivery PIN token!');
+      return;
     }
+
+    setPinSuccess('Escrow released successfully via server PIN verification.');
+    setTypedPin('');
+    setSelectedOrderForPin(null);
   };
 
   const getStatusBadge = (status: OrderStatus) => {
