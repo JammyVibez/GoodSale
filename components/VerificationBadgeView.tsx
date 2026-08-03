@@ -110,7 +110,7 @@ export default function VerificationBadgeView() {
     setBvnError(null);
 
     if (!user) {
-      setBvnError("Please sign in or hop in as a guest before verifying.");
+      setBvnError("Please sign in before verifying.");
       return;
     }
 

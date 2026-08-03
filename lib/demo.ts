@@ -5,8 +5,8 @@
 export function isDemoMode(): boolean {
   const flag = process.env.NEXT_PUBLIC_DEMO_MODE;
   if (flag === 'true') return true;
-  if (flag === 'false') return false;
-  return process.env.NODE_ENV !== 'production';
+  // Default off — real Auth/Storage/Paystack paths only
+  return false;
 }
 
 export const OWNER_ADMIN_EMAILS = [

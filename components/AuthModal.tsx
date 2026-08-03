@@ -4,11 +4,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
   X, User, Mail, Smartphone, Shield, Sparkles, Gift, ArrowRight, 
-  CheckCircle2, LogIn, Key, Compass, Eye, EyeOff, ShieldAlert, 
-  MapPin, Globe, Languages, Camera, RefreshCw, Lock, AlertTriangle, Cpu
+  CheckCircle2, LogIn, Key, Eye, EyeOff, ShieldAlert, 
+  MapPin, Globe, Languages, Camera, RefreshCw, Lock, AlertTriangle
 } from 'lucide-react';
 import { useDBState, dbOperations, UserRole, getDBState, saveDBState } from '../lib/store';
-import { isDemoMode } from '@/lib/demo';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -66,31 +65,19 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
   const [newConfirmPassword, setNewConfirmPassword] = useState('');
 
   // 5. ONBOARDING STATE
-  const [onboardingPhoto, setOnboardingPhoto] = useState('https://picsum.photos/seed/default_avatar/200');
+  const [onboardingPhoto, setOnboardingPhoto] = useState('');
   const [onboardingState, setOnboardingState] = useState('Lagos');
   const [onboardingCity, setOnboardingCity] = useState('Ikeja');
   const [onboardingAddress, setOnboardingAddress] = useState('');
   const [onboardingLanguage, setOnboardingLanguage] = useState('English');
   const [onboardingDeliveryPref, setOnboardingDeliveryPref] = useState('GOODSALE_PARTNER');
 
-  // 6. JWT SESSION MANAGEMENT (Maximum Fidelity Simulation)
-  const [jwtExpiry, setJwtExpiry] = useState(900); // 15 minutes
-  const [activeJwtToken, setActiveJwtToken] = useState('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsImV4cCI6MTgwMDAwMDB9');
-  const [sessionIp, setSessionIp] = useState('102.89.23.41');
-  const [sessionLocation, setSessionLocation] = useState('Lagos, Nigeria');
-  const [userAgent, setUserAgent] = useState('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36');
 
-  // Countdown timer for OTP and JWT Expirations
   useEffect(() => {
-    let timer: any;
-    if (isOpen) {
-      timer = setInterval(() => {
-        // Count down OTP
-        setOtpCountdown((prev) => (prev > 0 ? prev - 1 : 0));
-        // Count down JWT
-        setJwtExpiry((prev) => (prev > 0 ? prev - 1 : 900)); // Reset after expire or simulate
-      }, 1000);
-    }
+    if (!isOpen || mode !== 'otp_verify') return;
+    const timer = setInterval(() => {
+      setOtpCountdown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
     return () => clearInterval(timer);
   }, [isOpen, mode]);
 
@@ -136,30 +123,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
 
   const strength = getPasswordStrength(password);
 
-  // Quick Account Login Action
-  const handleSimulatedLogin = (userId: number) => {
-    setErrorMsg('');
-    setSuccessMsg('');
-    try {
-      dbOperations.loginUser(userId);
-      setSuccessMsg('Logged in successfully!');
-      
-      // Store credentials if Remember Me is checked
-      if (rememberMe) {
-        localStorage.setItem('goodsale_saved_session_id', userId.toString());
-      } else {
-        localStorage.removeItem('goodsale_saved_session_id');
-      }
-
-      setTimeout(() => {
-        setSuccessMsg('');
-        if (onSuccess) onSuccess();
-        onClose();
-      }, 1000);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to authenticate');
-    }
-  };
 
   // Real Supabase Auth login
   const handleCustomLoginSubmit = async (e: React.FormEvent) => {
@@ -176,11 +139,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
     try {
       const user = await dbOperations.loginWithPassword(loginIdentifier.trim(), loginPassword);
       setSuccessMsg(`Welcome back, ${user.fullName}!`);
-      if (rememberMe) {
-        localStorage.setItem('goodsale_saved_session_id', user.id.toString());
-      } else {
-        localStorage.removeItem('goodsale_saved_session_id');
-      }
       setTimeout(() => {
         setSuccessMsg('');
         setIsSubmitting(false);
@@ -431,14 +389,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
   };
 
 
-  // JWT Token manual Refresh handler
-  const handleRefreshJwtToken = () => {
-    setJwtExpiry(900);
-    const randStr = Math.random().toString(36).substring(2, 15);
-    setActiveJwtToken(`eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsImV4cCI6MTgwMDAwMDB9.${randStr}`);
-    alert('Simulated Token Rotation Completed: Simulated Refresh Token rotated successfully and rotated the Access Token cookies.');
-  };
-
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       {/* Backdrop */}
@@ -572,7 +522,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                     />
                     <span>Remember My Session</span>
                   </label>
-                  <span className="text-[10px] text-slate-400 font-mono">15m JWT Session</span>
+                  <span className="text-[10px] text-slate-400 font-mono">Secure session</span>
                 </div>
 
                 {/* Login Button */}
@@ -618,70 +568,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                   Email me a login code instead
                 </button>
               </form>
-
-              <div className="relative flex py-2 items-center">
-                <div className="flex-grow border-t border-gray-150 dark:border-slate-800"></div>
-                <span className="flex-shrink mx-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase font-mono tracking-widest">Or hop in directly</span>
-                <div className="flex-grow border-t border-gray-150 dark:border-slate-800"></div>
-              </div>
-
-              {/* Guest login removed — Supabase Auth only */}
-
-              {/* JWT Session Manager Panel */}
-              <div className="bg-slate-50 dark:bg-slate-950 rounded-2xl p-4 border border-gray-150 dark:border-slate-850 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <Cpu className="w-4 h-4 text-emerald-500" />
-                    <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest font-mono">JWT Session Auditor</span>
-                  </div>
-                  <span className="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[8px] font-mono rounded font-bold uppercase tracking-wider">
-                    Secured
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 text-[10px] font-mono text-slate-500 dark:text-slate-400 leading-normal">
-                  <div>
-                    <span className="font-sans font-bold text-slate-400 block">ACCESS TOKEN EXPIRY</span>
-                    <span className="text-slate-800 dark:text-slate-200 font-extrabold">{Math.floor(jwtExpiry / 60)}m {jwtExpiry % 60}s</span>
-                  </div>
-                  <div>
-                    <span className="font-sans font-bold text-slate-400 block">IP ADDRESS</span>
-                    <span className="text-slate-800 dark:text-slate-200">{sessionIp} ({sessionLocation})</span>
-                  </div>
-                  <div className="col-span-2">
-                    <span className="font-sans font-bold text-slate-400 block">JWT DECODED HEADER & CLAIM</span>
-                    <span className="text-[9px] block text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 border border-gray-150 dark:border-slate-850 p-1.5 rounded font-mono truncate">
-                      {activeJwtToken}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex gap-2 pt-1.5">
-                  <button 
-                    onClick={handleRefreshJwtToken} 
-                    className="flex-1 py-1.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 hover:border-emerald-500 text-[9px] font-bold text-slate-600 dark:text-slate-300 hover:text-emerald-500 rounded-lg transition-colors flex items-center justify-center gap-1 cursor-pointer"
-                  >
-                    <RefreshCw className="w-3 h-3" />
-                    Rotate Session Refresh Token
-                  </button>
-                  {db.currentUser && (
-                    <button 
-                      onClick={() => {
-                        const state = getDBState();
-                        state.currentUser = null;
-                        saveDBState(state);
-                        setSuccessMsg('Active session successfully revoked.');
-                        setTimeout(() => {
-                          setSuccessMsg('');
-                        }, 1200);
-                      }}
-                      className="py-1.5 px-3 bg-red-500/10 hover:bg-red-500 text-red-600 hover:text-white text-[9px] font-bold rounded-lg transition-colors cursor-pointer"
-                    >
-                      Revoke JWT
-                    </button>
-                  )}
-                </div>
-              </div>
 
             </div>
           )}

@@ -280,7 +280,7 @@ export default function DispatchDashboardView() {
       setDb(state);
       setSosActive(true);
       setSosSuccessMessage('🚨 Emergency SOS alert sent! GoodDispatch™ Operations and emergency medical/security partners have been notified with your live coordinates.');
-      dbOperations.addAuditLog(user?.id || 0, 'SOS_ALERT', 'deliveryJobs', simulatedJob.id, `Courier Dele Coker triggered SOS emergency panic signal`);
+      dbOperations.addAuditLog(user?.id || 0, 'SOS_ALERT', 'deliveryJobs', simulatedJob.id, `Courier ${user?.fullName || 'rider'} triggered SOS emergency panic signal`);
       setTimeout(() => setSosSuccessMessage(null), 8000);
     }
   };
@@ -302,7 +302,7 @@ export default function DispatchDashboardView() {
       setDb(state);
       setIncidentReported(true);
       setIncidentNote('');
-      dbOperations.addAuditLog(user?.id || 0, 'INCIDENT_REPORTED', 'deliveryJobs', simulatedJob.id, `Courier Dele Coker logged transit incident: ${typeLabel}`);
+      dbOperations.addAuditLog(user?.id || 0, 'INCIDENT_REPORTED', 'deliveryJobs', simulatedJob.id, `Courier ${user?.fullName || 'rider'} logged transit incident: ${typeLabel}`);
       setTimeout(() => {
         setIncidentReported(false);
         setShowIncidentForm(false);
@@ -415,7 +415,7 @@ export default function DispatchDashboardView() {
               {/* Profile Card */}
               <div className="flex items-center gap-3">
                 <img 
-                  src={courier?.photoUrl || db.profiles.find(p => p.userId === user.id)?.photoUrl || "https://picsum.photos/seed/driver_default/200"} 
+                  src={courier?.photoUrl || db.profiles.find(p => p.userId === user.id)?.photoUrl || ""} 
                   alt="Courier Profile" 
                   className="w-12 h-12 rounded-full object-cover border-2 border-emerald-500 shadow-sm"
                 />
@@ -803,7 +803,7 @@ export default function DispatchDashboardView() {
                               key={item.setter}
                               className="border border-dashed border-gray-200 dark:border-slate-800 rounded-2xl p-4 text-center cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-950/40 transition-colors block"
                             >
-                              {item.value && !item.value.includes('picsum.photos') ? (
+                              {item.value && Boolean(item.value) ? (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img src={item.value} alt="" className="w-16 h-16 object-cover rounded-xl mx-auto mb-2" />
                               ) : (
@@ -811,7 +811,7 @@ export default function DispatchDashboardView() {
                               )}
                               <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 block">{item.label}</span>
                               <p className="text-[9px] text-slate-400 mt-1">
-                                {item.value && !item.value.includes('picsum.photos') ? 'Uploaded to Supabase' : 'Tap to upload'}
+                                {item.value && Boolean(item.value) ? 'Uploaded to Supabase' : 'Tap to upload'}
                               </p>
                               <input
                                 type="file"
@@ -884,23 +884,6 @@ export default function DispatchDashboardView() {
                         Currently no pending delivery jobs are available in Lagos. High frequency blocks usually trigger when customers checkout escrow orders.
                       </p>
                       
-                      {/* Simulation Trigger button to seed a job if empty */}
-                      <button 
-                        onClick={() => {
-                          const state = getDBState();
-                          const lastOrder = state.orders[state.orders.length - 1];
-                          if (lastOrder) {
-                            dbOperations.createDeliveryJob(lastOrder.id, 'STANDARD', 3500);
-                            setDb(getDBState());
-                          } else {
-                            alert('No orders found to deliver. Please place an order first.');
-                          }
-                        }}
-                        className="mx-auto flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[10px] px-3 py-2 rounded-xl cursor-pointer"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        Simulate Customer Delivery Request
-                      </button>
                     </div>
                   ) : (
                     <div className="space-y-4">

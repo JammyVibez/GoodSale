@@ -57,11 +57,11 @@ export default function RevenueCenterView() {
   // Retrieve user's wallet (create if doesn't exist)
   let wallet = user ? db.wallets.find(w => w.userId === user.id) : null;
   if (user && !wallet) {
-    // Lazy auto initialize wallet — demo starts with seed credit; production starts at 0
+    // Lazy auto initialize wallet at 0 — real balance comes from Supabase
     wallet = {
       id: db.wallets.length + 1,
       userId: user.id,
-      balance: isDemoMode() ? 120000 : 0,
+      balance: 0,
     };
     db.wallets.push(wallet);
     saveDBState(db);
@@ -94,7 +94,7 @@ export default function RevenueCenterView() {
 
     setWalletError(null);
     dbOperations.depositToWallet(user.id, amt);
-    setWalletSuccess(`Success! ₦${amt.toLocaleString()} has been added to your wallet (demo mode).`);
+    setWalletSuccess(`Wallet top-up recorded locally. Use Paystack checkout for real payments.`);
     setDepositAmount('15000');
     setTimeout(() => setWalletSuccess(null), 5000);
   };
@@ -902,7 +902,7 @@ export default function RevenueCenterView() {
                               <div className="grid grid-cols-3 gap-2 text-center text-[11px] bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-gray-100 dark:border-slate-800 font-mono">
                                 <div>
                                   <span className="text-[9px] text-slate-400 block uppercase">Impressions</span>
-                                  <span className="font-extrabold text-indigo-500">{ad.impressions || Math.floor(Math.random() * 200) + 120}</span>
+                                  <span className="font-extrabold text-indigo-500">{ad.impressions || 0}</span>
                                 </div>
                                 <div>
                                   <span className="text-[9px] text-slate-400 block uppercase">Clicks</span>

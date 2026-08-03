@@ -146,7 +146,7 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
       id: prod.id,
       title: prod.title,
       price: prod.price,
-      image: prod.images[0] || 'https://picsum.photos/seed/product/150',
+      image: prod.images[0] || '',
       condition: prod.condition
     };
     dbOperations.sendMessage(activeRoomId, undefined, undefined, undefined, undefined, productObj);
@@ -154,19 +154,8 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
     setDb(getDBState());
   };
 
-  // Mock Receipt Data Generator in case they have no orders
   const myOrders = db.orders.filter(order => order.buyerId === user.id || order.sellerId === user.id);
-  const fallbackOrders = myOrders.length > 0 ? myOrders : [
-    {
-      id: 9991,
-      orderNumber: 'GS-2026-881029',
-      productTitle: chatProduct?.title || 'Grade-A iPhone 13 Pro',
-      totalAmount: chatProduct?.price || 420000,
-      paymentMethod: 'DEBIT_CARD_SECURED',
-      status: 'PAID_ESCROW',
-      createdAt: new Date().toISOString()
-    }
-  ];
+  const fallbackOrders = myOrders;
 
   // Real local uploads used for attachments
   const photoPresets: any[] = [];
@@ -656,6 +645,9 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
             </div>
 
             <div className="max-h-60 overflow-y-auto space-y-2 pr-1 text-xs">
+              {fallbackOrders.length === 0 ? (
+                <p className="text-xs text-slate-400 text-center py-6">No orders yet to share as a receipt.</p>
+              ) : null}
               {fallbackOrders.map((ord) => (
                 <button
                   key={ord.id}

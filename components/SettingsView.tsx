@@ -44,8 +44,8 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
   const [address, setAddress] = useState(currentProfile?.address || '');
   const [city, setCity] = useState(currentProfile?.city || '');
   const [stateName, setStateName] = useState(currentProfile?.state || '');
-  const [profilePic, setProfilePic] = useState(currentProfile?.photoUrl || `https://picsum.photos/seed/${currentUser?.username || 'user'}/200`);
-  const [coverPic, setCoverPic] = useState(currentProfile?.coverUrl || `https://picsum.photos/seed/${currentUser?.username || 'user'}_cover/800/300`);
+  const [profilePic, setProfilePic] = useState(currentProfile?.photoUrl || '');
+  const [coverPic, setCoverPic] = useState(currentProfile?.coverUrl || '');
 
   // 2. Security
   const [oldPassword, setOldPassword] = useState('');
@@ -87,7 +87,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
   const [onlineStatus, setOnlineStatus] = useState(true);
   const [readReceipts, setReadReceipts] = useState(true);
   const [whoCanMessage, setWhoCanMessage] = useState<'all' | 'verified' | 'none'>('all');
-  const [blockedUsers, setBlockedUsers] = useState(['user_scammer99', 'fake_buyer_lagos']);
+  const [blockedUsers, setBlockedUsers] = useState<string[]>([]);
   const [mutedUsers, setMutedUsers] = useState(['spam_deals_ng']);
 
   // 6. Buying Preferences
@@ -110,8 +110,8 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
   // 8. Business Settings (only visible to business users)
   const [businessName, setBusinessName] = useState(currentBusiness?.name || '');
   const [businessDesc, setBusinessDesc] = useState(currentBusiness?.description || '');
-  const [businessLogo, setBusinessLogo] = useState(currentBusiness?.logoUrl || `https://picsum.photos/seed/bizlogo/100`);
-  const [businessBanner, setBusinessBanner] = useState(currentBusiness?.bannerUrl || `https://picsum.photos/seed/bizbanner/800/250`);
+  const [businessLogo, setBusinessLogo] = useState(currentBusiness?.logoUrl || '');
+  const [businessBanner, setBusinessBanner] = useState(currentBusiness?.bannerUrl || '');
   const [businessHours, setBusinessHours] = useState('Monday - Saturday (08:00 AM - 07:00 PM)');
   const [staffList, setStaffList] = useState([
     { id: 1, name: 'Tunde Bakare', role: 'Store Manager', status: 'Active' },
@@ -158,16 +158,16 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
         setAddress(prof.address || '');
         setCity(prof.city || '');
         setStateName(prof.state || '');
-        setProfilePic(prof.photoUrl || `https://picsum.photos/seed/${currentUser.username}/200`);
-        setCoverPic(prof.coverUrl || `https://picsum.photos/seed/${currentUser.username}_cover/800/300`);
+        setProfilePic(prof.photoUrl || '');
+        setCoverPic(prof.coverUrl || '');
       }
 
       const biz = db.businesses.find(b => b.ownerId === currentUser.id);
       if (biz) {
         setBusinessName(biz.name || '');
         setBusinessDesc(biz.description || '');
-        setBusinessLogo(biz.logoUrl || `https://picsum.photos/seed/bizlogo/100`);
-        setBusinessBanner(biz.bannerUrl || `https://picsum.photos/seed/bizbanner/800/250`);
+        setBusinessLogo(biz.logoUrl || '');
+        setBusinessBanner(biz.bannerUrl || '');
       }
     }
   }, [currentUser, db.profiles, db.businesses]);
@@ -210,20 +210,8 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
     }
   };
 
-  const handleSwitchUser = (userId: number) => {
-    dbOperations.loginUser(userId);
-    setSelectedUserId(userId);
-  };
-
-  const handleResetDatabase = () => {
-    if (confirm('Are you sure you want to reset the local GoodSale database? All custom products, orders, and reviews will return to defaults.')) {
-      localStorage.removeItem('goodsale_relational_database_v1');
-      window.location.reload();
-    }
-  };
-
   const handleCopyReferral = () => {
-    const code = currentUser?.referralCode || 'GS-HAMZA-12';
+    const code = currentUser?.referralCode || 'GS-REF';
     const link = `https://goodsale.ng/join?ref=${code}`;
     navigator.clipboard.writeText(link);
     setReferralLinkCopied(true);
@@ -317,7 +305,6 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
     { id: 'support', label: 'Help & Live Support', icon: HelpCircle, color: 'text-violet-500' },
     { id: 'legal', label: 'Legal Accordions', icon: FileText, color: 'text-slate-400' },
     { id: 'about', label: 'About GoodSale', icon: Info, color: 'text-gray-400' },
-    { id: 'sandbox', label: 'Dev Tester Sandbox', icon: RefreshCw, color: 'text-cyan-500' },
     { id: 'account_management', label: 'Account Controls', icon: Trash2, color: 'text-red-600' },
   ];
 
@@ -347,15 +334,6 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
           </div>
         </div>
 
-        <div className="flex gap-2 relative z-10 w-full md:w-auto mt-4 md:mt-0">
-          <button 
-            onClick={handleResetDatabase}
-            className="flex-1 md:flex-none px-4 py-2.5 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer border border-red-500/20"
-          >
-            <Database className="w-4 h-4" />
-            Reset Local DB
-          </button>
-        </div>
       </div>
 
       {/* Main Settings Grid */}
@@ -485,6 +463,42 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                         </label>
                       </div>
                     </div>
+                  </div>
+                </div>
+
+
+                {/* Account type */}
+                <div className="p-4 bg-emerald-500/5 border border-emerald-500/15 rounded-2xl space-y-3">
+                  <h4 className="text-xs font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">Account type</h4>
+                  <p className="text-[10px] text-slate-400">Current: <strong>{currentUser?.role || '—'}</strong>. Change anytime.</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {[
+                      { role: UserRole.BUYER, label: 'Buyer' },
+                      { role: UserRole.SELLER, label: 'Seller' },
+                      { role: UserRole.BUSINESS, label: 'Business' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.role}
+                        type="button"
+                        onClick={async () => {
+                          const res = await dbOperations.updateCurrentUserRole(opt.role);
+                          if (!res.success) {
+                            alert(res.error || 'Could not change role');
+                            return;
+                          }
+                          alert(`Account type updated to ${res.role || opt.role}`);
+                        }}
+                        className={`px-3 py-2.5 rounded-xl text-xs font-bold uppercase cursor-pointer border ${
+                          currentUser?.role === opt.role ||
+                          (opt.role === UserRole.SELLER && currentUser?.role === UserRole.VERIFIED_SELLER) ||
+                          (opt.role === UserRole.BUSINESS && currentUser?.role === UserRole.VERIFIED_BUSINESS)
+                            ? 'bg-emerald-500 text-white border-emerald-500'
+                            : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-gray-200 dark:border-slate-700'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
@@ -1893,88 +1907,6 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
             </div>
           )}
 
-          {/* TAB 15: DEVELOPER TESTING SANDBOX */}
-          {activeTab === 'sandbox' && (
-            <div className="space-y-6 animate-fade-in">
-              <div className="bg-white dark:bg-slate-900 border border-gray-150 dark:border-slate-800 p-6 sm:p-8 rounded-[32px] shadow-sm space-y-6">
-                <div>
-                  <h2 className="font-display font-black text-lg text-slate-900 dark:text-white flex items-center gap-2">
-                    <RefreshCw className="w-5 h-5 text-cyan-500 animate-spin-slow" />
-                    Developer & Testing Sandbox
-                  </h2>
-                  <p className="text-xs text-slate-400 mt-1">GoodSale is a multi-role workspace. Switch between different buyer and merchant user accounts to verify relational flows instantly.</p>
-                </div>
-
-                <div className="space-y-3">
-                  <label className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-wider block">Swap Active User Session</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {db.users.map((user) => (
-                      <button
-                        key={user.id}
-                        type="button"
-                        onClick={() => handleSwitchUser(user.id)}
-                        className={`p-4 rounded-2xl border text-left cursor-pointer transition-all ${
-                          currentUser?.id === user.id 
-                            ? 'bg-indigo-500/10 border-indigo-500 text-indigo-900 dark:text-indigo-300 font-extrabold shadow-sm' 
-                            : 'bg-gray-50 dark:bg-slate-800/40 border-gray-150 dark:border-slate-800 hover:bg-gray-100 text-slate-700 dark:text-slate-300'
-                        }`}
-                      >
-                        <div className="flex justify-between items-center">
-                          <span className="font-bold text-xs">{user.fullName}</span>
-                          {currentUser?.id === user.id && <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse" />}
-                        </div>
-                        <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-wider font-mono font-bold">Role: {user.role.replace('VERIFIED_', '')}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Account type — users can change anytime */}
-                <div className="p-4 bg-emerald-500/5 border border-emerald-500/15 rounded-2xl space-y-3">
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-emerald-500 shrink-0" />
-                    <div>
-                      <h4 className="text-xs font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">Account type</h4>
-                      <p className="text-[10px] text-slate-400 mt-1 leading-normal">
-                        Current role: <strong className="text-slate-700 dark:text-slate-200">{currentUser?.role || '—'}</strong>.
-                        Switch anytime between Buyer, Seller, and Business Owner. Verified badges are preserved when you stay on the same track.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {[
-                      { role: UserRole.BUYER, label: 'Buyer' },
-                      { role: UserRole.SELLER, label: 'Seller' },
-                      { role: UserRole.BUSINESS, label: 'Business' },
-                    ].map((opt) => (
-                      <button
-                        key={opt.role}
-                        type="button"
-                        onClick={async () => {
-                          const res = await dbOperations.updateCurrentUserRole(opt.role);
-                          if (!res.success) {
-                            alert(res.error || 'Could not change role — run migration 007');
-                            return;
-                          }
-                          alert(`Account type updated to ${res.role || opt.role}`);
-                        }}
-                        className={`px-3 py-2.5 rounded-xl text-xs font-bold uppercase cursor-pointer border ${
-                          currentUser?.role === opt.role ||
-                          (opt.role === UserRole.SELLER && currentUser?.role === UserRole.VERIFIED_SELLER) ||
-                          (opt.role === UserRole.BUSINESS && currentUser?.role === UserRole.VERIFIED_BUSINESS)
-                            ? 'bg-emerald-500 text-white border-emerald-500'
-                            : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-gray-200 dark:border-slate-700'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* TAB 16: ACCOUNT CONTROLS */}
           {activeTab === 'account_management' && (
             <div className="space-y-6 animate-fade-in">
@@ -2026,15 +1958,14 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                     <p className="text-[10px] text-slate-400 mt-0.5">Irreversibly wipe your user record, active listings, and trust score history. This action cannot be undone.</p>
                   </div>
                   <button
-                    onClick={() => {
-                      if (confirm('Are you sure you want to permanently delete your GoodSale account? All transaction history and GoodPoints will be wiped.')) {
-                        localStorage.removeItem('goodsale_relational_database_v1');
-                        window.location.reload();
-                      }
+                    onClick={async () => {
+                      if (!confirm('Sign out and request account removal? Contact support to permanently wipe your Supabase profile.')) return;
+                      await dbOperations.logout();
+                      window.location.href = '/';
                     }}
                     className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold cursor-pointer"
                   >
-                    Delete Account
+                    Sign out & leave
                   </button>
                 </div>
               </div>

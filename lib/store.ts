@@ -1,7 +1,7 @@
 // lib/store.ts
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { createEmptyState } from '@/lib/data/empty-state';
 import {
@@ -101,13 +101,24 @@ export async function reloadFromSupabase() {
     notify();
     return;
   }
-  const { data: sessionData } = await client.auth.getSession();
-  const authId = sessionData.session?.user?.id ?? null;
+
+  // Prefer getUser() so hard refresh revalidates the JWT from cookies
+  let authId: string | null = null;
+  const { data: userData, error: userError } = await client.auth.getUser();
+  if (!userError && userData.user) {
+    authId = userData.user.id;
+  } else {
+    const { data: sessionData } = await client.auth.getSession();
+    authId = sessionData.session?.user?.id ?? null;
+  }
+
   const next = await loadMarketplaceState(client, authId);
-  // Preserve in-flight currentUser if profile lag after signup
-  if (!next.currentUser && dbInstance?.currentUser) {
+
+  // Only keep a previous currentUser when a session still exists (profile lag after signup)
+  if (!next.currentUser && authId && dbInstance?.currentUser) {
     next.currentUser = dbInstance.currentUser;
   }
+
   dbInstance = next;
   notify();
 }
@@ -116,7 +127,6 @@ export async function bootstrapStore(): Promise<void> {
   if (bootstrapped) return;
   if (bootstrapPromise) return bootstrapPromise;
   bootstrapPromise = (async () => {
-    await reloadFromSupabase();
     const client = createClient();
     if (client && !realtimeUnsub) {
       let reloadTimer: ReturnType<typeof setTimeout> | null = null;
@@ -129,12 +139,15 @@ export async function bootstrapStore(): Promise<void> {
         },
       });
       client.auth.onAuthStateChange(async (event) => {
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+        if (
+          event === 'INITIAL_SESSION' ||
+          event === 'SIGNED_IN' ||
+          event === 'TOKEN_REFRESHED' ||
+          event === 'USER_UPDATED'
+        ) {
           await reloadFromSupabase();
         }
         if (event === 'SIGNED_OUT') {
-          const empty = createEmptyState();
-          // Still load public catalog
           const loaded = await loadMarketplaceState(client, null);
           loaded.currentUser = null;
           dbInstance = loaded;
@@ -142,6 +155,8 @@ export async function bootstrapStore(): Promise<void> {
         }
       });
     }
+    // Initial load (covers cases where INITIAL_SESSION already fired)
+    await reloadFromSupabase();
     bootstrapped = true;
   })();
   return bootstrapPromise;
@@ -343,13 +358,9 @@ export const dbOperations = {
     return user;
   },
 
-  loginUser(userId: number) {
-    const state = getDBState();
-    const user = state.users.find((u) => u.id === userId);
-    if (user) {
-      state.currentUser = user;
-      saveDBState(state);
-    }
+  /** @deprecated Fake session switch removed — use real Supabase Auth only */
+  loginUser(_userId: number) {
+    throw new Error('Demo user switching is disabled. Sign in with email/password or OTP.');
   },
 
   loginAsGuest() {
@@ -555,7 +566,7 @@ export const dbOperations = {
       isNegotiable,
       quantity,
       stockStatus: 'IN_STOCK',
-      images: images && images.length > 0 ? images : ['https://picsum.photos/seed/product_default/600/600'],
+      images: images && images.length > 0 ? images : [],
       barcode,
       deliveryMethod,
       pickupAvailable,
@@ -631,6 +642,72 @@ export const dbOperations = {
     return newProduct;
   },
 
+  /** Owner deletes their own listing (Supabase + local). */
+  async deleteOwnProduct(productId: number) {
+    const state = getDBState();
+    if (!state.currentUser) return { success: false, error: 'Sign in required' };
+    const product = state.products.find((p) => p.id === productId);
+    if (!product) return { success: false, error: 'Listing not found' };
+    if (product.sellerId !== state.currentUser.id) {
+      return { success: false, error: 'You can only delete your own listings' };
+    }
+
+    const client = createClient();
+    if (client) {
+      const { error } = await client.from('products').delete().eq('id', productId);
+      if (error) {
+        return {
+          success: false,
+          error:
+            error.message.includes('foreign key') || error.code === '23503'
+              ? 'This listing has orders linked to it and cannot be deleted. Mark it Out of Stock instead.'
+              : error.message,
+        };
+      }
+      await client.from('auctions').delete().eq('product_id', productId);
+      await reloadFromSupabase();
+      return { success: true };
+    }
+
+    state.products = state.products.filter((p) => p.id !== productId);
+    state.auctions = state.auctions.filter((a) => a.productId !== productId);
+    saveDBState(state);
+    return { success: true };
+  },
+
+  /** Owner updates price / stock on their listing. */
+  async updateOwnProduct(
+    productId: number,
+    patch: Partial<{ price: number; quantity: number; stockStatus: Product['stockStatus']; title: string }>
+  ) {
+    const state = getDBState();
+    if (!state.currentUser) return { success: false, error: 'Sign in required' };
+    const product = state.products.find((p) => p.id === productId);
+    if (!product) return { success: false, error: 'Listing not found' };
+    if (product.sellerId !== state.currentUser.id) {
+      return { success: false, error: 'You can only edit your own listings' };
+    }
+
+    Object.assign(product, patch);
+    saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      const { error } = await client
+        .from('products')
+        .update({
+          title: product.title,
+          price: product.price,
+          quantity: product.quantity,
+          stock_status: product.stockStatus,
+        })
+        .eq('id', productId);
+      if (error) return { success: false, error: error.message };
+      await reloadFromSupabase();
+    }
+    return { success: true, product };
+  },
+
   // Submit Bid for Auction
   submitBid(auctionId: number, amount: number) {
     const state = getDBState();
@@ -647,7 +724,7 @@ export const dbOperations = {
       auctionId,
       userId: state.currentUser.id,
       username: state.currentUser.username,
-      userAvatar: state.profiles.find((p) => p.userId === state.currentUser!.id)?.photoUrl || 'https://picsum.photos/seed/user/50',
+      userAvatar: state.profiles.find((p) => p.userId === state.currentUser!.id)?.photoUrl || '',
       amount,
       createdAt: new Date().toISOString(),
     };
@@ -1475,7 +1552,7 @@ export const dbOperations = {
       orderId,
       reviewerId: state.currentUser.id,
       reviewerName: state.currentUser.fullName,
-      reviewerPhoto: state.profiles.find(p => p.userId === state.currentUser!.id)?.photoUrl || 'https://picsum.photos/seed/avatar/50',
+      reviewerPhoto: state.profiles.find(p => p.userId === state.currentUser!.id)?.photoUrl || '',
       revieweeId: order.sellerId,
       rating,
       comment,
@@ -1524,7 +1601,7 @@ export const dbOperations = {
       productId,
       reviewerId: state.currentUser.id,
       reviewerName: state.currentUser.fullName,
-      reviewerPhoto: state.profiles.find(p => p.userId === state.currentUser!.id)?.photoUrl || 'https://picsum.photos/seed/avatar/50',
+      reviewerPhoto: state.profiles.find(p => p.userId === state.currentUser!.id)?.photoUrl || '',
       revieweeId: product?.sellerId,
       rating,
       comment,
@@ -1587,7 +1664,7 @@ export const dbOperations = {
       id: review.replies.length + 1,
       authorId: state.currentUser.id,
       authorName: state.currentUser.fullName,
-      authorPhoto: state.profiles.find(p => p.userId === state.currentUser!.id)?.photoUrl || 'https://picsum.photos/seed/avatar/50',
+      authorPhoto: state.profiles.find(p => p.userId === state.currentUser!.id)?.photoUrl || '',
       authorRole: roleStr,
       comment: commentText,
       createdAt: new Date().toISOString(),
@@ -2267,7 +2344,7 @@ export const dbOperations = {
       color: partnerData.color,
       year: partnerData.year,
       capacity: partnerData.capacity,
-      photoUrl: partnerData.photoUrl || 'https://picsum.photos/seed/delivery_avatar/200',
+      photoUrl: partnerData.photoUrl || '',
       status: 'PENDING',
       isAvailable: false,
       trustScore: 80,
@@ -2282,7 +2359,7 @@ export const dbOperations = {
       lastLng: partnerData.lastLng ?? seedLoc.lng,
       lastLocationAt: new Date().toISOString(),
       nin: partnerData.nin,
-      selfieUrl: partnerData.selfieUrl || 'https://picsum.photos/seed/selfie/200',
+      selfieUrl: partnerData.selfieUrl || '',
       licenseUrl: partnerData.licenseUrl,
       createdAt: new Date().toISOString(),
     };
@@ -3206,14 +3283,44 @@ export const dbOperations = {
 };
 
 
+let storeReady = false;
+const STORE_READY_EVENT = 'goodsale-store-ready';
+
+export function isStoreReady() {
+  return storeReady;
+}
+
+export function useStoreReady(): boolean {
+  const [ready, setReady] = useState(storeReady);
+  useEffect(() => {
+    if (storeReady) {
+      setReady(true);
+      return;
+    }
+    void bootstrapStore().then(() => {
+      storeReady = true;
+      setReady(true);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(STORE_READY_EVENT));
+      }
+    });
+    const onReady = () => setReady(true);
+    window.addEventListener(STORE_READY_EVENT, onReady);
+    return () => window.removeEventListener(STORE_READY_EVENT, onReady);
+  }, []);
+  return ready;
+}
+
 export function useDBState(): GoodSaleDBState {
   const [db, setDb] = useState<GoodSaleDBState>(() => getDBState());
-  const ready = useRef(false);
 
   useEffect(() => {
     void bootstrapStore().then(() => {
-      ready.current = true;
+      storeReady = true;
       setDb({ ...getDBState() });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(STORE_READY_EVENT));
+      }
     });
     const handleStateChange = () => setDb({ ...getDBState() });
     window.addEventListener(STORE_CHANGE_EVENT, handleStateChange);
