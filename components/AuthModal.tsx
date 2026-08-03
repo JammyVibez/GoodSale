@@ -54,10 +54,11 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
   const [referralCode, setReferralCode] = useState('');
 
   // 3. OTP & VERIFICATION STATE
-  const [generatedOtp, setGeneratedOtp] = useState('');
   const [otpCode, setOtpCode] = useState('');
   const [otpCountdown, setOtpCountdown] = useState(120); // 2 minutes
-  const [otpPurpose, setOtpPurpose] = useState<'REGISTER' | 'FORGOT_PASSWORD'>('REGISTER');
+  const [otpPurpose, setOtpPurpose] = useState<'REGISTER' | 'LOGIN' | 'RECOVERY'>('REGISTER');
+  const [pendingOtpEmail, setPendingOtpEmail] = useState('');
+  const [pendingOtpRole, setPendingOtpRole] = useState<UserRole>(UserRole.BUYER);
 
   // 4. FORGOT & RESET PASSWORD STATE
   const [forgotIdentifier, setForgotIdentifier] = useState('');
@@ -231,7 +232,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
 
     setIsSubmitting(true);
     try {
-      const newUser = await dbOperations.registerUser(
+      const result = await dbOperations.registerUser(
         fullName,
         username.trim().toLowerCase(),
         email.trim(),
@@ -240,14 +241,21 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
         password,
         referralCode.trim() || undefined
       );
+      if (result.needsEmailOtp) {
+        setPendingOtpEmail(result.email);
+        setPendingOtpRole(result.role);
+        setOtpPurpose('REGISTER');
+        setOtpCode('');
+        setOtpCountdown(120);
+        setSuccessMsg('We sent a 6-digit code to your email. Enter it to finish signup.');
+        setIsSubmitting(false);
+        setMode('otp_verify');
+        return;
+      }
+      const newUser = result.user;
       if (!newUser) {
-        // Supabase may require email confirmation before a session/profile exists
-        setSuccessMsg('Account created. Check your email to confirm, then sign in.');
-        setTimeout(() => {
-          setSuccessMsg('');
-          setIsSubmitting(false);
-          setMode('login');
-        }, 2000);
+        setErrorMsg('Account created but profile is missing. Try signing in with the email code.');
+        setIsSubmitting(false);
         return;
       }
       setSuccessMsg(`Account created. Welcome to GoodSale, ${newUser.fullName}!`);
@@ -262,36 +270,48 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
     }
   };
 
-  // OTP Verification (password reset flow only — registration uses Supabase Auth directly)
-  const handleVerifyOtpSubmit = (e: React.FormEvent) => {
+  // Real Supabase email OTP (signup / login / recovery)
+  const handleVerifyOtpSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
 
-    if (otpCode.length !== 6) {
-      setErrorMsg('Verification code must be exactly 6 digits.');
-      return;
-    }
-
-    if (otpCode !== generatedOtp) {
-      setErrorMsg('Incorrect OTP token.');
+    if (otpCode.length < 6) {
+      setErrorMsg('Enter the 6-digit code from your email.');
       return;
     }
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      if (otpPurpose === 'FORGOT_PASSWORD') {
-        setSuccessMsg('Account verified. Set your new password.');
-        setTimeout(() => {
-          setSuccessMsg('');
-          setIsSubmitting(false);
-          setMode('new_password');
-        }, 800);
-      } else {
+    try {
+      const emailAddr = pendingOtpEmail || email || forgotIdentifier || loginIdentifier;
+      if (otpPurpose === 'RECOVERY') {
+        await dbOperations.verifyEmailOtp(emailAddr, otpCode, 'recovery');
+        setSuccessMsg('Code verified. Set your new password.');
         setIsSubmitting(false);
-        setErrorMsg('Use the Sign Up form — registration no longer uses simulated OTP.');
+        setMode('new_password');
+        return;
       }
-    }, 400);
+      const type = otpPurpose === 'LOGIN' ? 'email' : 'signup';
+      const user = await dbOperations.verifyEmailOtp(
+        emailAddr,
+        otpCode,
+        type,
+        otpPurpose === 'REGISTER' ? pendingOtpRole : undefined
+      );
+      setSuccessMsg(`Welcome, ${user.fullName}!`);
+      setTimeout(() => {
+        setSuccessMsg('');
+        setIsSubmitting(false);
+        if (otpPurpose === 'REGISTER') setMode('onboarding');
+        else {
+          onSuccess?.();
+          onClose();
+        }
+      }, 600);
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Invalid or expired code');
+      setIsSubmitting(false);
+    }
   };
 
   // Forgot Password — Supabase reset email
@@ -314,12 +334,18 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
         ? forgotIdentifier.trim()
         : (getDBState().users.find((u) => u.phoneNumber === forgotIdentifier.trim())?.email || '');
       if (!email) throw new Error('Enter the email associated with your account.');
+      // Prefer email OTP for recovery when available
       const { error } = await client.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/auth/callback?next=/`,
       });
       if (error) throw error;
-      setSuccessMsg('Password reset link sent. Check your email.');
+      setPendingOtpEmail(email);
+      setOtpPurpose('RECOVERY');
+      setOtpCode('');
+      setOtpCountdown(120);
+      setSuccessMsg('Check your email for a reset code or link, then enter the code here.');
       setIsSubmitting(false);
+      setMode('otp_verify');
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Could not start password reset');
       setIsSubmitting(false);
@@ -361,8 +387,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
     }
   };
 
-  // Finish Onboarding process
-  const handleOnboardingSubmit = (e: React.FormEvent) => {
+  // Finish Onboarding process — persist address + photo to Supabase
+  const handleOnboardingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
@@ -373,8 +399,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
     }
 
     setIsSubmitting(true);
-
-    setTimeout(() => {
+    try {
       const state = getDBState();
       const currentUser = state.currentUser;
       if (!currentUser) {
@@ -383,48 +408,28 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
         return;
       }
 
-      // 1. Update Profile in global store
-      const profile = state.profiles.find(p => p.userId === currentUser.id);
-      if (profile) {
-        profile.address = onboardingAddress;
-        profile.city = onboardingCity;
-        profile.state = onboardingState;
-        profile.photoUrl = onboardingPhoto;
-        profile.deliveryPreference = onboardingDeliveryPref;
-        (profile as any).preferredLanguage = onboardingLanguage;
-        (profile as any).isOnboarded = true;
-      }
+      await dbOperations.updateProfile(
+        state.profiles.find((p) => p.userId === currentUser.id)?.bio || '',
+        onboardingAddress,
+        onboardingCity,
+        onboardingState,
+        onboardingDeliveryPref,
+        { photoUrl: onboardingPhoto }
+      );
 
-      // 2. Award +50 Loyalty GoodPoints for profile completion
-      currentUser.goodPoints += 50;
-      const dbUser = state.users.find(u => u.id === currentUser.id);
-      if (dbUser) {
-        dbUser.goodPoints += 50;
-      }
-
-      // 3. Post system notification
-      state.notifications.unshift({
-        id: state.notifications.length + 1,
-        userId: currentUser.id,
-        title: 'Profile Onboarding Complete!',
-        message: 'Congratulations! Your escrow profile is active. You have been credited with +50 GoodPoints for completion.',
-        type: 'POINTS',
-        isRead: false,
-        createdAt: new Date().toISOString()
-      });
-
-      saveDBState(state);
-
-      setSuccessMsg(`✓ Onboarding Complete! Welcome to the Home stage.`);
+      setSuccessMsg('Profile saved. Welcome to GoodSale!');
       setTimeout(() => {
         setSuccessMsg('');
         setIsSubmitting(false);
-        if (onSuccess) onSuccess();
+        onSuccess?.();
         onClose();
-      }, 1500);
-
-    }, 1200);
+      }, 700);
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Could not save profile');
+      setIsSubmitting(false);
+    }
   };
+
 
   // JWT Token manual Refresh handler
   const handleRefreshJwtToken = () => {
@@ -465,13 +470,9 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
           </button>
         </div>
 
-        {/* Dynamic OTP notification alert if generated */}
-        {generatedOtp && (mode === 'otp_verify' || mode === 'reset_password_otp') && (
-          <div className="bg-emerald-500 text-white px-6 py-2.5 flex items-center justify-between text-xs font-bold font-mono shadow-md animate-pulse">
-            <span>🔐 SIMULATED OTP DISPATCHED:</span>
-            <span className="bg-white text-emerald-600 px-3 py-1 rounded-lg text-sm font-black tracking-widest">
-              {generatedOtp}
-            </span>
+        {mode === 'otp_verify' && (
+          <div className="bg-emerald-600 text-white px-6 py-2 text-xs font-bold">
+            Check your email for a 6-digit GoodSale code
           </div>
         )}
 
@@ -588,6 +589,33 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                       <span>Authenticate Account</span>
                     </>
                   )}
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isSubmitting || !loginIdentifier.trim()}
+                  onClick={async () => {
+                    setErrorMsg('');
+                    setSuccessMsg('');
+                    setIsSubmitting(true);
+                    try {
+                      const sentTo = await dbOperations.sendLoginOtp(loginIdentifier.trim());
+                      setPendingOtpEmail(sentTo);
+                      setOtpPurpose('LOGIN');
+                      setOtpCode('');
+                      setOtpCountdown(120);
+                      setSuccessMsg(`Login code sent to ${sentTo}`);
+                      setMode('otp_verify');
+                    } catch (err: unknown) {
+                      setErrorMsg(err instanceof Error ? err.message : 'Could not send login code');
+                    } finally {
+                      setIsSubmitting(false);
+                    }
+                  }}
+                  className="w-full py-2.5 border border-emerald-500/40 text-emerald-600 dark:text-emerald-400 font-sans font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  <Mail className="w-4 h-4" />
+                  Email me a login code instead
                 </button>
               </form>
 
@@ -921,7 +949,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                 </div>
                 <h4 className="font-display font-black text-slate-900 dark:text-white text-base">Verify Your Identity</h4>
                 <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto leading-relaxed">
-                  Enter the 6-digit verification code sent to <strong className="text-slate-800 dark:text-slate-200">{otpPurpose === 'REGISTER' ? email : forgotIdentifier}</strong>.
+                  Enter the 6-digit verification code sent to <strong className="text-slate-800 dark:text-slate-200">{pendingOtpEmail || email || forgotIdentifier || loginIdentifier}</strong>.
                 </p>
               </div>
 
@@ -951,11 +979,15 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                 <button
                   type="button"
                   disabled={otpCountdown > 0}
-                  onClick={() => {
-                    const nextCode = Math.floor(100000 + Math.random() * 900000).toString();
-                    setGeneratedOtp(nextCode);
-                    setOtpCountdown(120);
-                    alert(`Simulated OTP re-sent successfully: Check the top alert for OTP: ${nextCode}`);
+                  onClick={async () => {
+                    try {
+                      const addr = pendingOtpEmail || email || forgotIdentifier || loginIdentifier;
+                      await dbOperations.resendEmailOtp(addr, otpPurpose === 'LOGIN' ? 'email' : 'signup');
+                      setOtpCountdown(120);
+                      setSuccessMsg('A new code was sent to your email.');
+                    } catch (err: unknown) {
+                      setErrorMsg(err instanceof Error ? err.message : 'Could not resend code');
+                    }
                   }}
                   className="text-xs font-bold text-emerald-500 hover:underline disabled:opacity-50 disabled:no-underline cursor-pointer"
                 >
@@ -966,7 +998,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={() => setMode(otpPurpose === 'REGISTER' ? 'register' : 'forgot_password')}
+                  onClick={() => setMode(otpPurpose === 'REGISTER' ? 'register' : otpPurpose === 'LOGIN' ? 'login' : 'forgot_password')}
                   className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-sans font-bold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer text-center"
                 >
                   Back
@@ -1125,13 +1157,19 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                       accept="image/*"
                       onChange={(e) => {
                         const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onloadend = () => {
-                            setOnboardingPhoto(reader.result as string);
-                          };
-                          reader.readAsDataURL(file);
-                        }
+                        if (!file) return;
+                        const preview = URL.createObjectURL(file);
+                        setOnboardingPhoto(preview);
+                        void (async () => {
+                          try {
+                            const { uploadMedia } = await import('@/lib/upload');
+                            const url = await uploadMedia(file, 'user-media');
+                            setOnboardingPhoto(url);
+                          } catch (err) {
+                            console.error(err);
+                            setErrorMsg(err instanceof Error ? err.message : 'Photo upload failed — sign in and retry');
+                          }
+                        })();
                       }}
                       className="w-full text-xs text-slate-500 dark:text-slate-400 file:mr-2.5 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-[10px] file:font-bold file:bg-emerald-500/10 file:text-emerald-500 hover:file:bg-emerald-500/20 cursor-pointer"
                     />

@@ -71,7 +71,8 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
     const user = db.currentUser;
     if (user && isOwnerAdminEmail(user.email)) {
       if (user.role !== UserRole.SUPER_ADMIN && user.role !== UserRole.ADMIN) {
-        dbOperations.updateCurrentUserRole(UserRole.SUPER_ADMIN);
+        // Requires profiles.role already elevated once via SQL, or admin RPC
+        void dbOperations.adminSetUserRole(user.id, UserRole.SUPER_ADMIN);
       }
     }
   }, [db.currentUser]);

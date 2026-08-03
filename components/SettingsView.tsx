@@ -172,52 +172,42 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
     }
   }, [currentUser, db.profiles, db.businesses]);
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
 
     setSaving(true);
     setSaveSuccess(false);
-
-    // Save details to store state
-    const state = getDBState();
-    const dbUser = state.users.find(u => u.id === currentUser.id);
-    if (dbUser) {
-      dbUser.fullName = fullName;
-      dbUser.email = email;
-      dbUser.phoneNumber = phoneNumber;
-    }
-    if (state.currentUser && state.currentUser.id === currentUser.id) {
-      state.currentUser.fullName = fullName;
-      state.currentUser.email = email;
-      state.currentUser.phoneNumber = phoneNumber;
-    }
-
-    const profile = state.profiles.find(p => p.userId === currentUser.id);
-    if (profile) {
-      profile.bio = bio;
-      profile.address = address;
-      profile.city = city;
-      profile.state = stateName;
-      profile.photoUrl = profilePic;
-      profile.coverUrl = coverPic;
-    }
-
-    const biz = state.businesses.find(b => b.ownerId === currentUser.id);
-    if (biz) {
-      biz.name = businessName;
-      biz.description = businessDesc;
-      biz.logoUrl = businessLogo;
-      biz.bannerUrl = businessBanner;
-    }
-
-    saveDBState(state);
-
-    setTimeout(() => {
-      setSaving(false);
+    try {
+      await dbOperations.updateProfile(bio, address, city, stateName, 'GOODSALE_PARTNER', {
+        photoUrl: profilePic,
+        coverUrl: coverPic,
+        fullName,
+        phoneNumber,
+      });
+      if (
+        currentUser.role === UserRole.BUSINESS ||
+        currentUser.role === UserRole.VERIFIED_BUSINESS ||
+        currentUser.role === UserRole.SELLER ||
+        currentUser.role === UserRole.VERIFIED_SELLER
+      ) {
+        await dbOperations.updateBusinessDetails(
+          businessName,
+          businessDesc,
+          address,
+          city,
+          stateName,
+          '09:00 AM - 06:00 PM',
+          { logoUrl: businessLogo, bannerUrl: businessBanner }
+        );
+      }
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
-    }, 800);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not save settings');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSwitchUser = (userId: number) => {
@@ -445,26 +435,54 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={coverPic} alt="" className="w-full h-full object-cover" />
                     <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                      <button 
-                        type="button"
-                        onClick={() => setCoverPic(`https://picsum.photos/seed/cover_${Date.now()}/800/300`)}
-                        className="px-3 py-1.5 bg-white text-slate-900 text-[10px] font-bold rounded-lg cursor-pointer"
-                      >
+                      <label className="px-3 py-1.5 bg-white text-slate-900 text-[10px] font-bold rounded-lg cursor-pointer">
                         Change Cover Photo
-                      </button>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setCoverPic(URL.createObjectURL(file));
+                            void (async () => {
+                              try {
+                                const { uploadMedia } = await import('@/lib/upload');
+                                setCoverPic(await uploadMedia(file, 'user-media'));
+                              } catch (err) {
+                                alert(err instanceof Error ? err.message : 'Cover upload failed');
+                              }
+                            })();
+                          }}
+                        />
+                      </label>
                     </div>
                     {/* Profile avatar overlay */}
                     <div className="absolute bottom-3 left-4 w-16 h-16 rounded-full border-2 border-white overflow-hidden bg-slate-200">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={profilePic} alt="" className="w-full h-full object-cover" />
                       <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                        <button
-                          type="button"
-                          onClick={() => setProfilePic(`https://picsum.photos/seed/user_${Date.now()}/150`)}
-                          className="text-[8px] text-white font-extrabold cursor-pointer"
-                        >
+                        <label className="text-[8px] text-white font-extrabold cursor-pointer">
                           Edit
-                        </button>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              setProfilePic(URL.createObjectURL(file));
+                              void (async () => {
+                                try {
+                                  const { uploadMedia } = await import('@/lib/upload');
+                                  setProfilePic(await uploadMedia(file, 'user-media'));
+                                } catch (err) {
+                                  alert(err instanceof Error ? err.message : 'Photo upload failed');
+                                }
+                              })();
+                            }}
+                          />
+                        </label>
                       </div>
                     </div>
                   </div>
@@ -1359,7 +1377,25 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
                       <button 
                         type="button"
-                        onClick={() => setBusinessBanner(`https://picsum.photos/seed/bizbanner_${Date.now()}/800/250`)}
+                        onClick={() => {
+                          const input = document.createElement('input');
+                          input.type = 'file';
+                          input.accept = 'image/*';
+                          input.onchange = () => {
+                            const file = input.files?.[0];
+                            if (!file) return;
+                            setBusinessBanner(URL.createObjectURL(file));
+                            void (async () => {
+                              try {
+                                const { uploadMedia } = await import('@/lib/upload');
+                                setBusinessBanner(await uploadMedia(file, 'user-media'));
+                              } catch (err) {
+                                alert(err instanceof Error ? err.message : 'Banner upload failed');
+                              }
+                            })();
+                          };
+                          input.click();
+                        }}
                         className="px-3 py-1.5 bg-white text-slate-900 text-[10px] font-bold rounded-lg cursor-pointer"
                       >
                         Change Corporate Banner
@@ -1372,7 +1408,25 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                       <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
                         <button
                           type="button"
-                          onClick={() => setBusinessLogo(`https://picsum.photos/seed/bizlogo_${Date.now()}/100`)}
+                          onClick={() => {
+                            const input = document.createElement('input');
+                            input.type = 'file';
+                            input.accept = 'image/*';
+                            input.onchange = () => {
+                              const file = input.files?.[0];
+                              if (!file) return;
+                              setBusinessLogo(URL.createObjectURL(file));
+                              void (async () => {
+                                try {
+                                  const { uploadMedia } = await import('@/lib/upload');
+                                  setBusinessLogo(await uploadMedia(file, 'user-media'));
+                                } catch (err) {
+                                  alert(err instanceof Error ? err.message : 'Logo upload failed');
+                                }
+                              })();
+                            };
+                            input.click();
+                          }}
                           className="text-[8px] text-white font-black cursor-pointer"
                         >
                           Edit
@@ -1875,32 +1929,47 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                   </div>
                 </div>
 
-                {/* Force Upgrade */}
-                <div className="p-4 bg-amber-500/5 border border-amber-500/10 rounded-2xl space-y-3">
+                {/* Account type — users can change anytime */}
+                <div className="p-4 bg-emerald-500/5 border border-emerald-500/15 rounded-2xl space-y-3">
                   <div className="flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+                    <AlertTriangle className="w-5 h-5 text-emerald-500 shrink-0" />
                     <div>
-                      <h4 className="text-xs font-black text-amber-700 dark:text-amber-300 uppercase tracking-wider">Toggle Current Merchant Role Status</h4>
+                      <h4 className="text-xs font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">Account type</h4>
                       <p className="text-[10px] text-slate-400 mt-1 leading-normal">
-                        Verify both Buyer Profile and Merchant Escrow Hub layouts instantly by manually toggling user role parameters inside local database state.
+                        Current role: <strong className="text-slate-700 dark:text-slate-200">{currentUser?.role || '—'}</strong>.
+                        Switch anytime between Buyer, Seller, and Business Owner. Verified badges are preserved when you stay on the same track.
                       </p>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (currentUser?.role === UserRole.BUYER) {
-                        dbOperations.updateCurrentUserRole(UserRole.VERIFIED_BUSINESS);
-                        alert('Upgraded current user role to VERIFIED_BUSINESS. Access the Merchant Dashboard via the header navigation!');
-                      } else {
-                        dbOperations.updateCurrentUserRole(UserRole.BUYER);
-                        alert('Reverted current user role to BUYER. Access purchasing profile and standard storefront elements.');
-                      }
-                    }}
-                    className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl text-xs font-bold uppercase cursor-pointer"
-                  >
-                    Switch current user role
-                  </button>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {[
+                      { role: UserRole.BUYER, label: 'Buyer' },
+                      { role: UserRole.SELLER, label: 'Seller' },
+                      { role: UserRole.BUSINESS, label: 'Business' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.role}
+                        type="button"
+                        onClick={async () => {
+                          const res = await dbOperations.updateCurrentUserRole(opt.role);
+                          if (!res.success) {
+                            alert(res.error || 'Could not change role — run migration 007');
+                            return;
+                          }
+                          alert(`Account type updated to ${res.role || opt.role}`);
+                        }}
+                        className={`px-3 py-2.5 rounded-xl text-xs font-bold uppercase cursor-pointer border ${
+                          currentUser?.role === opt.role ||
+                          (opt.role === UserRole.SELLER && currentUser?.role === UserRole.VERIFIED_SELLER) ||
+                          (opt.role === UserRole.BUSINESS && currentUser?.role === UserRole.VERIFIED_BUSINESS)
+                            ? 'bg-emerald-500 text-white border-emerald-500'
+                            : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-gray-200 dark:border-slate-700'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>

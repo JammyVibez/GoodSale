@@ -1969,13 +1969,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                               setUploadedImages((prev) => [...prev, url]);
                             } catch (err) {
                               console.error(err);
-                              // Fallback preview so sellers are not blocked if storage is not ready
-                              const reader = new FileReader();
-                              reader.onloadend = () => {
-                                setUploadedImages((prev) => [...prev, reader.result as string]);
-                              };
-                              reader.readAsDataURL(file);
-                              alert('Cloud upload unavailable — using local preview. Apply storage migration and sign in.');
+                              alert(err instanceof Error ? err.message : 'Image upload failed. Sign in and ensure Supabase storage is configured.');
                             }
                           })();
                         });
@@ -2064,13 +2058,20 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                           accept="video/*"
                           onChange={(e) => {
                             const file = e.target.files?.[0];
-                            if (file) {
-                              const reader = new FileReader();
-                              reader.onloadend = () => {
-                                setUploadedVideo(reader.result as string);
-                              };
-                              reader.readAsDataURL(file);
-                            }
+                            if (!file) return;
+                            const preview = URL.createObjectURL(file);
+                            setUploadedVideo(preview);
+                            void (async () => {
+                              try {
+                                const { uploadMedia } = await import('@/lib/upload');
+                                const url = await uploadMedia(file, 'product-images');
+                                setUploadedVideo(url);
+                              } catch (err) {
+                                console.error(err);
+                                alert(err instanceof Error ? err.message : 'Video upload failed');
+                                setUploadedVideo(null as any);
+                              }
+                            })();
                           }}
                           className="hidden"
                         />

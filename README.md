@@ -50,8 +50,11 @@ See **[PRODUCTION.md](./PRODUCTION.md)** for the full go-live checklist (credent
 4. `supabase/migrations/004_realtime_dispatch_geo.sql`
 5. `supabase/migrations/005_security_payments.sql` (RLS lockdown, disputes, refunds, withdrawals)
 6. `supabase/migrations/006_payouts_and_suspend.sql` (Paystack transfer columns + suspend)
+7. `supabase/migrations/007_storage_roles_otp.sql` (signup role, role switch, `user-media` storage)
 
 Paystack step-by-step: **[docs/PAYSTACK.md](./docs/PAYSTACK.md)**. Full env list: **`.env.example`**.
+
+**Auth note:** Enable Supabase Email OTP so signup/login codes are emailed. Uploads go to Storage buckets `product-images`, `chat-media`, `user-media`, `government-ids`.
 
 ## What is live now
 

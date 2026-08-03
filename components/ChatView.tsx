@@ -703,13 +703,20 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
                   accept="image/*"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file) {
-                      const reader = new FileReader();
-                      reader.onloadend = () => {
-                        setChatImageFile(reader.result as string);
-                      };
-                      reader.readAsDataURL(file);
-                    }
+                    if (!file) return;
+                    const preview = URL.createObjectURL(file);
+                    setChatImageFile(preview);
+                    void (async () => {
+                      try {
+                        const { uploadMedia } = await import('@/lib/upload');
+                        const url = await uploadMedia(file, 'chat-media');
+                        setChatImageFile(url);
+                      } catch (err) {
+                        console.error(err);
+                        alert(err instanceof Error ? err.message : 'Chat image upload failed');
+                        setChatImageFile(null);
+                      }
+                    })();
                   }}
                   className="absolute inset-0 opacity-0 cursor-pointer"
                 />
@@ -789,13 +796,20 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
                   accept="video/*"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file) {
-                      const reader = new FileReader();
-                      reader.onloadend = () => {
-                        setChatVideoFile(reader.result as string);
-                      };
-                      reader.readAsDataURL(file);
-                    }
+                    if (!file) return;
+                    const preview = URL.createObjectURL(file);
+                    setChatVideoFile(preview);
+                    void (async () => {
+                      try {
+                        const { uploadMedia } = await import('@/lib/upload');
+                        const url = await uploadMedia(file, 'chat-media');
+                        setChatVideoFile(url);
+                      } catch (err) {
+                        console.error(err);
+                        alert(err instanceof Error ? err.message : 'Chat video upload failed');
+                        setChatVideoFile(null);
+                      }
+                    })();
                   }}
                   className="absolute inset-0 opacity-0 cursor-pointer"
                 />

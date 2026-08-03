@@ -176,10 +176,14 @@ export default function Header({
   };
 
   const selectUserRole = (role: UserRole) => {
-    dbOperations.updateCurrentUserRole(role);
-    setShowRoleSwitcher(false);
-    // Reload notifications for appropriate view
-    onNavigate('landing');
+    void dbOperations.updateCurrentUserRole(role).then((res) => {
+      if (!res.success) {
+        alert(res.error || 'Could not change role');
+        return;
+      }
+      setShowRoleSwitcher(false);
+      onNavigate('landing');
+    });
   };
 
   const user = db.currentUser;

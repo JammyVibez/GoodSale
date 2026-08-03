@@ -10,8 +10,11 @@
      4. `supabase/migrations/004_realtime_dispatch_geo.sql`
      5. `supabase/migrations/005_security_payments.sql` (**required** — locked RPCs, disputes, withdrawals)
      6. `supabase/migrations/006_payouts_and_suspend.sql` (transfer metadata + `is_suspended`)
+     7. `supabase/migrations/007_storage_roles_otp.sql` (**required** — signup role, role switch RPC, `user-media` bucket)
    - Copy URL, anon key, service role key into `.env.local` / host secrets
    - Auth → Email enabled; Site URL + redirect `https://YOUR_DOMAIN/auth/callback`
+   - Auth → Email templates: enable **OTP / 6-digit codes** for signup & magic link (app uses `verifyOtp`, not fake OTPs)
+   - Prefer OTP over long confirmation links (Confirm email can stay on — users enter the code in-app)
    - Manually promote first admin:  
      `UPDATE profiles SET role = 'SUPER_ADMIN' WHERE email = 'you@example.com';`
 

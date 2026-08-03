@@ -81,7 +81,8 @@ export async function POST(req: NextRequest) {
 
     const fileBuffer = Buffer.from(await file.arrayBuffer());
     const fileExtension = extensionFor(file);
-    const fileName = `gov_id_${userId}_${Date.now()}.${fileExtension}`;
+    // Path must be {auth_uid}/... for storage RLS folder checks
+    const fileName = `${userId}/gov_id_${Date.now()}.${fileExtension}`;
 
     let uploadedUrl = '';
     let uploadSource = 'none';

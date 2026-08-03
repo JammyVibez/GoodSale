@@ -899,11 +899,26 @@ export default function CartCheckoutView({
                             <button
                               type="button"
                               onClick={() => {
-                                setBankTransferUploading(true);
-                                setTimeout(() => {
-                                  setBankTransferReceipt(`GS-BANK-TX-${Math.floor(100000 + Math.random() * 900000)}-SCREENSHOT.png`);
-                                  setBankTransferUploading(false);
-                                }, 1500);
+                                const input = document.createElement('input');
+                                input.type = 'file';
+                                input.accept = 'image/*,application/pdf';
+                                input.onchange = () => {
+                                  const file = input.files?.[0];
+                                  if (!file) return;
+                                  setBankTransferUploading(true);
+                                  void (async () => {
+                                    try {
+                                      const { uploadMedia } = await import('@/lib/upload');
+                                      const url = await uploadMedia(file, 'user-media');
+                                      setBankTransferReceipt(url);
+                                    } catch (err) {
+                                      alert(err instanceof Error ? err.message : 'Receipt upload failed');
+                                    } finally {
+                                      setBankTransferUploading(false);
+                                    }
+                                  })();
+                                };
+                                input.click();
                               }}
                               disabled={bankTransferUploading}
                               className="px-4 py-2 bg-purple-500 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 hover:bg-purple-600 transition-all cursor-pointer disabled:opacity-50"

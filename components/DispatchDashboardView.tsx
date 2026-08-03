@@ -35,9 +35,9 @@ export default function DispatchDashboardView() {
   const [cityName, setCityName] = useState('Ikeja');
   const [nin, setNin] = useState('');
   const [licenseNumber, setLicenseNumber] = useState('');
-  const [photoUrl, setPhotoUrl] = useState('https://picsum.photos/seed/courier_driver/200');
-  const [licenseUrl, setLicenseUrl] = useState('https://picsum.photos/seed/driver_license/200');
-  const [selfieUrl, setSelfieUrl] = useState('https://picsum.photos/seed/courier_selfie/200');
+  const [photoUrl, setPhotoUrl] = useState('');
+  const [licenseUrl, setLicenseUrl] = useState('');
+  const [selfieUrl, setSelfieUrl] = useState('');
   
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState(false);
@@ -791,32 +791,54 @@ export default function DispatchDashboardView() {
 
                       </div>
 
-                      {/* Mock File Upload Sections (Highly visual with placeholders) */}
                       <div className="space-y-3 pt-4 border-t border-gray-100 dark:border-slate-800">
                         <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-500">3. Document Upload Check</h4>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          
-                          {/* Photo Selfie */}
-                          <div className="border border-dashed border-gray-200 dark:border-slate-800 rounded-2xl p-4 text-center cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-950/40 transition-colors">
-                            <span className="text-2xl block mb-1">📸</span>
-                            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 block">Selfie with Vehicle</span>
-                            <p className="text-[9px] text-slate-400 mt-1">Uploaded self_photo.png</p>
-                          </div>
-
-                          {/* Drivers License */}
-                          <div className="border border-dashed border-gray-200 dark:border-slate-800 rounded-2xl p-4 text-center cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-950/40 transition-colors">
-                            <span className="text-2xl block mb-1">💳</span>
-                            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 block">Driver&apos;s License Photo</span>
-                            <p className="text-[9px] text-slate-400 mt-1">Uploaded license_front.png</p>
-                          </div>
-
-                          {/* Vehicle Photo */}
-                          <div className="border border-dashed border-gray-200 dark:border-slate-800 rounded-2xl p-4 text-center cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-950/40 transition-colors">
-                            <span className="text-2xl block mb-1">🏍️</span>
-                            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 block">Vehicle Box Photo</span>
-                            <p className="text-[9px] text-slate-400 mt-1">Uploaded dispatch_bike.png</p>
-                          </div>
-
+                          {[
+                            { label: 'Selfie with Vehicle', setter: 'selfie', value: selfieUrl },
+                            { label: "Driver's License Photo", setter: 'license', value: licenseUrl },
+                            { label: 'Vehicle Box Photo', setter: 'photo', value: photoUrl },
+                          ].map((item) => (
+                            <label
+                              key={item.setter}
+                              className="border border-dashed border-gray-200 dark:border-slate-800 rounded-2xl p-4 text-center cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-950/40 transition-colors block"
+                            >
+                              {item.value && !item.value.includes('picsum.photos') ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={item.value} alt="" className="w-16 h-16 object-cover rounded-xl mx-auto mb-2" />
+                              ) : (
+                                <span className="text-2xl block mb-1">📎</span>
+                              )}
+                              <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 block">{item.label}</span>
+                              <p className="text-[9px] text-slate-400 mt-1">
+                                {item.value && !item.value.includes('picsum.photos') ? 'Uploaded to Supabase' : 'Tap to upload'}
+                              </p>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (!file) return;
+                                  const preview = URL.createObjectURL(file);
+                                  if (item.setter === 'selfie') setSelfieUrl(preview);
+                                  if (item.setter === 'license') setLicenseUrl(preview);
+                                  if (item.setter === 'photo') setPhotoUrl(preview);
+                                  void (async () => {
+                                    try {
+                                      const { uploadMedia } = await import('@/lib/upload');
+                                      const url = await uploadMedia(file, 'user-media');
+                                      if (item.setter === 'selfie') setSelfieUrl(url);
+                                      if (item.setter === 'license') setLicenseUrl(url);
+                                      if (item.setter === 'photo') setPhotoUrl(url);
+                                    } catch (err) {
+                                      alert(err instanceof Error ? err.message : 'Upload failed');
+                                    }
+                                  })();
+                                }}
+                              />
+                            </label>
+                          ))}
                         </div>
                       </div>
 

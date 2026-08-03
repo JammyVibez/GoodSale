@@ -4,17 +4,17 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { logger, publicErrorMessage } from '@/lib/logger';
 import { rateLimit, clientIpFromRequest } from '@/lib/rate-limit';
 
-const BUCKETS = new Set(['product-images', 'chat-media', 'government-ids']);
-const MAX_BYTES = 8 * 1024 * 1024;
+const BUCKETS = new Set(['product-images', 'chat-media', 'government-ids', 'user-media']);
+const MAX_BYTES = 10 * 1024 * 1024;
 
 /**
  * Authenticated media upload to Supabase Storage.
- * formData: file, bucket ('product-images' | 'chat-media' | 'government-ids')
+ * FormData: file, bucket
  */
 export async function POST(req: NextRequest) {
   try {
     const ip = clientIpFromRequest(req);
-    const limited = rateLimit(`upload:media:${ip}`, 30, 60_000);
+    const limited = rateLimit(`upload:media:${ip}`, 40, 60_000);
     if (!limited.allowed) {
       return NextResponse.json({ success: false, error: 'Too many uploads' }, { status: 429 });
     }
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Unauthorized — sign in to upload' }, { status: 401 });
     }
 
     const formData = await req.formData();
@@ -42,14 +42,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid bucket' }, { status: 400 });
     }
     if (file.size <= 0 || file.size > MAX_BYTES) {
-      return NextResponse.json({ success: false, error: 'File must be under 8MB' }, { status: 413 });
+      return NextResponse.json({ success: false, error: 'File must be under 10MB' }, { status: 413 });
     }
 
-    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin';
     const path = `${user.id}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    // Prefer user session for RLS; fall back to admin for bucket bootstrap
     let uploader = supabase;
     const admin = createAdminClient();
     const { error: uploadError } = await uploader.storage.from(bucket).upload(path, buffer, {
@@ -58,7 +57,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (uploadError && admin) {
-      logger.warn('User upload failed, retrying with admin', { message: uploadError.message });
+      logger.warn('User upload failed, retrying with admin', { message: uploadError.message, bucket });
       uploader = admin;
       const retry = await uploader.storage.from(bucket).upload(path, buffer, {
         contentType: file.type || 'application/octet-stream',

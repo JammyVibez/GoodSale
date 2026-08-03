@@ -107,6 +107,7 @@ DECLARE
   meta_full_name text;
   meta_username text;
   meta_phone text;
+  meta_role text;
   base_username text;
   final_username text;
   suffix int := 0;
@@ -119,6 +120,10 @@ BEGIN
     NEW.raw_user_meta_data->>'phoneNumber',
     ''
   );
+  meta_role := upper(COALESCE(NEW.raw_user_meta_data->>'role', 'BUYER'));
+  IF meta_role NOT IN ('BUYER', 'SELLER', 'BUSINESS') THEN
+    meta_role := 'BUYER';
+  END IF;
 
   IF meta_username = '' OR meta_username IS NULL THEN
     base_username := lower(regexp_replace(split_part(COALESCE(NEW.email, 'user'), '@', 1), '[^a-zA-Z0-9_]', '', 'g'));
@@ -149,7 +154,7 @@ BEGIN
     final_username,
     COALESCE(NEW.email, ''),
     meta_phone,
-    'BUYER',
+    meta_role,
     'GS-' || upper(left(final_username, 8)) || '-' || lpad((floor(random() * 100))::int::text, 2, '0')
   );
 
