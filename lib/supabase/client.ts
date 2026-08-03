@@ -9,12 +9,24 @@ export function isSupabaseConfigured(): boolean {
   );
 }
 
+/**
+ * Browser Supabase client — session lives in cookies so hard refresh keeps you signed in.
+ */
 export function createClient(): SupabaseClient | null {
   if (!isSupabaseConfigured()) return null;
   if (browserClient) return browserClient;
   browserClient = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookieOptions: {
+        path: '/',
+        sameSite: 'lax',
+        // 1 year — Supabase refreshes tokens; cookie must outlive access token
+        maxAge: 60 * 60 * 24 * 365,
+      },
+      isSingleton: true,
+    }
   );
   return browserClient;
 }

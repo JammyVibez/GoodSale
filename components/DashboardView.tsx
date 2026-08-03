@@ -9,14 +9,18 @@ import {
   ChevronRight, ChevronLeft, Image as ImageIcon, Video, Crop, RotateCw, Layers, Info, FileText, Sliders
 } from 'lucide-react';
 import { 
-  Product, ProductCondition, getDBState, saveDBState, dbOperations, UserRole, OrderStatus, Order, Escrow
+  Product, ProductCondition, getDBState, saveDBState, dbOperations, useDBState, UserRole, OrderStatus, Order, Escrow
 } from '../lib/store';
 import LiveSafeMeetMap from './LiveSafeMeetMap';
 import LiveDispatchMap from './LiveDispatchMap';
 import { bestCoords, rankPartnersByProximity, formatDistanceKm } from '@/lib/geo';
 
 export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void }) {
+  const liveDb = useDBState();
   const [db, setDb] = useState(getDBState());
+  useEffect(() => {
+    setDb(liveDb);
+  }, [liveDb]);
   const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'inventory' | 'create_listing' | 'barcode_scanner'>('overview');
   
   // Create Listing Form State - Expanded for Multi-step professional wizard
@@ -493,53 +497,49 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
     setDb(getDBState());
   };
 
-  // INVENTORY OPERATIONS:
-  // 1. Update product price direct
-  const handleUpdatePrice = (prodId: number) => {
+  // INVENTORY OPERATIONS (persisted to Supabase)
+  const handleUpdatePrice = async (prodId: number) => {
     const parsed = Number(editingPrice);
     if (isNaN(parsed) || parsed <= 0) return;
-
-    const state = getDBState();
-    const prod = state.products.find(p => p.id === prodId);
-    if (prod) {
-      prod.price = parsed;
-      saveDBState(state);
-      setDb(state);
-      setEditingProductId(null);
-      setEditingPrice('');
+    const res = await dbOperations.updateOwnProduct(prodId, { price: parsed });
+    if (!res.success) {
+      alert(res.error || 'Could not update price');
+      return;
     }
+    setEditingProductId(null);
+    setEditingPrice('');
+    setDb(getDBState());
   };
 
-  // 2. Change Stock Status Toggle
-  const handleToggleStockStatus = (prodId: number, currentStatus: string) => {
+  const handleToggleStockStatus = async (prodId: number, currentStatus: string) => {
     const nextStatusMap: Record<string, 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK'> = {
       'IN_STOCK': 'LOW_STOCK',
       'LOW_STOCK': 'OUT_OF_STOCK',
       'OUT_OF_STOCK': 'IN_STOCK'
     };
     const nextStatus = nextStatusMap[currentStatus] || 'IN_STOCK';
-
-    const state = getDBState();
-    const prod = state.products.find(p => p.id === prodId);
-    if (prod) {
-      prod.stockStatus = nextStatus;
-      if (nextStatus === 'OUT_OF_STOCK') prod.quantity = 0;
-      else if (nextStatus === 'IN_STOCK' && prod.quantity === 0) prod.quantity = 5;
-      saveDBState(state);
-      setDb(state);
+    const prod = getDBState().products.find(p => p.id === prodId);
+    const quantity = nextStatus === 'OUT_OF_STOCK' ? 0 : (prod?.quantity === 0 ? 5 : prod?.quantity);
+    const res = await dbOperations.updateOwnProduct(prodId, {
+      stockStatus: nextStatus,
+      quantity: quantity ?? 0,
+    });
+    if (!res.success) {
+      alert(res.error || 'Could not update stock');
+      return;
     }
+    setDb(getDBState());
   };
 
-  // 3. Delete product safely
-  const handleDeleteProduct = (prodId: number) => {
-    if (!window.confirm('Are you sure you want to delete this listing from your store?')) return;
-    const state = getDBState();
-    state.products = state.products.filter(p => p.id !== prodId);
-    saveDBState(state);
-    setDb(state);
+  const handleDeleteProduct = async (prodId: number) => {
+    if (!window.confirm('Delete this listing permanently from your store?')) return;
+    const res = await dbOperations.deleteOwnProduct(prodId);
+    if (!res.success) {
+      alert(res.error || 'Could not delete listing');
+      return;
+    }
+    setDb(getDBState());
   };
-
-;
 
   if (!user) {
     return (
@@ -1969,13 +1969,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                               setUploadedImages((prev) => [...prev, url]);
                             } catch (err) {
                               console.error(err);
-                              // Fallback preview so sellers are not blocked if storage is not ready
-                              const reader = new FileReader();
-                              reader.onloadend = () => {
-                                setUploadedImages((prev) => [...prev, reader.result as string]);
-                              };
-                              reader.readAsDataURL(file);
-                              alert('Cloud upload unavailable — using local preview. Apply storage migration and sign in.');
+                              alert(err instanceof Error ? err.message : 'Image upload failed. Sign in and ensure Supabase storage is configured.');
                             }
                           })();
                         });
@@ -2064,13 +2058,20 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                           accept="video/*"
                           onChange={(e) => {
                             const file = e.target.files?.[0];
-                            if (file) {
-                              const reader = new FileReader();
-                              reader.onloadend = () => {
-                                setUploadedVideo(reader.result as string);
-                              };
-                              reader.readAsDataURL(file);
-                            }
+                            if (!file) return;
+                            const preview = URL.createObjectURL(file);
+                            setUploadedVideo(preview);
+                            void (async () => {
+                              try {
+                                const { uploadMedia } = await import('@/lib/upload');
+                                const url = await uploadMedia(file, 'product-images');
+                                setUploadedVideo(url);
+                              } catch (err) {
+                                console.error(err);
+                                alert(err instanceof Error ? err.message : 'Video upload failed');
+                                setUploadedVideo(null as any);
+                              }
+                            })();
                           }}
                           className="hidden"
                         />

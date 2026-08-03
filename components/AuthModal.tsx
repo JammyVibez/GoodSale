@@ -4,11 +4,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
   X, User, Mail, Smartphone, Shield, Sparkles, Gift, ArrowRight, 
-  CheckCircle2, LogIn, Key, Compass, Eye, EyeOff, ShieldAlert, 
-  MapPin, Globe, Languages, Camera, RefreshCw, Lock, AlertTriangle, Cpu
+  CheckCircle2, LogIn, Key, Eye, EyeOff, ShieldAlert, 
+  MapPin, Globe, Languages, Camera, RefreshCw, Lock, AlertTriangle
 } from 'lucide-react';
 import { useDBState, dbOperations, UserRole, getDBState, saveDBState } from '../lib/store';
-import { isDemoMode } from '@/lib/demo';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -54,10 +53,11 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
   const [referralCode, setReferralCode] = useState('');
 
   // 3. OTP & VERIFICATION STATE
-  const [generatedOtp, setGeneratedOtp] = useState('');
   const [otpCode, setOtpCode] = useState('');
   const [otpCountdown, setOtpCountdown] = useState(120); // 2 minutes
-  const [otpPurpose, setOtpPurpose] = useState<'REGISTER' | 'FORGOT_PASSWORD'>('REGISTER');
+  const [otpPurpose, setOtpPurpose] = useState<'REGISTER' | 'LOGIN' | 'RECOVERY'>('REGISTER');
+  const [pendingOtpEmail, setPendingOtpEmail] = useState('');
+  const [pendingOtpRole, setPendingOtpRole] = useState<UserRole>(UserRole.BUYER);
 
   // 4. FORGOT & RESET PASSWORD STATE
   const [forgotIdentifier, setForgotIdentifier] = useState('');
@@ -65,31 +65,19 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
   const [newConfirmPassword, setNewConfirmPassword] = useState('');
 
   // 5. ONBOARDING STATE
-  const [onboardingPhoto, setOnboardingPhoto] = useState('https://picsum.photos/seed/default_avatar/200');
+  const [onboardingPhoto, setOnboardingPhoto] = useState('');
   const [onboardingState, setOnboardingState] = useState('Lagos');
   const [onboardingCity, setOnboardingCity] = useState('Ikeja');
   const [onboardingAddress, setOnboardingAddress] = useState('');
   const [onboardingLanguage, setOnboardingLanguage] = useState('English');
   const [onboardingDeliveryPref, setOnboardingDeliveryPref] = useState('GOODSALE_PARTNER');
 
-  // 6. JWT SESSION MANAGEMENT (Maximum Fidelity Simulation)
-  const [jwtExpiry, setJwtExpiry] = useState(900); // 15 minutes
-  const [activeJwtToken, setActiveJwtToken] = useState('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsImV4cCI6MTgwMDAwMDB9');
-  const [sessionIp, setSessionIp] = useState('102.89.23.41');
-  const [sessionLocation, setSessionLocation] = useState('Lagos, Nigeria');
-  const [userAgent, setUserAgent] = useState('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36');
 
-  // Countdown timer for OTP and JWT Expirations
   useEffect(() => {
-    let timer: any;
-    if (isOpen) {
-      timer = setInterval(() => {
-        // Count down OTP
-        setOtpCountdown((prev) => (prev > 0 ? prev - 1 : 0));
-        // Count down JWT
-        setJwtExpiry((prev) => (prev > 0 ? prev - 1 : 900)); // Reset after expire or simulate
-      }, 1000);
-    }
+    if (!isOpen || mode !== 'otp_verify') return;
+    const timer = setInterval(() => {
+      setOtpCountdown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
     return () => clearInterval(timer);
   }, [isOpen, mode]);
 
@@ -135,30 +123,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
 
   const strength = getPasswordStrength(password);
 
-  // Quick Account Login Action
-  const handleSimulatedLogin = (userId: number) => {
-    setErrorMsg('');
-    setSuccessMsg('');
-    try {
-      dbOperations.loginUser(userId);
-      setSuccessMsg('Logged in successfully!');
-      
-      // Store credentials if Remember Me is checked
-      if (rememberMe) {
-        localStorage.setItem('goodsale_saved_session_id', userId.toString());
-      } else {
-        localStorage.removeItem('goodsale_saved_session_id');
-      }
-
-      setTimeout(() => {
-        setSuccessMsg('');
-        if (onSuccess) onSuccess();
-        onClose();
-      }, 1000);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to authenticate');
-    }
-  };
 
   // Real Supabase Auth login
   const handleCustomLoginSubmit = async (e: React.FormEvent) => {
@@ -175,11 +139,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
     try {
       const user = await dbOperations.loginWithPassword(loginIdentifier.trim(), loginPassword);
       setSuccessMsg(`Welcome back, ${user.fullName}!`);
-      if (rememberMe) {
-        localStorage.setItem('goodsale_saved_session_id', user.id.toString());
-      } else {
-        localStorage.removeItem('goodsale_saved_session_id');
-      }
       setTimeout(() => {
         setSuccessMsg('');
         setIsSubmitting(false);
@@ -231,7 +190,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
 
     setIsSubmitting(true);
     try {
-      const newUser = await dbOperations.registerUser(
+      const result = await dbOperations.registerUser(
         fullName,
         username.trim().toLowerCase(),
         email.trim(),
@@ -240,14 +199,21 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
         password,
         referralCode.trim() || undefined
       );
+      if (result.needsEmailOtp) {
+        setPendingOtpEmail(result.email);
+        setPendingOtpRole(result.role);
+        setOtpPurpose('REGISTER');
+        setOtpCode('');
+        setOtpCountdown(120);
+        setSuccessMsg('We sent a 6-digit code to your email. Enter it to finish signup.');
+        setIsSubmitting(false);
+        setMode('otp_verify');
+        return;
+      }
+      const newUser = result.user;
       if (!newUser) {
-        // Supabase may require email confirmation before a session/profile exists
-        setSuccessMsg('Account created. Check your email to confirm, then sign in.');
-        setTimeout(() => {
-          setSuccessMsg('');
-          setIsSubmitting(false);
-          setMode('login');
-        }, 2000);
+        setErrorMsg('Account created but profile is missing. Try signing in with the email code.');
+        setIsSubmitting(false);
         return;
       }
       setSuccessMsg(`Account created. Welcome to GoodSale, ${newUser.fullName}!`);
@@ -262,36 +228,48 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
     }
   };
 
-  // OTP Verification (password reset flow only — registration uses Supabase Auth directly)
-  const handleVerifyOtpSubmit = (e: React.FormEvent) => {
+  // Real Supabase email OTP (signup / login / recovery)
+  const handleVerifyOtpSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
 
-    if (otpCode.length !== 6) {
-      setErrorMsg('Verification code must be exactly 6 digits.');
-      return;
-    }
-
-    if (otpCode !== generatedOtp) {
-      setErrorMsg('Incorrect OTP token.');
+    if (otpCode.length < 6) {
+      setErrorMsg('Enter the 6-digit code from your email.');
       return;
     }
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      if (otpPurpose === 'FORGOT_PASSWORD') {
-        setSuccessMsg('Account verified. Set your new password.');
-        setTimeout(() => {
-          setSuccessMsg('');
-          setIsSubmitting(false);
-          setMode('new_password');
-        }, 800);
-      } else {
+    try {
+      const emailAddr = pendingOtpEmail || email || forgotIdentifier || loginIdentifier;
+      if (otpPurpose === 'RECOVERY') {
+        await dbOperations.verifyEmailOtp(emailAddr, otpCode, 'recovery');
+        setSuccessMsg('Code verified. Set your new password.');
         setIsSubmitting(false);
-        setErrorMsg('Use the Sign Up form — registration no longer uses simulated OTP.');
+        setMode('new_password');
+        return;
       }
-    }, 400);
+      const type = otpPurpose === 'LOGIN' ? 'email' : 'signup';
+      const user = await dbOperations.verifyEmailOtp(
+        emailAddr,
+        otpCode,
+        type,
+        otpPurpose === 'REGISTER' ? pendingOtpRole : undefined
+      );
+      setSuccessMsg(`Welcome, ${user.fullName}!`);
+      setTimeout(() => {
+        setSuccessMsg('');
+        setIsSubmitting(false);
+        if (otpPurpose === 'REGISTER') setMode('onboarding');
+        else {
+          onSuccess?.();
+          onClose();
+        }
+      }, 600);
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Invalid or expired code');
+      setIsSubmitting(false);
+    }
   };
 
   // Forgot Password — Supabase reset email
@@ -314,12 +292,18 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
         ? forgotIdentifier.trim()
         : (getDBState().users.find((u) => u.phoneNumber === forgotIdentifier.trim())?.email || '');
       if (!email) throw new Error('Enter the email associated with your account.');
+      // Prefer email OTP for recovery when available
       const { error } = await client.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/auth/callback?next=/`,
       });
       if (error) throw error;
-      setSuccessMsg('Password reset link sent. Check your email.');
+      setPendingOtpEmail(email);
+      setOtpPurpose('RECOVERY');
+      setOtpCode('');
+      setOtpCountdown(120);
+      setSuccessMsg('Check your email for a reset code or link, then enter the code here.');
       setIsSubmitting(false);
+      setMode('otp_verify');
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Could not start password reset');
       setIsSubmitting(false);
@@ -361,8 +345,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
     }
   };
 
-  // Finish Onboarding process
-  const handleOnboardingSubmit = (e: React.FormEvent) => {
+  // Finish Onboarding process — persist address + photo to Supabase
+  const handleOnboardingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
@@ -373,8 +357,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
     }
 
     setIsSubmitting(true);
-
-    setTimeout(() => {
+    try {
       const state = getDBState();
       const currentUser = state.currentUser;
       if (!currentUser) {
@@ -383,56 +366,28 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
         return;
       }
 
-      // 1. Update Profile in global store
-      const profile = state.profiles.find(p => p.userId === currentUser.id);
-      if (profile) {
-        profile.address = onboardingAddress;
-        profile.city = onboardingCity;
-        profile.state = onboardingState;
-        profile.photoUrl = onboardingPhoto;
-        profile.deliveryPreference = onboardingDeliveryPref;
-        (profile as any).preferredLanguage = onboardingLanguage;
-        (profile as any).isOnboarded = true;
-      }
+      await dbOperations.updateProfile(
+        state.profiles.find((p) => p.userId === currentUser.id)?.bio || '',
+        onboardingAddress,
+        onboardingCity,
+        onboardingState,
+        onboardingDeliveryPref,
+        { photoUrl: onboardingPhoto }
+      );
 
-      // 2. Award +50 Loyalty GoodPoints for profile completion
-      currentUser.goodPoints += 50;
-      const dbUser = state.users.find(u => u.id === currentUser.id);
-      if (dbUser) {
-        dbUser.goodPoints += 50;
-      }
-
-      // 3. Post system notification
-      state.notifications.unshift({
-        id: state.notifications.length + 1,
-        userId: currentUser.id,
-        title: 'Profile Onboarding Complete!',
-        message: 'Congratulations! Your escrow profile is active. You have been credited with +50 GoodPoints for completion.',
-        type: 'POINTS',
-        isRead: false,
-        createdAt: new Date().toISOString()
-      });
-
-      saveDBState(state);
-
-      setSuccessMsg(`✓ Onboarding Complete! Welcome to the Home stage.`);
+      setSuccessMsg('Profile saved. Welcome to GoodSale!');
       setTimeout(() => {
         setSuccessMsg('');
         setIsSubmitting(false);
-        if (onSuccess) onSuccess();
+        onSuccess?.();
         onClose();
-      }, 1500);
-
-    }, 1200);
+      }, 700);
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Could not save profile');
+      setIsSubmitting(false);
+    }
   };
 
-  // JWT Token manual Refresh handler
-  const handleRefreshJwtToken = () => {
-    setJwtExpiry(900);
-    const randStr = Math.random().toString(36).substring(2, 15);
-    setActiveJwtToken(`eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsImV4cCI6MTgwMDAwMDB9.${randStr}`);
-    alert('Simulated Token Rotation Completed: Simulated Refresh Token rotated successfully and rotated the Access Token cookies.');
-  };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -465,13 +420,9 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
           </button>
         </div>
 
-        {/* Dynamic OTP notification alert if generated */}
-        {generatedOtp && (mode === 'otp_verify' || mode === 'reset_password_otp') && (
-          <div className="bg-emerald-500 text-white px-6 py-2.5 flex items-center justify-between text-xs font-bold font-mono shadow-md animate-pulse">
-            <span>🔐 SIMULATED OTP DISPATCHED:</span>
-            <span className="bg-white text-emerald-600 px-3 py-1 rounded-lg text-sm font-black tracking-widest">
-              {generatedOtp}
-            </span>
+        {mode === 'otp_verify' && (
+          <div className="bg-emerald-600 text-white px-6 py-2 text-xs font-bold">
+            Check your email for a 6-digit GoodSale code
           </div>
         )}
 
@@ -571,7 +522,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                     />
                     <span>Remember My Session</span>
                   </label>
-                  <span className="text-[10px] text-slate-400 font-mono">15m JWT Session</span>
+                  <span className="text-[10px] text-slate-400 font-mono">Secure session</span>
                 </div>
 
                 {/* Login Button */}
@@ -589,71 +540,34 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                     </>
                   )}
                 </button>
+
+                <button
+                  type="button"
+                  disabled={isSubmitting || !loginIdentifier.trim()}
+                  onClick={async () => {
+                    setErrorMsg('');
+                    setSuccessMsg('');
+                    setIsSubmitting(true);
+                    try {
+                      const sentTo = await dbOperations.sendLoginOtp(loginIdentifier.trim());
+                      setPendingOtpEmail(sentTo);
+                      setOtpPurpose('LOGIN');
+                      setOtpCode('');
+                      setOtpCountdown(120);
+                      setSuccessMsg(`Login code sent to ${sentTo}`);
+                      setMode('otp_verify');
+                    } catch (err: unknown) {
+                      setErrorMsg(err instanceof Error ? err.message : 'Could not send login code');
+                    } finally {
+                      setIsSubmitting(false);
+                    }
+                  }}
+                  className="w-full py-2.5 border border-emerald-500/40 text-emerald-600 dark:text-emerald-400 font-sans font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  <Mail className="w-4 h-4" />
+                  Email me a login code instead
+                </button>
               </form>
-
-              <div className="relative flex py-2 items-center">
-                <div className="flex-grow border-t border-gray-150 dark:border-slate-800"></div>
-                <span className="flex-shrink mx-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase font-mono tracking-widest">Or hop in directly</span>
-                <div className="flex-grow border-t border-gray-150 dark:border-slate-800"></div>
-              </div>
-
-              {/* Guest login removed — Supabase Auth only */}
-
-              {/* JWT Session Manager Panel */}
-              <div className="bg-slate-50 dark:bg-slate-950 rounded-2xl p-4 border border-gray-150 dark:border-slate-850 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <Cpu className="w-4 h-4 text-emerald-500" />
-                    <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest font-mono">JWT Session Auditor</span>
-                  </div>
-                  <span className="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[8px] font-mono rounded font-bold uppercase tracking-wider">
-                    Secured
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 text-[10px] font-mono text-slate-500 dark:text-slate-400 leading-normal">
-                  <div>
-                    <span className="font-sans font-bold text-slate-400 block">ACCESS TOKEN EXPIRY</span>
-                    <span className="text-slate-800 dark:text-slate-200 font-extrabold">{Math.floor(jwtExpiry / 60)}m {jwtExpiry % 60}s</span>
-                  </div>
-                  <div>
-                    <span className="font-sans font-bold text-slate-400 block">IP ADDRESS</span>
-                    <span className="text-slate-800 dark:text-slate-200">{sessionIp} ({sessionLocation})</span>
-                  </div>
-                  <div className="col-span-2">
-                    <span className="font-sans font-bold text-slate-400 block">JWT DECODED HEADER & CLAIM</span>
-                    <span className="text-[9px] block text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 border border-gray-150 dark:border-slate-850 p-1.5 rounded font-mono truncate">
-                      {activeJwtToken}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex gap-2 pt-1.5">
-                  <button 
-                    onClick={handleRefreshJwtToken} 
-                    className="flex-1 py-1.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 hover:border-emerald-500 text-[9px] font-bold text-slate-600 dark:text-slate-300 hover:text-emerald-500 rounded-lg transition-colors flex items-center justify-center gap-1 cursor-pointer"
-                  >
-                    <RefreshCw className="w-3 h-3" />
-                    Rotate Session Refresh Token
-                  </button>
-                  {db.currentUser && (
-                    <button 
-                      onClick={() => {
-                        const state = getDBState();
-                        state.currentUser = null;
-                        saveDBState(state);
-                        setSuccessMsg('Active session successfully revoked.');
-                        setTimeout(() => {
-                          setSuccessMsg('');
-                        }, 1200);
-                      }}
-                      className="py-1.5 px-3 bg-red-500/10 hover:bg-red-500 text-red-600 hover:text-white text-[9px] font-bold rounded-lg transition-colors cursor-pointer"
-                    >
-                      Revoke JWT
-                    </button>
-                  )}
-                </div>
-              </div>
 
             </div>
           )}
@@ -921,7 +835,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                 </div>
                 <h4 className="font-display font-black text-slate-900 dark:text-white text-base">Verify Your Identity</h4>
                 <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto leading-relaxed">
-                  Enter the 6-digit verification code sent to <strong className="text-slate-800 dark:text-slate-200">{otpPurpose === 'REGISTER' ? email : forgotIdentifier}</strong>.
+                  Enter the 6-digit verification code sent to <strong className="text-slate-800 dark:text-slate-200">{pendingOtpEmail || email || forgotIdentifier || loginIdentifier}</strong>.
                 </p>
               </div>
 
@@ -951,11 +865,15 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                 <button
                   type="button"
                   disabled={otpCountdown > 0}
-                  onClick={() => {
-                    const nextCode = Math.floor(100000 + Math.random() * 900000).toString();
-                    setGeneratedOtp(nextCode);
-                    setOtpCountdown(120);
-                    alert(`Simulated OTP re-sent successfully: Check the top alert for OTP: ${nextCode}`);
+                  onClick={async () => {
+                    try {
+                      const addr = pendingOtpEmail || email || forgotIdentifier || loginIdentifier;
+                      await dbOperations.resendEmailOtp(addr, otpPurpose === 'LOGIN' ? 'email' : 'signup');
+                      setOtpCountdown(120);
+                      setSuccessMsg('A new code was sent to your email.');
+                    } catch (err: unknown) {
+                      setErrorMsg(err instanceof Error ? err.message : 'Could not resend code');
+                    }
                   }}
                   className="text-xs font-bold text-emerald-500 hover:underline disabled:opacity-50 disabled:no-underline cursor-pointer"
                 >
@@ -966,7 +884,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={() => setMode(otpPurpose === 'REGISTER' ? 'register' : 'forgot_password')}
+                  onClick={() => setMode(otpPurpose === 'REGISTER' ? 'register' : otpPurpose === 'LOGIN' ? 'login' : 'forgot_password')}
                   className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-sans font-bold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer text-center"
                 >
                   Back
@@ -1125,13 +1043,19 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                       accept="image/*"
                       onChange={(e) => {
                         const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onloadend = () => {
-                            setOnboardingPhoto(reader.result as string);
-                          };
-                          reader.readAsDataURL(file);
-                        }
+                        if (!file) return;
+                        const preview = URL.createObjectURL(file);
+                        setOnboardingPhoto(preview);
+                        void (async () => {
+                          try {
+                            const { uploadMedia } = await import('@/lib/upload');
+                            const url = await uploadMedia(file, 'user-media');
+                            setOnboardingPhoto(url);
+                          } catch (err) {
+                            console.error(err);
+                            setErrorMsg(err instanceof Error ? err.message : 'Photo upload failed — sign in and retry');
+                          }
+                        })();
                       }}
                       className="w-full text-xs text-slate-500 dark:text-slate-400 file:mr-2.5 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-[10px] file:font-bold file:bg-emerald-500/10 file:text-emerald-500 hover:file:bg-emerald-500/20 cursor-pointer"
                     />

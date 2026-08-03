@@ -6,8 +6,8 @@
 export function isDemoMode(): boolean {
   const flag = process.env.NEXT_PUBLIC_DEMO_MODE;
   if (flag === 'true') return true;
-  if (flag === 'false') return false;
-  return process.env.NODE_ENV !== 'production';
+  // Default off unless explicitly enabled
+  return false;
 }
 
 export function getRequiredEnv(name: string): string {

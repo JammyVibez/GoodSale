@@ -20,9 +20,10 @@ import BuyerProfileView from '../components/BuyerProfileView';
 import AuthModal from '../components/AuthModal';
 import BottomNavigation from '../components/BottomNavigation';
 import SetupBanner from '../components/SetupBanner';
-import { getDBState, useDBState } from '../lib/store';
+import { getDBState, useDBState, useStoreReady } from '../lib/store';
 
 export default function Home() {
+  const storeReady = useStoreReady();
   const db = useDBState();
   const [currentView, setCurrentView] = useState<string>('landing');
   const [isAuthModalOpen, setAuthModalOpen] = useState(false);
@@ -143,6 +144,17 @@ export default function Home() {
       setCurrentView('landing');
     }
   };
+
+  if (!storeReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <div className="text-center space-y-3">
+          <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Restoring your session…</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-gray-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-h-screen transition-colors duration-300">

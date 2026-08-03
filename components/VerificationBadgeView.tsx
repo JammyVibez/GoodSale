@@ -87,30 +87,15 @@ export default function VerificationBadgeView() {
     setUploading(true);
 
     try {
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-      if (user) {
-        formData.append("userId", user.id.toString());
-      }
-
-      const res = await fetch("/api/upload-id", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await res.json();
-      if (data.success && data.url) {
-        setUploadedUrl(data.url);
-        setUploadSource(data.source);
-      } else {
-        throw new Error(data.error || "Upload failed");
-      }
+      const { uploadMedia } = await import('@/lib/upload');
+      const url = await uploadMedia(selectedFile, 'government-ids');
+      setUploadedUrl(url);
+      setUploadSource('supabase-storage');
     } catch (err: any) {
       console.error("Upload error:", err);
-      setBvnError(`Upload failed: ${err.message}. Standard fallback preview used instead.`);
-      // Mock fallback URL for elegant preview
-      setUploadedUrl(URL.createObjectURL(selectedFile));
-      setUploadSource("client-preview-fallback");
+      setBvnError(`Upload failed: ${err.message}. Sign in and ensure government-ids storage is configured.`);
+      setUploadedUrl('');
+      setUploadSource('');
     } finally {
       setUploading(false);
     }
@@ -125,7 +110,7 @@ export default function VerificationBadgeView() {
     setBvnError(null);
 
     if (!user) {
-      setBvnError("Please sign in or hop in as a guest before verifying.");
+      setBvnError("Please sign in before verifying.");
       return;
     }
 

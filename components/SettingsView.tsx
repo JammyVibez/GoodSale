@@ -44,8 +44,8 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
   const [address, setAddress] = useState(currentProfile?.address || '');
   const [city, setCity] = useState(currentProfile?.city || '');
   const [stateName, setStateName] = useState(currentProfile?.state || '');
-  const [profilePic, setProfilePic] = useState(currentProfile?.photoUrl || `https://picsum.photos/seed/${currentUser?.username || 'user'}/200`);
-  const [coverPic, setCoverPic] = useState(currentProfile?.coverUrl || `https://picsum.photos/seed/${currentUser?.username || 'user'}_cover/800/300`);
+  const [profilePic, setProfilePic] = useState(currentProfile?.photoUrl || '');
+  const [coverPic, setCoverPic] = useState(currentProfile?.coverUrl || '');
 
   // 2. Security
   const [oldPassword, setOldPassword] = useState('');
@@ -87,7 +87,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
   const [onlineStatus, setOnlineStatus] = useState(true);
   const [readReceipts, setReadReceipts] = useState(true);
   const [whoCanMessage, setWhoCanMessage] = useState<'all' | 'verified' | 'none'>('all');
-  const [blockedUsers, setBlockedUsers] = useState(['user_scammer99', 'fake_buyer_lagos']);
+  const [blockedUsers, setBlockedUsers] = useState<string[]>([]);
   const [mutedUsers, setMutedUsers] = useState(['spam_deals_ng']);
 
   // 6. Buying Preferences
@@ -110,8 +110,8 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
   // 8. Business Settings (only visible to business users)
   const [businessName, setBusinessName] = useState(currentBusiness?.name || '');
   const [businessDesc, setBusinessDesc] = useState(currentBusiness?.description || '');
-  const [businessLogo, setBusinessLogo] = useState(currentBusiness?.logoUrl || `https://picsum.photos/seed/bizlogo/100`);
-  const [businessBanner, setBusinessBanner] = useState(currentBusiness?.bannerUrl || `https://picsum.photos/seed/bizbanner/800/250`);
+  const [businessLogo, setBusinessLogo] = useState(currentBusiness?.logoUrl || '');
+  const [businessBanner, setBusinessBanner] = useState(currentBusiness?.bannerUrl || '');
   const [businessHours, setBusinessHours] = useState('Monday - Saturday (08:00 AM - 07:00 PM)');
   const [staffList, setStaffList] = useState([
     { id: 1, name: 'Tunde Bakare', role: 'Store Manager', status: 'Active' },
@@ -158,82 +158,60 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
         setAddress(prof.address || '');
         setCity(prof.city || '');
         setStateName(prof.state || '');
-        setProfilePic(prof.photoUrl || `https://picsum.photos/seed/${currentUser.username}/200`);
-        setCoverPic(prof.coverUrl || `https://picsum.photos/seed/${currentUser.username}_cover/800/300`);
+        setProfilePic(prof.photoUrl || '');
+        setCoverPic(prof.coverUrl || '');
       }
 
       const biz = db.businesses.find(b => b.ownerId === currentUser.id);
       if (biz) {
         setBusinessName(biz.name || '');
         setBusinessDesc(biz.description || '');
-        setBusinessLogo(biz.logoUrl || `https://picsum.photos/seed/bizlogo/100`);
-        setBusinessBanner(biz.bannerUrl || `https://picsum.photos/seed/bizbanner/800/250`);
+        setBusinessLogo(biz.logoUrl || '');
+        setBusinessBanner(biz.bannerUrl || '');
       }
     }
   }, [currentUser, db.profiles, db.businesses]);
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
 
     setSaving(true);
     setSaveSuccess(false);
-
-    // Save details to store state
-    const state = getDBState();
-    const dbUser = state.users.find(u => u.id === currentUser.id);
-    if (dbUser) {
-      dbUser.fullName = fullName;
-      dbUser.email = email;
-      dbUser.phoneNumber = phoneNumber;
-    }
-    if (state.currentUser && state.currentUser.id === currentUser.id) {
-      state.currentUser.fullName = fullName;
-      state.currentUser.email = email;
-      state.currentUser.phoneNumber = phoneNumber;
-    }
-
-    const profile = state.profiles.find(p => p.userId === currentUser.id);
-    if (profile) {
-      profile.bio = bio;
-      profile.address = address;
-      profile.city = city;
-      profile.state = stateName;
-      profile.photoUrl = profilePic;
-      profile.coverUrl = coverPic;
-    }
-
-    const biz = state.businesses.find(b => b.ownerId === currentUser.id);
-    if (biz) {
-      biz.name = businessName;
-      biz.description = businessDesc;
-      biz.logoUrl = businessLogo;
-      biz.bannerUrl = businessBanner;
-    }
-
-    saveDBState(state);
-
-    setTimeout(() => {
-      setSaving(false);
+    try {
+      await dbOperations.updateProfile(bio, address, city, stateName, 'GOODSALE_PARTNER', {
+        photoUrl: profilePic,
+        coverUrl: coverPic,
+        fullName,
+        phoneNumber,
+      });
+      if (
+        currentUser.role === UserRole.BUSINESS ||
+        currentUser.role === UserRole.VERIFIED_BUSINESS ||
+        currentUser.role === UserRole.SELLER ||
+        currentUser.role === UserRole.VERIFIED_SELLER
+      ) {
+        await dbOperations.updateBusinessDetails(
+          businessName,
+          businessDesc,
+          address,
+          city,
+          stateName,
+          '09:00 AM - 06:00 PM',
+          { logoUrl: businessLogo, bannerUrl: businessBanner }
+        );
+      }
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
-    }, 800);
-  };
-
-  const handleSwitchUser = (userId: number) => {
-    dbOperations.loginUser(userId);
-    setSelectedUserId(userId);
-  };
-
-  const handleResetDatabase = () => {
-    if (confirm('Are you sure you want to reset the local GoodSale database? All custom products, orders, and reviews will return to defaults.')) {
-      localStorage.removeItem('goodsale_relational_database_v1');
-      window.location.reload();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not save settings');
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleCopyReferral = () => {
-    const code = currentUser?.referralCode || 'GS-HAMZA-12';
+    const code = currentUser?.referralCode || 'GS-REF';
     const link = `https://goodsale.ng/join?ref=${code}`;
     navigator.clipboard.writeText(link);
     setReferralLinkCopied(true);
@@ -327,7 +305,6 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
     { id: 'support', label: 'Help & Live Support', icon: HelpCircle, color: 'text-violet-500' },
     { id: 'legal', label: 'Legal Accordions', icon: FileText, color: 'text-slate-400' },
     { id: 'about', label: 'About GoodSale', icon: Info, color: 'text-gray-400' },
-    { id: 'sandbox', label: 'Dev Tester Sandbox', icon: RefreshCw, color: 'text-cyan-500' },
     { id: 'account_management', label: 'Account Controls', icon: Trash2, color: 'text-red-600' },
   ];
 
@@ -357,15 +334,6 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
           </div>
         </div>
 
-        <div className="flex gap-2 relative z-10 w-full md:w-auto mt-4 md:mt-0">
-          <button 
-            onClick={handleResetDatabase}
-            className="flex-1 md:flex-none px-4 py-2.5 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer border border-red-500/20"
-          >
-            <Database className="w-4 h-4" />
-            Reset Local DB
-          </button>
-        </div>
       </div>
 
       {/* Main Settings Grid */}
@@ -445,28 +413,92 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={coverPic} alt="" className="w-full h-full object-cover" />
                     <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                      <button 
-                        type="button"
-                        onClick={() => setCoverPic(`https://picsum.photos/seed/cover_${Date.now()}/800/300`)}
-                        className="px-3 py-1.5 bg-white text-slate-900 text-[10px] font-bold rounded-lg cursor-pointer"
-                      >
+                      <label className="px-3 py-1.5 bg-white text-slate-900 text-[10px] font-bold rounded-lg cursor-pointer">
                         Change Cover Photo
-                      </button>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setCoverPic(URL.createObjectURL(file));
+                            void (async () => {
+                              try {
+                                const { uploadMedia } = await import('@/lib/upload');
+                                setCoverPic(await uploadMedia(file, 'user-media'));
+                              } catch (err) {
+                                alert(err instanceof Error ? err.message : 'Cover upload failed');
+                              }
+                            })();
+                          }}
+                        />
+                      </label>
                     </div>
                     {/* Profile avatar overlay */}
                     <div className="absolute bottom-3 left-4 w-16 h-16 rounded-full border-2 border-white overflow-hidden bg-slate-200">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={profilePic} alt="" className="w-full h-full object-cover" />
                       <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                        <button
-                          type="button"
-                          onClick={() => setProfilePic(`https://picsum.photos/seed/user_${Date.now()}/150`)}
-                          className="text-[8px] text-white font-extrabold cursor-pointer"
-                        >
+                        <label className="text-[8px] text-white font-extrabold cursor-pointer">
                           Edit
-                        </button>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              setProfilePic(URL.createObjectURL(file));
+                              void (async () => {
+                                try {
+                                  const { uploadMedia } = await import('@/lib/upload');
+                                  setProfilePic(await uploadMedia(file, 'user-media'));
+                                } catch (err) {
+                                  alert(err instanceof Error ? err.message : 'Photo upload failed');
+                                }
+                              })();
+                            }}
+                          />
+                        </label>
                       </div>
                     </div>
+                  </div>
+                </div>
+
+
+                {/* Account type */}
+                <div className="p-4 bg-emerald-500/5 border border-emerald-500/15 rounded-2xl space-y-3">
+                  <h4 className="text-xs font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">Account type</h4>
+                  <p className="text-[10px] text-slate-400">Current: <strong>{currentUser?.role || '—'}</strong>. Change anytime.</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {[
+                      { role: UserRole.BUYER, label: 'Buyer' },
+                      { role: UserRole.SELLER, label: 'Seller' },
+                      { role: UserRole.BUSINESS, label: 'Business' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.role}
+                        type="button"
+                        onClick={async () => {
+                          const res = await dbOperations.updateCurrentUserRole(opt.role);
+                          if (!res.success) {
+                            alert(res.error || 'Could not change role');
+                            return;
+                          }
+                          alert(`Account type updated to ${res.role || opt.role}`);
+                        }}
+                        className={`px-3 py-2.5 rounded-xl text-xs font-bold uppercase cursor-pointer border ${
+                          currentUser?.role === opt.role ||
+                          (opt.role === UserRole.SELLER && currentUser?.role === UserRole.VERIFIED_SELLER) ||
+                          (opt.role === UserRole.BUSINESS && currentUser?.role === UserRole.VERIFIED_BUSINESS)
+                            ? 'bg-emerald-500 text-white border-emerald-500'
+                            : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-gray-200 dark:border-slate-700'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
@@ -1359,7 +1391,25 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
                       <button 
                         type="button"
-                        onClick={() => setBusinessBanner(`https://picsum.photos/seed/bizbanner_${Date.now()}/800/250`)}
+                        onClick={() => {
+                          const input = document.createElement('input');
+                          input.type = 'file';
+                          input.accept = 'image/*';
+                          input.onchange = () => {
+                            const file = input.files?.[0];
+                            if (!file) return;
+                            setBusinessBanner(URL.createObjectURL(file));
+                            void (async () => {
+                              try {
+                                const { uploadMedia } = await import('@/lib/upload');
+                                setBusinessBanner(await uploadMedia(file, 'user-media'));
+                              } catch (err) {
+                                alert(err instanceof Error ? err.message : 'Banner upload failed');
+                              }
+                            })();
+                          };
+                          input.click();
+                        }}
                         className="px-3 py-1.5 bg-white text-slate-900 text-[10px] font-bold rounded-lg cursor-pointer"
                       >
                         Change Corporate Banner
@@ -1372,7 +1422,25 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                       <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
                         <button
                           type="button"
-                          onClick={() => setBusinessLogo(`https://picsum.photos/seed/bizlogo_${Date.now()}/100`)}
+                          onClick={() => {
+                            const input = document.createElement('input');
+                            input.type = 'file';
+                            input.accept = 'image/*';
+                            input.onchange = () => {
+                              const file = input.files?.[0];
+                              if (!file) return;
+                              setBusinessLogo(URL.createObjectURL(file));
+                              void (async () => {
+                                try {
+                                  const { uploadMedia } = await import('@/lib/upload');
+                                  setBusinessLogo(await uploadMedia(file, 'user-media'));
+                                } catch (err) {
+                                  alert(err instanceof Error ? err.message : 'Logo upload failed');
+                                }
+                              })();
+                            };
+                            input.click();
+                          }}
                           className="text-[8px] text-white font-black cursor-pointer"
                         >
                           Edit
@@ -1839,73 +1907,6 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
             </div>
           )}
 
-          {/* TAB 15: DEVELOPER TESTING SANDBOX */}
-          {activeTab === 'sandbox' && (
-            <div className="space-y-6 animate-fade-in">
-              <div className="bg-white dark:bg-slate-900 border border-gray-150 dark:border-slate-800 p-6 sm:p-8 rounded-[32px] shadow-sm space-y-6">
-                <div>
-                  <h2 className="font-display font-black text-lg text-slate-900 dark:text-white flex items-center gap-2">
-                    <RefreshCw className="w-5 h-5 text-cyan-500 animate-spin-slow" />
-                    Developer & Testing Sandbox
-                  </h2>
-                  <p className="text-xs text-slate-400 mt-1">GoodSale is a multi-role workspace. Switch between different buyer and merchant user accounts to verify relational flows instantly.</p>
-                </div>
-
-                <div className="space-y-3">
-                  <label className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-wider block">Swap Active User Session</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {db.users.map((user) => (
-                      <button
-                        key={user.id}
-                        type="button"
-                        onClick={() => handleSwitchUser(user.id)}
-                        className={`p-4 rounded-2xl border text-left cursor-pointer transition-all ${
-                          currentUser?.id === user.id 
-                            ? 'bg-indigo-500/10 border-indigo-500 text-indigo-900 dark:text-indigo-300 font-extrabold shadow-sm' 
-                            : 'bg-gray-50 dark:bg-slate-800/40 border-gray-150 dark:border-slate-800 hover:bg-gray-100 text-slate-700 dark:text-slate-300'
-                        }`}
-                      >
-                        <div className="flex justify-between items-center">
-                          <span className="font-bold text-xs">{user.fullName}</span>
-                          {currentUser?.id === user.id && <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse" />}
-                        </div>
-                        <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-wider font-mono font-bold">Role: {user.role.replace('VERIFIED_', '')}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Force Upgrade */}
-                <div className="p-4 bg-amber-500/5 border border-amber-500/10 rounded-2xl space-y-3">
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
-                    <div>
-                      <h4 className="text-xs font-black text-amber-700 dark:text-amber-300 uppercase tracking-wider">Toggle Current Merchant Role Status</h4>
-                      <p className="text-[10px] text-slate-400 mt-1 leading-normal">
-                        Verify both Buyer Profile and Merchant Escrow Hub layouts instantly by manually toggling user role parameters inside local database state.
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (currentUser?.role === UserRole.BUYER) {
-                        dbOperations.updateCurrentUserRole(UserRole.VERIFIED_BUSINESS);
-                        alert('Upgraded current user role to VERIFIED_BUSINESS. Access the Merchant Dashboard via the header navigation!');
-                      } else {
-                        dbOperations.updateCurrentUserRole(UserRole.BUYER);
-                        alert('Reverted current user role to BUYER. Access purchasing profile and standard storefront elements.');
-                      }
-                    }}
-                    className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl text-xs font-bold uppercase cursor-pointer"
-                  >
-                    Switch current user role
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* TAB 16: ACCOUNT CONTROLS */}
           {activeTab === 'account_management' && (
             <div className="space-y-6 animate-fade-in">
@@ -1957,15 +1958,14 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                     <p className="text-[10px] text-slate-400 mt-0.5">Irreversibly wipe your user record, active listings, and trust score history. This action cannot be undone.</p>
                   </div>
                   <button
-                    onClick={() => {
-                      if (confirm('Are you sure you want to permanently delete your GoodSale account? All transaction history and GoodPoints will be wiped.')) {
-                        localStorage.removeItem('goodsale_relational_database_v1');
-                        window.location.reload();
-                      }
+                    onClick={async () => {
+                      if (!confirm('Sign out and request account removal? Contact support to permanently wipe your Supabase profile.')) return;
+                      await dbOperations.logout();
+                      window.location.href = '/';
                     }}
                     className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold cursor-pointer"
                   >
-                    Delete Account
+                    Sign out & leave
                   </button>
                 </div>
               </div>

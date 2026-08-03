@@ -1,7 +1,7 @@
 // lib/store.ts
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { createEmptyState } from '@/lib/data/empty-state';
 import {
@@ -101,13 +101,24 @@ export async function reloadFromSupabase() {
     notify();
     return;
   }
-  const { data: sessionData } = await client.auth.getSession();
-  const authId = sessionData.session?.user?.id ?? null;
+
+  // Prefer getUser() so hard refresh revalidates the JWT from cookies
+  let authId: string | null = null;
+  const { data: userData, error: userError } = await client.auth.getUser();
+  if (!userError && userData.user) {
+    authId = userData.user.id;
+  } else {
+    const { data: sessionData } = await client.auth.getSession();
+    authId = sessionData.session?.user?.id ?? null;
+  }
+
   const next = await loadMarketplaceState(client, authId);
-  // Preserve in-flight currentUser if profile lag after signup
-  if (!next.currentUser && dbInstance?.currentUser) {
+
+  // Only keep a previous currentUser when a session still exists (profile lag after signup)
+  if (!next.currentUser && authId && dbInstance?.currentUser) {
     next.currentUser = dbInstance.currentUser;
   }
+
   dbInstance = next;
   notify();
 }
@@ -116,7 +127,6 @@ export async function bootstrapStore(): Promise<void> {
   if (bootstrapped) return;
   if (bootstrapPromise) return bootstrapPromise;
   bootstrapPromise = (async () => {
-    await reloadFromSupabase();
     const client = createClient();
     if (client && !realtimeUnsub) {
       let reloadTimer: ReturnType<typeof setTimeout> | null = null;
@@ -129,12 +139,15 @@ export async function bootstrapStore(): Promise<void> {
         },
       });
       client.auth.onAuthStateChange(async (event) => {
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+        if (
+          event === 'INITIAL_SESSION' ||
+          event === 'SIGNED_IN' ||
+          event === 'TOKEN_REFRESHED' ||
+          event === 'USER_UPDATED'
+        ) {
           await reloadFromSupabase();
         }
         if (event === 'SIGNED_OUT') {
-          const empty = createEmptyState();
-          // Still load public catalog
           const loaded = await loadMarketplaceState(client, null);
           loaded.currentUser = null;
           dbInstance = loaded;
@@ -142,6 +155,8 @@ export async function bootstrapStore(): Promise<void> {
         }
       });
     }
+    // Initial load (covers cases where INITIAL_SESSION already fired)
+    await reloadFromSupabase();
     bootstrapped = true;
   })();
   return bootstrapPromise;
@@ -161,11 +176,18 @@ export const dbOperations = {
     role: UserRole,
     password: string,
     referralCodeUsed?: string
-  ) {
+  ): Promise<{ user: User | null; needsEmailOtp: boolean; email: string; role: UserRole }> {
     const client = createClient();
     if (!client) {
       throw new Error('Supabase is not configured. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.');
     }
+
+    const normalizedRole =
+      role === UserRole.BUSINESS || role === UserRole.VERIFIED_BUSINESS
+        ? UserRole.BUSINESS
+        : role === UserRole.SELLER || role === UserRole.VERIFIED_SELLER
+          ? UserRole.SELLER
+          : UserRole.BUYER;
 
     const { data, error } = await client.auth.signUp({
       email: email.trim(),
@@ -175,13 +197,23 @@ export const dbOperations = {
           full_name: fullName,
           username,
           phone_number: phoneNumber,
-          role: role || UserRole.BUYER,
+          role: normalizedRole,
           referral_code_used: referralCodeUsed || null,
         },
       },
     });
     if (error) throw error;
     if (!data.user) throw new Error('Registration failed');
+
+    // No session yet → Supabase sent an email OTP / confirmation code
+    if (!data.session) {
+      return {
+        user: null,
+        needsEmailOtp: true,
+        email: email.trim(),
+        role: normalizedRole,
+      };
+    }
 
     let profile: User | null = null;
     for (let i = 0; i < 8; i++) {
@@ -190,9 +222,13 @@ export const dbOperations = {
       await new Promise((r) => setTimeout(r, 250));
     }
 
-    if (profile && role && role !== UserRole.BUYER) {
-      await client.from('profiles').update({ role }).eq('id', profile.id);
-      profile.role = role;
+    // Ensure role stuck if trigger was old; RPC preferred
+    if (profile && normalizedRole !== UserRole.BUYER && profile.role === UserRole.BUYER) {
+      try {
+        await client.rpc('set_own_account_role', { p_role: normalizedRole });
+      } catch {
+        await client.from('profiles').update({ role: normalizedRole }).eq('id', profile.id);
+      }
     }
 
     if (profile && referralCodeUsed) {
@@ -212,12 +248,84 @@ export const dbOperations = {
 
     await reloadFromSupabase();
     const state = getDBState();
-    if (profile) {
-      state.currentUser = profile;
+    const user = state.currentUser || profile;
+    if (user) {
+      state.currentUser = user;
       saveDBState(state);
-      return profile;
     }
-    return getDBState().currentUser;
+    return {
+      user,
+      needsEmailOtp: false,
+      email: email.trim(),
+      role: normalizedRole,
+    };
+  },
+
+  async verifyEmailOtp(
+    email: string,
+    token: string,
+    type: 'signup' | 'email' | 'recovery' = 'signup',
+    preferredRole?: UserRole
+  ) {
+    const client = createClient();
+    if (!client) throw new Error('Supabase is not configured');
+
+    const { data, error } = await client.auth.verifyOtp({
+      email: email.trim(),
+      token: token.trim(),
+      type,
+    });
+    if (error) throw error;
+    if (!data.user) throw new Error('Invalid or expired code');
+
+    if (preferredRole && preferredRole !== UserRole.BUYER) {
+      const role =
+        preferredRole === UserRole.BUSINESS ? UserRole.BUSINESS : UserRole.SELLER;
+      try {
+        await client.rpc('set_own_account_role', { p_role: role });
+      } catch {
+        /* migration 007 may not be applied yet */
+      }
+    }
+
+    await reloadFromSupabase();
+    const user = getDBState().currentUser;
+    if (!user) throw new Error('Profile not found after verification.');
+    return user;
+  },
+
+  async resendEmailOtp(email: string, type: 'signup' | 'email' = 'signup') {
+    const client = createClient();
+    if (!client) throw new Error('Supabase is not configured');
+    if (type === 'signup') {
+      const { error } = await client.auth.resend({ type: 'signup', email: email.trim() });
+      if (error) throw error;
+      return;
+    }
+    const { error } = await client.auth.signInWithOtp({
+      email: email.trim(),
+      options: { shouldCreateUser: false },
+    });
+    if (error) throw error;
+  },
+
+  async sendLoginOtp(emailOrPhone: string) {
+    const client = createClient();
+    if (!client) throw new Error('Supabase is not configured');
+
+    let email = emailOrPhone.trim();
+    if (!email.includes('@')) {
+      const { data } = await client.from('profiles').select('email').eq('phone_number', email).maybeSingle();
+      if (!data?.email) throw new Error('No account found for that phone number.');
+      email = data.email;
+    }
+
+    const { error } = await client.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: false },
+    });
+    if (error) throw error;
+    return email;
   },
 
   async loginWithPassword(emailOrPhone: string, password: string) {
@@ -250,13 +358,9 @@ export const dbOperations = {
     return user;
   },
 
-  loginUser(userId: number) {
-    const state = getDBState();
-    const user = state.users.find((u) => u.id === userId);
-    if (user) {
-      state.currentUser = user;
-      saveDBState(state);
-    }
+  /** @deprecated Fake session switch removed — use real Supabase Auth only */
+  loginUser(_userId: number) {
+    throw new Error('Demo user switching is disabled. Sign in with email/password or OTP.');
   },
 
   loginAsGuest() {
@@ -273,40 +377,61 @@ export const dbOperations = {
     saveDBState(state);
   },
 
-  updateCurrentUserRole(role: UserRole) {
+  async updateCurrentUserRole(role: UserRole) {
     const state = getDBState();
-    if (state.currentUser) {
-      state.currentUser.role = role;
+    if (!state.currentUser) return { success: false, error: 'Not signed in' };
+
+    const target =
+      role === UserRole.BUSINESS || role === UserRole.VERIFIED_BUSINESS
+        ? 'BUSINESS'
+        : role === UserRole.SELLER || role === UserRole.VERIFIED_SELLER
+          ? 'SELLER'
+          : 'BUYER';
+
+    const client = createClient();
+    if (!client) {
+      state.currentUser.role = target as UserRole;
       const dbUser = state.users.find((u) => u.id === state.currentUser!.id);
-      if (dbUser) dbUser.role = role;
-
-      // Ensure Business exists if switching to BUSINESS
-      if ((role === UserRole.BUSINESS || role === UserRole.VERIFIED_BUSINESS) && !state.businesses.some(b => b.ownerId === state.currentUser!.id)) {
-        const newBizId = Math.max(...state.businesses.map(b => b.id), 0) + 1;
-        state.businesses.push({
-          id: newBizId,
-          ownerId: state.currentUser.id,
-          name: `${state.currentUser.fullName}'s Store`,
-          logoUrl: `https://picsum.photos/seed/bizlogo_${newBizId}/150`,
-          bannerUrl: `https://picsum.photos/seed/bizbanner_${newBizId}/1000/400`,
-          description: `Welcome to our virtual store! Tailored services, high-quality stock items, and escrow secured delivery across Nigeria.`,
-          openingHours: '09:00 AM - 06:00 PM',
-          address: 'No 4 Ikeja Retail Way',
-          city: 'Ikeja',
-          state: 'Lagos',
-          isVerified: role === UserRole.VERIFIED_BUSINESS,
-          trustScore: 100,
-          followers: 42,
-          rating: 5.0,
-          reviewsCount: 1,
-        });
-      }
-
+      if (dbUser) dbUser.role = target as UserRole;
       saveDBState(state);
+      return { success: true, role: target };
     }
+
+    const { error } = await client.rpc('set_own_account_role', { p_role: target });
+    if (error) {
+      const { error: updErr } = await client
+        .from('profiles')
+        .update({ role: target })
+        .eq('id', state.currentUser.id);
+      if (updErr) {
+        return { success: false, error: error.message || updErr.message };
+      }
+    }
+
+    if (
+      target === 'BUSINESS' &&
+      !state.businesses.some((b) => b.ownerId === state.currentUser!.id)
+    ) {
+      await client.from('businesses').insert({
+        owner_id: state.currentUser.id,
+        name: `${state.currentUser.fullName}'s Store`,
+        description: 'Welcome to our store — escrow-secured delivery across Nigeria.',
+        opening_hours: '09:00 AM - 06:00 PM',
+      });
+    }
+
+    await reloadFromSupabase();
+    return { success: true, role: getDBState().currentUser?.role };
   },
 
-  async updateProfile(bio: string, address: string, city: string, stateName: string, deliveryPref: string) {
+  async updateProfile(
+    bio: string,
+    address: string,
+    city: string,
+    stateName: string,
+    deliveryPref: string,
+    extras?: { photoUrl?: string; coverUrl?: string; fullName?: string; phoneNumber?: string }
+  ) {
     const state = getDBState();
     if (!state.currentUser) return;
     const profile = state.profiles.find((p) => p.userId === state.currentUser!.id);
@@ -316,22 +441,50 @@ export const dbOperations = {
       profile.city = city;
       profile.state = stateName;
       profile.deliveryPreference = deliveryPref;
+      if (extras?.photoUrl !== undefined) profile.photoUrl = extras.photoUrl;
+      if (extras?.coverUrl !== undefined) profile.coverUrl = extras.coverUrl;
       saveDBState(state);
     }
+    if (extras?.fullName) {
+      state.currentUser.fullName = extras.fullName;
+      const dbUser = state.users.find((u) => u.id === state.currentUser!.id);
+      if (dbUser) dbUser.fullName = extras.fullName;
+    }
+    if (extras?.phoneNumber) {
+      state.currentUser.phoneNumber = extras.phoneNumber;
+      const dbUser = state.users.find((u) => u.id === state.currentUser!.id);
+      if (dbUser) dbUser.phoneNumber = extras.phoneNumber;
+    }
+    saveDBState(state);
+
     const client = createClient();
     if (client && state.currentUser) {
-      await client.from('profiles').update({
+      const patch: Record<string, unknown> = {
         bio,
         address,
         city,
         state: stateName,
         delivery_preference: deliveryPref,
-      }).eq('id', state.currentUser.id);
+      };
+      if (extras?.photoUrl !== undefined) patch.photo_url = extras.photoUrl;
+      if (extras?.coverUrl !== undefined) patch.cover_url = extras.coverUrl;
+      if (extras?.fullName) patch.full_name = extras.fullName;
+      if (extras?.phoneNumber) patch.phone_number = extras.phoneNumber;
+      await client.from('profiles').update(patch).eq('id', state.currentUser.id);
+      await reloadFromSupabase();
     }
   },
 
   // Business Profile Updates
-  updateBusinessDetails(name: string, description: string, address: string, city: string, stateName: string, hours: string) {
+  async updateBusinessDetails(
+    name: string,
+    description: string,
+    address: string,
+    city: string,
+    stateName: string,
+    hours: string,
+    extras?: { logoUrl?: string; bannerUrl?: string }
+  ) {
     const state = getDBState();
     if (!state.currentUser) return;
     const biz = state.businesses.find((b) => b.ownerId === state.currentUser!.id);
@@ -342,7 +495,31 @@ export const dbOperations = {
       biz.city = city;
       biz.state = stateName;
       biz.openingHours = hours;
+      if (extras?.logoUrl !== undefined) biz.logoUrl = extras.logoUrl;
+      if (extras?.bannerUrl !== undefined) biz.bannerUrl = extras.bannerUrl;
       saveDBState(state);
+    }
+    const client = createClient();
+    if (client && state.currentUser) {
+      const patch: Record<string, unknown> = {
+        name,
+        description,
+        address,
+        city,
+        state: stateName,
+        opening_hours: hours,
+      };
+      if (extras?.logoUrl !== undefined) patch.logo_url = extras.logoUrl;
+      if (extras?.bannerUrl !== undefined) patch.banner_url = extras.bannerUrl;
+      if (biz?.id) {
+        await client.from('businesses').update(patch).eq('id', biz.id);
+      } else {
+        await client.from('businesses').insert({
+          owner_id: state.currentUser.id,
+          ...patch,
+        });
+      }
+      await reloadFromSupabase();
     }
   },
 
@@ -389,7 +566,7 @@ export const dbOperations = {
       isNegotiable,
       quantity,
       stockStatus: 'IN_STOCK',
-      images: images && images.length > 0 ? images : ['https://picsum.photos/seed/product_default/600/600'],
+      images: images && images.length > 0 ? images : [],
       barcode,
       deliveryMethod,
       pickupAvailable,
@@ -465,6 +642,72 @@ export const dbOperations = {
     return newProduct;
   },
 
+  /** Owner deletes their own listing (Supabase + local). */
+  async deleteOwnProduct(productId: number) {
+    const state = getDBState();
+    if (!state.currentUser) return { success: false, error: 'Sign in required' };
+    const product = state.products.find((p) => p.id === productId);
+    if (!product) return { success: false, error: 'Listing not found' };
+    if (product.sellerId !== state.currentUser.id) {
+      return { success: false, error: 'You can only delete your own listings' };
+    }
+
+    const client = createClient();
+    if (client) {
+      const { error } = await client.from('products').delete().eq('id', productId);
+      if (error) {
+        return {
+          success: false,
+          error:
+            error.message.includes('foreign key') || error.code === '23503'
+              ? 'This listing has orders linked to it and cannot be deleted. Mark it Out of Stock instead.'
+              : error.message,
+        };
+      }
+      await client.from('auctions').delete().eq('product_id', productId);
+      await reloadFromSupabase();
+      return { success: true };
+    }
+
+    state.products = state.products.filter((p) => p.id !== productId);
+    state.auctions = state.auctions.filter((a) => a.productId !== productId);
+    saveDBState(state);
+    return { success: true };
+  },
+
+  /** Owner updates price / stock on their listing. */
+  async updateOwnProduct(
+    productId: number,
+    patch: Partial<{ price: number; quantity: number; stockStatus: Product['stockStatus']; title: string }>
+  ) {
+    const state = getDBState();
+    if (!state.currentUser) return { success: false, error: 'Sign in required' };
+    const product = state.products.find((p) => p.id === productId);
+    if (!product) return { success: false, error: 'Listing not found' };
+    if (product.sellerId !== state.currentUser.id) {
+      return { success: false, error: 'You can only edit your own listings' };
+    }
+
+    Object.assign(product, patch);
+    saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      const { error } = await client
+        .from('products')
+        .update({
+          title: product.title,
+          price: product.price,
+          quantity: product.quantity,
+          stock_status: product.stockStatus,
+        })
+        .eq('id', productId);
+      if (error) return { success: false, error: error.message };
+      await reloadFromSupabase();
+    }
+    return { success: true, product };
+  },
+
   // Submit Bid for Auction
   submitBid(auctionId: number, amount: number) {
     const state = getDBState();
@@ -481,7 +724,7 @@ export const dbOperations = {
       auctionId,
       userId: state.currentUser.id,
       username: state.currentUser.username,
-      userAvatar: state.profiles.find((p) => p.userId === state.currentUser!.id)?.photoUrl || 'https://picsum.photos/seed/user/50',
+      userAvatar: state.profiles.find((p) => p.userId === state.currentUser!.id)?.photoUrl || '',
       amount,
       createdAt: new Date().toISOString(),
     };
@@ -1309,7 +1552,7 @@ export const dbOperations = {
       orderId,
       reviewerId: state.currentUser.id,
       reviewerName: state.currentUser.fullName,
-      reviewerPhoto: state.profiles.find(p => p.userId === state.currentUser!.id)?.photoUrl || 'https://picsum.photos/seed/avatar/50',
+      reviewerPhoto: state.profiles.find(p => p.userId === state.currentUser!.id)?.photoUrl || '',
       revieweeId: order.sellerId,
       rating,
       comment,
@@ -1358,7 +1601,7 @@ export const dbOperations = {
       productId,
       reviewerId: state.currentUser.id,
       reviewerName: state.currentUser.fullName,
-      reviewerPhoto: state.profiles.find(p => p.userId === state.currentUser!.id)?.photoUrl || 'https://picsum.photos/seed/avatar/50',
+      reviewerPhoto: state.profiles.find(p => p.userId === state.currentUser!.id)?.photoUrl || '',
       revieweeId: product?.sellerId,
       rating,
       comment,
@@ -1421,7 +1664,7 @@ export const dbOperations = {
       id: review.replies.length + 1,
       authorId: state.currentUser.id,
       authorName: state.currentUser.fullName,
-      authorPhoto: state.profiles.find(p => p.userId === state.currentUser!.id)?.photoUrl || 'https://picsum.photos/seed/avatar/50',
+      authorPhoto: state.profiles.find(p => p.userId === state.currentUser!.id)?.photoUrl || '',
       authorRole: roleStr,
       comment: commentText,
       createdAt: new Date().toISOString(),
@@ -2101,7 +2344,7 @@ export const dbOperations = {
       color: partnerData.color,
       year: partnerData.year,
       capacity: partnerData.capacity,
-      photoUrl: partnerData.photoUrl || 'https://picsum.photos/seed/delivery_avatar/200',
+      photoUrl: partnerData.photoUrl || '',
       status: 'PENDING',
       isAvailable: false,
       trustScore: 80,
@@ -2116,7 +2359,7 @@ export const dbOperations = {
       lastLng: partnerData.lastLng ?? seedLoc.lng,
       lastLocationAt: new Date().toISOString(),
       nin: partnerData.nin,
-      selfieUrl: partnerData.selfieUrl || 'https://picsum.photos/seed/selfie/200',
+      selfieUrl: partnerData.selfieUrl || '',
       licenseUrl: partnerData.licenseUrl,
       createdAt: new Date().toISOString(),
     };
@@ -3040,14 +3283,44 @@ export const dbOperations = {
 };
 
 
+let storeReady = false;
+const STORE_READY_EVENT = 'goodsale-store-ready';
+
+export function isStoreReady() {
+  return storeReady;
+}
+
+export function useStoreReady(): boolean {
+  const [ready, setReady] = useState(storeReady);
+  useEffect(() => {
+    if (storeReady) {
+      setReady(true);
+      return;
+    }
+    void bootstrapStore().then(() => {
+      storeReady = true;
+      setReady(true);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(STORE_READY_EVENT));
+      }
+    });
+    const onReady = () => setReady(true);
+    window.addEventListener(STORE_READY_EVENT, onReady);
+    return () => window.removeEventListener(STORE_READY_EVENT, onReady);
+  }, []);
+  return ready;
+}
+
 export function useDBState(): GoodSaleDBState {
   const [db, setDb] = useState<GoodSaleDBState>(() => getDBState());
-  const ready = useRef(false);
 
   useEffect(() => {
     void bootstrapStore().then(() => {
-      ready.current = true;
+      storeReady = true;
       setDb({ ...getDBState() });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(STORE_READY_EVENT));
+      }
     });
     const handleStateChange = () => setDb({ ...getDBState() });
     window.addEventListener(STORE_CHANGE_EVENT, handleStateChange);
