@@ -5,9 +5,13 @@ import React, { useState, useEffect } from 'react';
 import { 
   Search, Shield, Zap, Flame, Award, MapPin, CheckCircle, 
   Sparkles, ArrowRight, Star, Heart, Grid, ShoppingBag, Eye, User,
-  ChevronLeft, ChevronRight, Store
+  ChevronLeft, ChevronRight, Store, Truck, Lock, Handshake, ShieldCheck,
+  Shirt, Cpu, Smartphone, Laptop, Armchair, Apple, Car, BookOpen
 } from 'lucide-react';
 import { Product, getDBState, UserRole, useDBState, dbOperations } from '../lib/store';
+import { SmartAvatar } from './ui/SmartImage';
+import LottieAnimation from './ui/LottieAnimation';
+import goodsaleLoader from '../lib/lottie/goodsale-loader.json';
 
 interface LandingViewProps {
   onSelectProduct: (productId: number) => void;
@@ -18,16 +22,28 @@ interface LandingViewProps {
 }
 
 const CATEGORIES = [
-  { name: 'Fashion', icon: '👕', slug: 'fashion' },
-  { name: 'Electronics', icon: '🔌', slug: 'electronics' },
-  { name: 'Phones', icon: '📱', slug: 'phones' },
-  { name: 'Laptops', icon: '💻', slug: 'laptops' },
-  { name: 'Furniture', icon: '🛋️', slug: 'furniture' },
-  { name: 'Groceries', icon: '🍏', slug: 'groceries' },
-  { name: 'Beauty', icon: '💄', slug: 'beauty' },
-  { name: 'Vehicles', icon: '🚗', slug: 'vehicles' },
-  { name: 'Books', icon: '📚', slug: 'books' },
+  { name: 'Fashion', slug: 'fashion' },
+  { name: 'Electronics', slug: 'electronics' },
+  { name: 'Phones', slug: 'phones' },
+  { name: 'Laptops', slug: 'laptops' },
+  { name: 'Furniture', slug: 'furniture' },
+  { name: 'Groceries', slug: 'groceries' },
+  { name: 'Beauty', slug: 'beauty' },
+  { name: 'Vehicles', slug: 'vehicles' },
+  { name: 'Books', slug: 'books' },
 ];
+
+const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  fashion: Shirt,
+  electronics: Cpu,
+  phones: Smartphone,
+  laptops: Laptop,
+  furniture: Armchair,
+  groceries: Apple,
+  beauty: Sparkles,
+  vehicles: Car,
+  books: BookOpen,
+};
 
 export default function LandingView({
   onSelectProduct,
@@ -48,8 +64,19 @@ export default function LandingView({
   // Promotional Carousel State
   const [currentPromoIndex, setCurrentPromoIndex] = useState<number>(0);
 
-  // Flash sale countdown timer state
-  const [timeLeft, setTimeLeft] = useState({ hours: 4, minutes: 34, seconds: 12 });
+  // Real daily flash-sale countdown — resets at midnight, no fake offsets.
+  const getTimeToMidnight = () => {
+    const now = new Date();
+    const end = new Date(now);
+    end.setHours(23, 59, 59, 999);
+    const diff = Math.max(0, end.getTime() - now.getTime());
+    return {
+      hours: Math.floor(diff / 3.6e6),
+      minutes: Math.floor((diff % 3.6e6) / 60000),
+      seconds: Math.floor((diff % 60000) / 1000),
+    };
+  };
+  const [timeLeft, setTimeLeft] = useState(getTimeToMidnight);
 
   // Live feed + traders derived from real marketplace data (no fake activity)
   const liveActivities = React.useMemo(() => {
@@ -82,6 +109,18 @@ export default function LandingView({
     return lines.slice(0, 6);
   }, [db.products, db.orders, db.bids, db.users]);
 
+  // Real escrow volume derived from live orders — shown in the hero.
+  const liveStats = React.useMemo(() => {
+    const escrowHeld = (db.orders || [])
+      .filter(o => ['PAID_ESCROW', 'SHIPPED', 'OUT_FOR_DELIVERY', 'DISPUTED'].includes(String(o.status)))
+      .reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
+    return {
+      listings: db.products.length,
+      traders: db.users.length,
+      escrowHeld,
+    };
+  }, [db.products, db.users, db.orders]);
+
   const onlineTraders = React.useMemo(() => {
     return db.users
       .filter((u) =>
@@ -98,7 +137,7 @@ export default function LandingView({
           id: u.id,
           name: u.username || u.fullName || 'trader',
           city: profile?.city || 'Nigeria',
-          photo: profile?.photoUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(u.username || String(u.id))}`,
+          photo: profile?.photoUrl || '',
           isPulsing: true,
         };
       });
@@ -114,19 +153,7 @@ export default function LandingView({
 
   // Flash Sale Countdown Logic
   useEffect(() => {
-    const interval = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev.seconds > 0) {
-          return { ...prev, seconds: prev.seconds - 1 };
-        } else if (prev.minutes > 0) {
-          return { ...prev, minutes: prev.minutes - 1, seconds: 59 };
-        } else if (prev.hours > 0) {
-          return { hours: prev.hours - 1, minutes: 59, seconds: 59 };
-        } else {
-          return { hours: 12, minutes: 0, seconds: 0 }; // reset
-        }
-      });
-    }, 1000);
+    const interval = setInterval(() => setTimeLeft(getTimeToMidnight()), 1000);
     return () => clearInterval(interval);
   }, []);
 

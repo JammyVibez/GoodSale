@@ -11,6 +11,7 @@ import {
 import { 
   Product, UserRole, getDBState, saveDBState, dbOperations, OrderStatus 
 } from '../lib/store';
+import { SmartAvatar } from './ui/SmartImage';
 
 interface ProductDetailViewProps {
   productId: number;
@@ -756,8 +757,7 @@ export default function ProductDetailView({
             >
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-full bg-emerald-500/10 overflow-hidden relative">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={sellerProfile?.photoUrl || 'https://picsum.photos/seed/user/100'} alt={seller?.fullName} className="w-full h-full object-cover" />
+                  <SmartAvatar src={sellerProfile?.photoUrl} name={seller?.fullName || 'GoodSale Seller'} className="w-full h-full" />
                 </div>
                 <div>
                   <div className="flex items-center gap-1">

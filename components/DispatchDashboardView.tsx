@@ -11,6 +11,7 @@ import { motion } from 'motion/react';
 import { 
   getDBState, saveDBState, dbOperations, DeliveryPartner, DeliveryJob, DeliveryJobStatus, OrderStatus, UserRole, DeliveryVehicleType
 } from '../lib/store';
+import { SmartAvatar } from './ui/SmartImage';
 import LiveDispatchMap from './LiveDispatchMap';
 import { useLiveLocation } from '@/lib/hooks/useLiveLocation';
 import { bestCoords, formatDistanceKm, haversineKm, estimateEtaMinutes, resolveCityCoords } from '@/lib/geo';
@@ -35,9 +36,9 @@ export default function DispatchDashboardView() {
   const [cityName, setCityName] = useState('Ikeja');
   const [nin, setNin] = useState('');
   const [licenseNumber, setLicenseNumber] = useState('');
-  const [photoUrl, setPhotoUrl] = useState('https://picsum.photos/seed/courier_driver/200');
-  const [licenseUrl, setLicenseUrl] = useState('https://picsum.photos/seed/driver_license/200');
-  const [selfieUrl, setSelfieUrl] = useState('https://picsum.photos/seed/courier_selfie/200');
+  const [photoUrl, setPhotoUrl] = useState('');
+  const [licenseUrl, setLicenseUrl] = useState('');
+  const [selfieUrl, setSelfieUrl] = useState('');
   
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState(false);
@@ -414,10 +415,10 @@ export default function DispatchDashboardView() {
               
               {/* Profile Card */}
               <div className="flex items-center gap-3">
-                <img 
-                  src={courier?.photoUrl || db.profiles.find(p => p.userId === user.id)?.photoUrl || "https://picsum.photos/seed/driver_default/200"} 
-                  alt="Courier Profile" 
-                  className="w-12 h-12 rounded-full object-cover border-2 border-emerald-500 shadow-sm"
+                <SmartAvatar 
+                  src={courier?.photoUrl || db.profiles.find(p => p.userId === user.id)?.photoUrl}
+                  name={courier?.fullName || user.fullName}
+                  className="w-12 h-12 border-2 border-emerald-500 shadow-sm"
                 />
                 <div>
                   <h4 className="text-sm font-extrabold text-slate-800 dark:text-white truncate max-w-[150px]">

@@ -4,11 +4,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Search, ShoppingCart, Bell, User as UserIcon, Shield, RefreshCw, 
-  MapPin, Award, Store, Sun, Moon, Laptop, LogIn, ChevronDown, CheckCircle, Sparkles,
-  Menu, X, Gavel, Package, Eye, EyeOff, Trash, Zap, MessageSquare, Truck, DollarSign
+  Award, Store, Sun, Moon, Laptop, LogIn, CheckCircle, Sparkles,
+  X, Gavel, Package, Eye, EyeOff, Trash, MessageSquare, Truck, DollarSign
 } from 'lucide-react';
 import { User, UserRole, getDBState, saveDBState, dbOperations, useDBState } from '../lib/store';
-import { isDemoMode, isOwnerAdminEmail } from '@/lib/demo';
 import Logo from './LogoIcon';
 
 interface HeaderProps {
@@ -88,27 +87,7 @@ export default function Header({
     setShowMobileRecentDropdown(false);
   };
 
-  const handleSimulateAlert = (type: 'BID' | 'SAFEMEET' | 'ESCROW') => {
-    if (!user) {
-      alert("Please join or sign in to experience the real-time notification hub alerts!");
-      return;
-    }
-    
-    let title = "";
-    let message = "";
-    if (type === 'BID') {
-      title = "⚠️ Outbid Alert!";
-      message = "You have been outbid on 'MacBook Pro M3 Max'! Quick, update your bid to stay in the lead!";
-    } else if (type === 'SAFEMEET') {
-      title = "🤝 SafeMeet™ Proposal Received";
-      message = "Seller Chidi has proposed Mega Plaza SafeMeet Cafe on Sunday at 2:00 PM under platform police surveillance.";
-    } else {
-      title = "📦 Escrow Package Dispatched";
-      message = "Hurray! GoodSale Courier has picked up your iPhone 15 Pro Max from Fatima's hub. Track physical transit pin.";
-    }
 
-    dbOperations.createCustomNotification(user.id, title, message, type);
-  };
 
   // Initialize theme from localStorage on mount (safe for SSR)
   useEffect(() => {
@@ -505,43 +484,7 @@ export default function Header({
                     )}
                   </div>
 
-                  {/* Real-time Simulator Panel */}
-                  {user && (
-                    <div className="p-3.5 bg-gray-50 dark:bg-slate-950 border-t border-gray-100 dark:border-slate-850 rounded-b-2xl">
-                      <div className="flex items-center gap-1 mb-2">
-                        <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500/15 animate-pulse" />
-                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 font-sans">
-                          Real-Time Alerts Simulator
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-3 gap-1.5">
-                        <button
-                          onClick={() => handleSimulateAlert('BID')}
-                          className="py-1.5 px-2 bg-white dark:bg-slate-900 border border-amber-500/20 hover:bg-amber-500/5 hover:border-amber-500 text-[10px] font-bold rounded-lg text-amber-600 dark:text-amber-400 transition-all cursor-pointer flex flex-col items-center gap-1 text-center font-sans"
-                          title="Simulate Gavel Outbid Alert"
-                        >
-                          <Gavel className="w-3.5 h-3.5 text-amber-500" />
-                          <span>Outbid Bid</span>
-                        </button>
-                        <button
-                          onClick={() => handleSimulateAlert('SAFEMEET')}
-                          className="py-1.5 px-2 bg-white dark:bg-slate-900 border border-blue-500/20 hover:bg-blue-500/5 hover:border-blue-500 text-[10px] font-bold rounded-lg text-blue-600 dark:text-blue-400 transition-all cursor-pointer flex flex-col items-center gap-1 text-center font-sans"
-                          title="Simulate SafeMeet Proposal Alert"
-                        >
-                          <Shield className="w-3.5 h-3.5 text-blue-500" />
-                          <span>SafeMeet™</span>
-                        </button>
-                        <button
-                          onClick={() => handleSimulateAlert('ESCROW')}
-                          className="py-1.5 px-2 bg-white dark:bg-slate-900 border border-emerald-500/20 hover:bg-emerald-500/5 hover:border-emerald-500 text-[10px] font-bold rounded-lg text-emerald-600 dark:text-emerald-400 transition-all cursor-pointer flex flex-col items-center gap-1 text-center font-sans"
-                          title="Simulate Escrow Dispatch Alert"
-                        >
-                          <Package className="w-3.5 h-3.5 text-emerald-500" />
-                          <span>Escrow Sent</span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                
 
                 </div>
               )}
@@ -752,8 +695,7 @@ export default function Header({
               {/* Custom Sidebar Nav Indicators for Dashboards */}
               {user && (
                 user.role === UserRole.ADMIN || 
-                user.role === UserRole.SUPER_ADMIN || 
-                isOwnerAdminEmail(user.email)
+                user.role === UserRole.SUPER_ADMIN
               ) && (
                 <button 
                   onClick={() => onNavigate('admin')}

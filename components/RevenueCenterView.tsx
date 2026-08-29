@@ -32,7 +32,7 @@ export default function RevenueCenterView() {
   const [adType, setAdType] = useState<'PRODUCT' | 'BUSINESS' | 'BANNER_HOME' | 'BANNER_CATEGORY'>('PRODUCT');
   const [adBudget, setAdBudget] = useState('5000');
   const [adTargetId, setAdTargetId] = useState('');
-  const [adBannerUrl, setAdBannerUrl] = useState('https://picsum.photos/seed/ad_banner/800/200');
+  const [adBannerUrl, setAdBannerUrl] = useState('');
 
   const [adError, setAdError] = useState<string | null>(null);
   const [adSuccess, setAdSuccess] = useState<string | null>(null);

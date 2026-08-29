@@ -9,6 +9,7 @@ import {
 import { 
   getDBState, dbOperations, UserRole, Product 
 } from '../lib/store';
+import { SmartAvatar } from './ui/SmartImage';
 
 interface SellerProfileViewProps {
   sellerId: number;
@@ -155,11 +156,11 @@ export default function SellerProfileView({
               
               {/* Profile Photo */}
               <div className="w-28 h-28 rounded-full border-4 border-white dark:border-slate-900 shadow-xl overflow-hidden bg-slate-100 dark:bg-slate-800 relative mb-4">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img 
-                  src={profile?.photoUrl || 'https://picsum.photos/seed/user/200'} 
-                  alt={seller.fullName} 
-                  className="w-full h-full object-cover" 
+                <SmartAvatar 
+                  src={profile?.photoUrl} 
+                  name={seller.fullName} 
+                  seed={seller.username}
+                  className="w-full h-full" 
                 />
               </div>
 

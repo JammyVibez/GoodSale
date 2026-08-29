@@ -10,6 +10,7 @@ import {
 import { useDBState, dbOperations, getDBState, saveDBState, OrderStatus, Order } from '../lib/store';
 import LiveSafeMeetMap from './LiveSafeMeetMap';
 import LiveDispatchMap from './LiveDispatchMap';
+import { SmartAvatar } from './ui/SmartImage';
 import { bestCoords } from '@/lib/geo';
 
 interface BuyerProfileViewProps {
@@ -248,11 +249,11 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
             {/* Avatar & Basic Credentials */}
             <div className="flex flex-col sm:flex-row items-start sm:items-end gap-4 -mt-10 sm:-mt-12 relative z-10">
               <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full border-4 border-white dark:border-slate-900 bg-gray-150 relative overflow-hidden shadow-md">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img 
-                  src={currentProfile?.photoUrl || `https://picsum.photos/seed/${currentUser.username}/200`} 
-                  alt={currentUser.fullName}
-                  className="w-full h-full object-cover"
+                <SmartAvatar 
+                  src={currentProfile?.photoUrl} 
+                  name={currentUser.fullName}
+                  seed={currentUser.username}
+                  className="w-full h-full"
                 />
               </div>
 

@@ -1,9 +1,11 @@
 /**
  * Upload a file to Supabase Storage via the authenticated /api/upload route.
  */
+export type UploadBucket = 'product-images' | 'chat-media' | 'government-ids' | 'avatars';
+
 export async function uploadMedia(
   file: File,
-  bucket: 'product-images' | 'chat-media' | 'government-ids' = 'product-images'
+  bucket: UploadBucket = 'product-images'
 ): Promise<string> {
   const form = new FormData();
   form.append('file', file);

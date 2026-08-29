@@ -146,7 +146,7 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
       id: prod.id,
       title: prod.title,
       price: prod.price,
-      image: prod.images[0] || 'https://picsum.photos/seed/product/150',
+      image: prod.images[0] || '',
       condition: prod.condition
     };
     dbOperations.sendMessage(activeRoomId, undefined, undefined, undefined, undefined, productObj);
@@ -154,19 +154,8 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
     setDb(getDBState());
   };
 
-  // Mock Receipt Data Generator in case they have no orders
+  // Real orders only — receipts shared in chat come from the live Supabase ledger.
   const myOrders = db.orders.filter(order => order.buyerId === user.id || order.sellerId === user.id);
-  const fallbackOrders = myOrders.length > 0 ? myOrders : [
-    {
-      id: 9991,
-      orderNumber: 'GS-2026-881029',
-      productTitle: chatProduct?.title || 'Grade-A iPhone 13 Pro',
-      totalAmount: chatProduct?.price || 420000,
-      paymentMethod: 'DEBIT_CARD_SECURED',
-      status: 'PAID_ESCROW',
-      createdAt: new Date().toISOString()
-    }
-  ];
 
   // Real local uploads used for attachments
   const photoPresets: any[] = [];
@@ -656,22 +645,30 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
             </div>
 
             <div className="max-h-60 overflow-y-auto space-y-2 pr-1 text-xs">
-              {fallbackOrders.map((ord) => (
-                <button
-                  key={ord.id}
-                  onClick={() => shareReceipt(ord)}
-                  className="w-full text-left p-3 border border-gray-100 dark:border-slate-800 rounded-2xl hover:border-emerald-500 hover:bg-emerald-500/5 transition-all flex justify-between items-center"
-                >
-                  <div>
-                    <span className="font-bold block text-slate-900 dark:text-white truncate max-w-[240px]">{ord.productTitle}</span>
-                    <span className="text-[10px] text-gray-400 font-mono">Invoice: {ord.orderNumber}</span>
-                  </div>
-                  <div className="text-right">
-                    <span className="font-mono font-extrabold text-emerald-500 block">₦{Number(ord.totalAmount).toLocaleString()}</span>
-                    <span className="text-[9px] px-1.5 py-0.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400 rounded uppercase font-bold tracking-widest">{ord.status}</span>
-                  </div>
-                </button>
-              ))}
+              {myOrders.length === 0 ? (
+                <div className="p-6 text-center">
+                  <FileText className="w-8 h-8 text-gray-300 dark:text-slate-700 mx-auto mb-2" />
+                  <p className="text-slate-500 dark:text-slate-400 font-bold mb-1">No receipts yet</p>
+                  <p className="text-[10px] text-gray-400">Completed orders will appear here as escrow ledger receipts.</p>
+                </div>
+              ) : (
+                myOrders.map((ord) => (
+                  <button
+                    key={ord.id}
+                    onClick={() => shareReceipt(ord)}
+                    className="w-full text-left p-3 border border-gray-100 dark:border-slate-800 rounded-2xl hover:border-emerald-500 hover:bg-emerald-500/5 transition-all flex justify-between items-center"
+                  >
+                    <div>
+                      <span className="font-bold block text-slate-900 dark:text-white truncate max-w-[240px]">{ord.productTitle}</span>
+                      <span className="text-[10px] text-gray-400 font-mono">Invoice: {ord.orderNumber}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-mono font-extrabold text-emerald-500 block">₦{Number(ord.totalAmount).toLocaleString()}</span>
+                      <span className="text-[9px] px-1.5 py-0.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400 rounded uppercase font-bold tracking-widest">{ord.status}</span>
+                    </div>
+                  </button>
+                ))
+              )}
             </div>
           </div>
         </div>

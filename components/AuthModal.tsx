@@ -8,7 +8,7 @@ import {
   MapPin, Globe, Languages, Camera, RefreshCw, Lock, AlertTriangle, Cpu
 } from 'lucide-react';
 import { useDBState, dbOperations, UserRole, getDBState, saveDBState } from '../lib/store';
-import { isDemoMode } from '@/lib/demo';
+import { SmartImage } from './ui/SmartImage';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -65,7 +65,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
   const [newConfirmPassword, setNewConfirmPassword] = useState('');
 
   // 5. ONBOARDING STATE
-  const [onboardingPhoto, setOnboardingPhoto] = useState('https://picsum.photos/seed/default_avatar/200');
+  const [onboardingPhoto, setOnboardingPhoto] = useState('');
   const [onboardingState, setOnboardingState] = useState('Lagos');
   const [onboardingCity, setOnboardingCity] = useState('Ikeja');
   const [onboardingAddress, setOnboardingAddress] = useState('');
@@ -134,31 +134,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
   };
 
   const strength = getPasswordStrength(password);
-
-  // Quick Account Login Action
-  const handleSimulatedLogin = (userId: number) => {
-    setErrorMsg('');
-    setSuccessMsg('');
-    try {
-      dbOperations.loginUser(userId);
-      setSuccessMsg('Logged in successfully!');
-      
-      // Store credentials if Remember Me is checked
-      if (rememberMe) {
-        localStorage.setItem('goodsale_saved_session_id', userId.toString());
-      } else {
-        localStorage.removeItem('goodsale_saved_session_id');
-      }
-
-      setTimeout(() => {
-        setSuccessMsg('');
-        if (onSuccess) onSuccess();
-        onClose();
-      }, 1000);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to authenticate');
-    }
-  };
 
   // Real Supabase Auth login
   const handleCustomLoginSubmit = async (e: React.FormEvent) => {
@@ -1109,10 +1084,11 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                 <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1.5 font-mono">Upload Profile Photo ID Avatar</label>
                 <div className="flex items-center gap-4 bg-gray-50 dark:bg-slate-950 p-3 rounded-2xl border border-gray-150 dark:border-slate-850">
                   <div className="relative">
-                    <img
+                    <SmartImage
                       src={onboardingPhoto}
+                      seed="profile"
                       alt="Avatar Preview"
-                      className="w-14 h-14 rounded-2xl object-cover border-2 border-emerald-500 shadow-sm"
+                      className="w-14 h-14 rounded-2xl border-2 border-emerald-500 shadow-sm"
                     />
                     <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-white p-1 rounded-lg">
                       <Camera className="w-3 h-3" />
@@ -1122,15 +1098,17 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                     <span className="text-[10px] text-slate-400 block font-mono">Select image file from your device:</span>
                     <input
                       type="file"
-                      accept="image/*"
-                      onChange={(e) => {
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={async (e) => {
                         const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onloadend = () => {
-                            setOnboardingPhoto(reader.result as string);
-                          };
-                          reader.readAsDataURL(file);
+                        if (!file) return;
+                        try {
+                          const { uploadMedia } = await import('@/lib/upload');
+                          const url = await uploadMedia(file, 'avatars');
+                          setOnboardingPhoto(url);
+                        } catch (err) {
+                          console.error('Onboarding avatar upload failed:', err);
+                          alert('Upload failed. Ensure Supabase Storage and the avatars bucket are configured.');
                         }
                       }}
                       className="w-full text-xs text-slate-500 dark:text-slate-400 file:mr-2.5 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-[10px] file:font-bold file:bg-emerald-500/10 file:text-emerald-500 hover:file:bg-emerald-500/20 cursor-pointer"

@@ -122,9 +122,9 @@ export default function BottomNavigation({
                     : 'text-slate-700 dark:text-slate-400'
                 }`}
               />
-              {user && (
+              {user && db.chatRooms.filter(r => r.buyerId === user.id || r.sellerId === user.id).length > 0 && (
                 <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-[8px] font-extrabold w-3.5 h-3.5 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm leading-none">
-                  2
+                  {db.chatRooms.filter(r => r.buyerId === user.id || r.sellerId === user.id).length}
                 </span>
               )}
             </div>

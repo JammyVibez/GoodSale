@@ -10,6 +10,7 @@ import {
   Grid, Copy, Check, Menu, AlertTriangle, Play, HelpCircle as HelpIcon, Calendar, Clock
 } from 'lucide-react';
 import { useDBState, dbOperations, getDBState, saveDBState, UserRole } from '../lib/store';
+import { SmartImage } from './ui/SmartImage';
 
 interface SettingsViewProps {
   onBack?: () => void;
@@ -44,8 +45,8 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
   const [address, setAddress] = useState(currentProfile?.address || '');
   const [city, setCity] = useState(currentProfile?.city || '');
   const [stateName, setStateName] = useState(currentProfile?.state || '');
-  const [profilePic, setProfilePic] = useState(currentProfile?.photoUrl || `https://picsum.photos/seed/${currentUser?.username || 'user'}/200`);
-  const [coverPic, setCoverPic] = useState(currentProfile?.coverUrl || `https://picsum.photos/seed/${currentUser?.username || 'user'}_cover/800/300`);
+  const [profilePic, setProfilePic] = useState(currentProfile?.photoUrl || '');
+  const [coverPic, setCoverPic] = useState(currentProfile?.coverUrl || '');
 
   // 2. Security
   const [oldPassword, setOldPassword] = useState('');
@@ -110,8 +111,8 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
   // 8. Business Settings (only visible to business users)
   const [businessName, setBusinessName] = useState(currentBusiness?.name || '');
   const [businessDesc, setBusinessDesc] = useState(currentBusiness?.description || '');
-  const [businessLogo, setBusinessLogo] = useState(currentBusiness?.logoUrl || `https://picsum.photos/seed/bizlogo/100`);
-  const [businessBanner, setBusinessBanner] = useState(currentBusiness?.bannerUrl || `https://picsum.photos/seed/bizbanner/800/250`);
+  const [businessLogo, setBusinessLogo] = useState(currentBusiness?.logoUrl || '');
+  const [businessBanner, setBusinessBanner] = useState(currentBusiness?.bannerUrl || '');
   const [businessHours, setBusinessHours] = useState('Monday - Saturday (08:00 AM - 07:00 PM)');
   const [staffList, setStaffList] = useState([
     { id: 1, name: 'Tunde Bakare', role: 'Store Manager', status: 'Active' },
@@ -158,16 +159,16 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
         setAddress(prof.address || '');
         setCity(prof.city || '');
         setStateName(prof.state || '');
-        setProfilePic(prof.photoUrl || `https://picsum.photos/seed/${currentUser.username}/200`);
-        setCoverPic(prof.coverUrl || `https://picsum.photos/seed/${currentUser.username}_cover/800/300`);
+        setProfilePic(prof.photoUrl || '');
+        setCoverPic(prof.coverUrl || '');
       }
 
       const biz = db.businesses.find(b => b.ownerId === currentUser.id);
       if (biz) {
         setBusinessName(biz.name || '');
         setBusinessDesc(biz.description || '');
-        setBusinessLogo(biz.logoUrl || `https://picsum.photos/seed/bizlogo/100`);
-        setBusinessBanner(biz.bannerUrl || `https://picsum.photos/seed/bizbanner/800/250`);
+        setBusinessLogo(biz.logoUrl || '');
+        setBusinessBanner(biz.bannerUrl || '');
       }
     }
   }, [currentUser, db.profiles, db.businesses]);
@@ -225,11 +226,32 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
     setSelectedUserId(userId);
   };
 
-  const handleResetDatabase = () => {
-    if (confirm('Are you sure you want to reset the local GoodSale database? All custom products, orders, and reviews will return to defaults.')) {
-      localStorage.removeItem('goodsale_relational_database_v1');
-      window.location.reload();
-    }
+  // Real image uploads to Supabase Storage (avatars bucket) — no mock assets.
+  const [uploadingAsset, setUploadingAsset] = useState<string | null>(null);
+
+  const handleImageUpload = (target: 'avatar' | 'cover' | 'bizLogo' | 'bizBanner') => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/jpeg,image/png,image/webp';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      setUploadingAsset(target);
+      try {
+        const { uploadMedia } = await import('@/lib/upload');
+        const url = await uploadMedia(file, 'avatars');
+        if (target === 'avatar') setProfilePic(url);
+        else if (target === 'cover') setCoverPic(url);
+        else if (target === 'bizLogo') setBusinessLogo(url);
+        else setBusinessBanner(url);
+      } catch (err) {
+        console.error('Asset upload failed:', err);
+        alert('Upload failed. Check that Supabase Storage and the avatars bucket are configured.');
+      } finally {
+        setUploadingAsset(null);
+      }
+    };
+    input.click();
   };
 
   const handleCopyReferral = () => {
@@ -357,15 +379,6 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
           </div>
         </div>
 
-        <div className="flex gap-2 relative z-10 w-full md:w-auto mt-4 md:mt-0">
-          <button 
-            onClick={handleResetDatabase}
-            className="flex-1 md:flex-none px-4 py-2.5 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer border border-red-500/20"
-          >
-            <Database className="w-4 h-4" />
-            Reset Local DB
-          </button>
-        </div>
       </div>
 
       {/* Main Settings Grid */}
@@ -442,28 +455,26 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 <div className="space-y-4">
                   <span className="text-[10px] font-sans font-black text-slate-400 uppercase tracking-wider block">Profile Branding Assets</span>
                   <div className="relative h-36 rounded-2xl bg-gray-100 overflow-hidden border border-gray-200 dark:border-slate-800">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={coverPic} alt="" className="w-full h-full object-cover" />
+                    <SmartImage src={coverPic} className="w-full h-full" />
                     <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
                       <button 
                         type="button"
-                        onClick={() => setCoverPic(`https://picsum.photos/seed/cover_${Date.now()}/800/300`)}
+                        onClick={() => handleImageUpload('cover')}
                         className="px-3 py-1.5 bg-white text-slate-900 text-[10px] font-bold rounded-lg cursor-pointer"
                       >
-                        Change Cover Photo
+                        {uploadingAsset === 'cover' ? 'Uploading…' : 'Change Cover Photo'}
                       </button>
                     </div>
                     {/* Profile avatar overlay */}
                     <div className="absolute bottom-3 left-4 w-16 h-16 rounded-full border-2 border-white overflow-hidden bg-slate-200">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={profilePic} alt="" className="w-full h-full object-cover" />
+                      <SmartImage src={profilePic} rounded className="w-full h-full" />
                       <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
                         <button
                           type="button"
-                          onClick={() => setProfilePic(`https://picsum.photos/seed/user_${Date.now()}/150`)}
+                          onClick={() => handleImageUpload('avatar')}
                           className="text-[8px] text-white font-extrabold cursor-pointer"
                         >
-                          Edit
+                          {uploadingAsset === 'avatar' ? '…' : 'Edit'}
                         </button>
                       </div>
                     </div>
@@ -1354,28 +1365,26 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 <div className="space-y-4">
                   <span className="text-[10px] font-sans font-black text-slate-400 uppercase tracking-wider block">Corporate Banner Assets</span>
                   <div className="relative h-32 rounded-2xl bg-gray-100 overflow-hidden border border-gray-250 dark:border-slate-800">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={businessBanner} alt="" className="w-full h-full object-cover" />
+                    <SmartImage src={businessBanner} className="w-full h-full" />
                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
                       <button 
                         type="button"
-                        onClick={() => setBusinessBanner(`https://picsum.photos/seed/bizbanner_${Date.now()}/800/250`)}
+                        onClick={() => handleImageUpload('bizBanner')}
                         className="px-3 py-1.5 bg-white text-slate-900 text-[10px] font-bold rounded-lg cursor-pointer"
                       >
-                        Change Corporate Banner
+                        {uploadingAsset === 'bizBanner' ? 'Uploading…' : 'Change Corporate Banner'}
                       </button>
                     </div>
                     {/* Logo Overlay */}
                     <div className="absolute bottom-3 left-4 w-12 h-12 rounded-xl border-2 border-white overflow-hidden bg-slate-200">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={businessLogo} alt="" className="w-full h-full object-cover" />
+                      <SmartImage src={businessLogo} className="w-full h-full" />
                       <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
                         <button
                           type="button"
-                          onClick={() => setBusinessLogo(`https://picsum.photos/seed/bizlogo_${Date.now()}/100`)}
+                          onClick={() => handleImageUpload('bizLogo')}
                           className="text-[8px] text-white font-black cursor-pointer"
                         >
-                          Edit
+                          {uploadingAsset === 'bizLogo' ? '…' : 'Edit'}
                         </button>
                       </div>
                     </div>
