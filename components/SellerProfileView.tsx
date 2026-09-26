@@ -46,11 +46,16 @@ export default function SellerProfileView({
   useEffect(() => {
     if (business) {
       setFollowersCount(business.followers);
-    } else if (seller) {
-      // Mock followers based on ID
-      setFollowersCount((seller.id * 47) % 250 + 12);
+    } else {
+      // Real followers from the follower_relations table — never fabricated
+      setFollowersCount(db.followerRelations.filter((f) => f.followedUserId === sellerId).length);
     }
-  }, [sellerId, business, seller]);
+    const me = db.currentUser;
+    setIsFollowing(
+      !!me &&
+        db.followerRelations.some((f) => f.followerId === me.id && f.followedUserId === sellerId)
+    );
+  }, [sellerId, business, db.followerRelations, db.currentUser]);
 
   if (!seller) {
     return (
@@ -72,17 +77,22 @@ export default function SellerProfileView({
   };
 
   const handleToggleFollow = () => {
-    setIsFollowing(prev => {
-      const next = !prev;
-      if (next) {
-        setFollowersCount(c => c + 1);
-        triggerToast(`You are now following @${seller.username}!`);
-      } else {
-        setFollowersCount(c => Math.max(0, c - 1));
-        triggerToast(`You unfollowed @${seller.username}.`);
-      }
-      return next;
-    });
+    const me = db.currentUser;
+    if (!me) {
+      triggerToast('Sign in to follow this seller.');
+      return;
+    }
+    const next = !isFollowing;
+    setIsFollowing(next);
+    if (next) {
+      setFollowersCount((c) => c + 1);
+      dbOperations.followSeller(me.id, sellerId);
+      triggerToast(`You are now following @${seller.username}!`);
+    } else {
+      setFollowersCount((c) => Math.max(0, c - 1));
+      dbOperations.unfollowSeller(me.id, sellerId);
+      triggerToast(`You unfollowed @${seller.username}.`);
+    }
   };
 
   const handleStartChat = async () => {

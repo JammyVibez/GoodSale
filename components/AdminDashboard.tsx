@@ -11,7 +11,7 @@ import {
 import {
   dbOperations, UserRole, VerificationStatus, OrderStatus, useDBState,
 } from '../lib/store';
-import { isOwnerAdminEmail } from '@/lib/demo';
+import { createClient } from '@/lib/supabase/client';
 
 type Tab = 'verifications' | 'users' | 'products' | 'orders_escrow' | 'disputes' | 'dispatch' | 'settings';
 
@@ -67,14 +67,8 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
   });
   const [enabledMethods, setEnabledMethods] = useState<string[]>(['escrow', 'cod', 'card', 'bank', 'invoice', 'partial']);
 
-  useEffect(() => {
-    const user = db.currentUser;
-    if (user && isOwnerAdminEmail(user.email)) {
-      if (user.role !== UserRole.SUPER_ADMIN && user.role !== UserRole.ADMIN) {
-        dbOperations.updateCurrentUserRole(UserRole.SUPER_ADMIN);
-      }
-    }
-  }, [db.currentUser]);
+  // Admin access is decided by the database role (granted by another admin),
+  // never auto-elevated from the browser.
 
   useEffect(() => {
     if (!rs) return;
@@ -542,7 +536,16 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
                     </div>
                     {p.status === 'PENDING' && (
                       <div className="flex gap-2 items-start">
-                        <button disabled={busy} className={btnOk} onClick={() => run(() => { dbOperations.approveDeliveryPartner(p.id); }, 'Partner approved')}>
+                        <button disabled={busy} className={btnOk} onClick={() => run(async () => {
+                          dbOperations.approveDeliveryPartner(p.id);
+                          const client = createClient();
+                          if (!client) throw new Error('Supabase is not configured.');
+                          const { error } = await client
+                            .from('delivery_partners')
+                            .update({ status: 'APPROVED', is_available: true })
+                            .eq('id', p.id);
+                          if (error) throw new Error(error.message);
+                        }, 'Partner approved')}>
                           <CheckCircle2 className="w-3.5 h-3.5" /> Approve
                         </button>
                         <button disabled={busy} className={btnNo} onClick={() => run(async () => {

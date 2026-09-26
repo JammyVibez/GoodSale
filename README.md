@@ -28,8 +28,20 @@ Fill in at minimum:
 | `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` | Paystack Dashboard → Settings → API Keys |
 | `PAYSTACK_SECRET_KEY` | Paystack secret key |
 | `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` locally |
+| `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` + `CLOUDINARY_API_KEY` + `CLOUDINARY_API_SECRET` | Cloudinary dashboard → Settings → API Keys (optional, see below) |
 
 Restart the dev server after saving `.env.local`.
+
+### Media uploads (Cloudinary)
+
+Image and video uploads go through Cloudinary's CDN when all three Cloudinary keys above
+are set. Uploads are **signed server-side** with the API secret (HMAC-SHA1), so the secret
+never reaches the browser and no client SDK is required.
+
+- Without those keys the app falls back to Supabase Storage automatically.
+- Identity documents (`government-ids`) are **never** sent to Cloudinary — they stay on the
+  private Supabase bucket and are served via short-lived signed URLs.
+- Upload size limits: 8MB for images, 25MB for video.
 
 ## 3. Run
 
@@ -63,6 +75,8 @@ Paystack step-by-step: **[docs/PAYSTACK.md](./docs/PAYSTACK.md)**. Full env list
 - **Escrow**: Buyer PIN `/api/orders/release-escrow`; courier `/api/orders/complete-delivery-job`; admin force `/api/admin/escrow`
 - **Disputes / payouts**: `/api/disputes/*`, `/api/wallet/withdraw`, `/api/admin/withdrawals`
 - **Setup banner**: shown until Supabase URL/anon key are present
+- **Notifications / follows / onboarding**: written to Supabase and reloaded live — they are
+  real records, not local-only state
 
 ## Scripts
 

@@ -45,6 +45,22 @@ const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>
   books: BookOpen,
 };
 
+// Real photography for the hero (delivery vans/riders + buyers). Hosted, CSP-allowed.
+const HERO_IMAGES = {
+  buyer:
+    'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=1200&q=80&auto=format&fit=crop',
+  van: 'https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?w=900&q=80&auto=format&fit=crop',
+  rider:
+    'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=900&q=80&auto=format&fit=crop',
+};
+
+const ESCROW_STEPS = [
+  { icon: ShoppingBag, title: 'Buyer pays', body: 'Checkout with Paystack — the money is held in escrow, not sent to the seller yet.' },
+  { icon: Truck, title: 'Seller ships', body: 'The merchant or a GoodDispatch rider collects and delivers, with live tracking.' },
+  { icon: Lock, title: 'Buyer confirms', body: 'The buyer inspects the item and enters their secret delivery PIN.' },
+  { icon: ShieldCheck, title: 'Seller gets paid', body: 'Only then is escrow released — minus the platform fee — to the seller’s wallet.' },
+] as const;
+
 export default function LandingView({
   onSelectProduct,
   searchQuery,
@@ -231,18 +247,117 @@ export default function LandingView({
       
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
 
-        {/* Temu-style wide green promise bar */}
-        <div className="w-full bg-emerald-600 text-white rounded-2xl px-4 py-3.5 mb-6 flex flex-wrap justify-between items-center gap-2 text-xs font-bold shadow-md">
-          <div className="flex items-center gap-2">
-            <span className="bg-white text-emerald-600 rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-black">✓</span>
-            <span>Why choose GoodSale? Safe Payments.</span>
+        {/* HERO — the GoodSale escrow promise */}
+        <section className="relative overflow-hidden rounded-[32px] border border-emerald-500/15 bg-gradient-to-br from-slate-950 via-emerald-950 to-slate-950 text-white mb-8 shadow-2xl">
+          <div className="absolute -top-24 -right-24 w-96 h-96 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-24 -left-24 w-80 h-80 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="relative grid grid-cols-1 lg:grid-cols-2 gap-8 p-6 sm:p-10 lg:p-12 items-center">
+            <div>
+              <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/25 text-emerald-300 text-[11px] font-bold tracking-wide mb-5">
+                <ShieldCheck className="w-3.5 h-3.5" /> Escrow-protected · Built for Nigeria
+              </span>
+              <h1 className="font-display font-black text-3xl sm:text-4xl lg:text-5xl leading-[1.05] tracking-tight">
+                Buy and sell with <span className="text-emerald-400">zero fear</span>.
+              </h1>
+              <p className="mt-4 text-sm sm:text-base text-slate-300 max-w-lg leading-relaxed">
+                GoodSale holds every payment in escrow until the buyer confirms delivery with their secret PIN. Verified sellers, tracked GoodDispatch riders, and a real dispute desk — for buyers, merchants, and couriers across Nigeria.
+              </p>
+
+              <div className="mt-7 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => onOpenAuth?.('register')}
+                  className="inline-flex items-center gap-2 px-5 py-3 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-extrabold uppercase tracking-wide rounded-xl shadow-lg shadow-emerald-500/25 transition-all cursor-pointer"
+                >
+                  Create a free account
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => document.getElementById('catalog-section')?.scrollIntoView({ behavior: 'smooth' })}
+                  className="inline-flex items-center gap-2 px-5 py-3 bg-white/5 hover:bg-white/10 border border-white/15 text-white text-xs font-extrabold uppercase tracking-wide rounded-xl transition-all cursor-pointer"
+                >
+                  Browse marketplace
+                </button>
+              </div>
+
+              <div className="mt-7 flex flex-wrap gap-x-6 gap-y-2 text-[11px] text-slate-400 font-medium">
+                <span className="inline-flex items-center gap-1.5"><Lock className="w-3.5 h-3.5 text-emerald-400" /> Funds held until you confirm</span>
+                <span className="inline-flex items-center gap-1.5"><Truck className="w-3.5 h-3.5 text-emerald-400" /> Live rider tracking</span>
+                <span className="inline-flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Verified merchants</span>
+              </div>
+            </div>
+
+            <div className="relative pb-6">
+              <div className="grid grid-cols-2 gap-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={HERO_IMAGES.buyer}
+                  alt="A happy buyer completing a secure escrow purchase on GoodSale"
+                  className="col-span-2 w-full h-44 sm:h-52 object-cover rounded-2xl border border-white/10"
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={HERO_IMAGES.van}
+                  alt="GoodDispatch delivery van on a Lagos street"
+                  className="w-full h-32 sm:h-40 object-cover rounded-2xl border border-white/10"
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={HERO_IMAGES.rider}
+                  alt="GoodDispatch courier riding to a buyer"
+                  className="w-full h-32 sm:h-40 object-cover rounded-2xl border border-white/10"
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+              <div className="absolute -bottom-1 left-4 bg-white text-slate-900 rounded-2xl px-4 py-3 shadow-xl flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Escrow protected</p>
+                  <p className="text-sm font-black font-mono">₦{liveStats.escrowHeld.toLocaleString()}</p>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="flex gap-4 sm:gap-6 flex-wrap font-medium text-[11px] text-emerald-100">
-            <span>🔒 Secure Escrow Lock</span>
-            <span>⚡ Instant Payout Post-PIN</span>
-            <span>🤝 Anti-Fraud Guarantee</span>
+
+          {/* Live marketplace counters, straight from real data */}
+          <div className="relative grid grid-cols-3 border-t border-white/10 divide-x divide-white/10 text-center">
+            <div className="py-4 px-2">
+              <p className="font-mono font-black text-lg sm:text-2xl text-white">{liveStats.listings.toLocaleString()}</p>
+              <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mt-1">Live listings</p>
+            </div>
+            <div className="py-4 px-2">
+              <p className="font-mono font-black text-lg sm:text-2xl text-white">{liveStats.traders.toLocaleString()}</p>
+              <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mt-1">Traders</p>
+            </div>
+            <div className="py-4 px-2">
+              <p className="font-mono font-black text-lg sm:text-2xl text-emerald-400">₦{liveStats.escrowHeld.toLocaleString()}</p>
+              <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mt-1">Held in escrow</p>
+            </div>
           </div>
-        </div>
+        </section>
+
+        {/* HOW ESCROW WORKS */}
+        <section className="mb-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {ESCROW_STEPS.map((step, i) => (
+            <div key={step.title} className="relative bg-white dark:bg-slate-900 border border-gray-150 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
+              <span className="absolute top-4 right-4 font-mono font-black text-2xl text-gray-100 dark:text-slate-800 select-none">{i + 1}</span>
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-3">
+                <step.icon className="w-5 h-5" />
+              </div>
+              <p className="font-display font-black text-sm text-slate-900 dark:text-white">{step.title}</p>
+              <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">{step.body}</p>
+            </div>
+          ))}
+        </section>
 
         {/* Temu/AliExpress Style Promo & Trust Banner */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-8 text-xs font-semibold text-slate-700 dark:text-slate-300">
@@ -423,8 +538,8 @@ export default function LandingView({
                 <Flame className="w-5.5 h-5.5 fill-red-500/10" />
               </div>
               <div>
-                <h2 className="font-display font-black text-lg text-slate-900 dark:text-white leading-tight">Lightning Flash Sales</h2>
-                <p className="text-[10px] text-gray-400">Super discount prices, valid for limited hours only</p>
+                <h2 className="font-display font-black text-lg text-slate-900 dark:text-white leading-tight">Today’s Featured Deals</h2>
+                <p className="text-[10px] text-gray-400">Hand-picked listings from verified merchants — escrow protected</p>
               </div>
             </div>
             
@@ -439,9 +554,19 @@ export default function LandingView({
  
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {db.products.filter(p => !p.isAuction).slice(0, 2).map((item) => {
-              const discountedPrice = Math.round(item.price * 0.85);
-              const soldPercentage = Math.floor(item.id * 17 + 45) % 35 + 60; // stable dynamic demo percentage
-              const stockLeft = 3 + (item.id % 4);
+              // Honest signals derived from real data: units actually sold (paid
+              // orders) and the real remaining stock. No invented discounts.
+              const soldCount = (db.orders || []).filter(
+                (o) =>
+                  o.productId === item.id &&
+                  ['COMPLETED', 'DELIVERED', 'DELIVERED_SUCCESS', 'PAID_ESCROW', 'SHIPPED', 'OUT_FOR_DELIVERY'].includes(
+                    String(o.status)
+                  )
+              ).length;
+              const stockLeft = Math.max(0, item.quantity ?? 0);
+              const soldPercentage =
+                soldCount + stockLeft > 0 ? Math.min(100, Math.round((soldCount / (soldCount + stockLeft)) * 100)) : 0;
+              const discountedPrice = item.price;
               
               return (
                 <div 
@@ -456,7 +581,7 @@ export default function LandingView({
                     
                     {/* Flash Sale absolute tags */}
                     <span className="absolute top-2 left-2 px-2 py-0.5 bg-red-600 text-white text-[9px] font-black rounded-lg uppercase shadow-sm tracking-wide">
-                      -15% OFF
+                      FEATURED
                     </span>
                     <span className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/70 backdrop-blur-sm text-white text-[8px] font-bold rounded">
                       ⚡ FLASH DEAL
@@ -488,7 +613,6 @@ export default function LandingView({
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex items-baseline gap-1.5">
                         <span className="font-mono font-black text-base text-red-600 dark:text-red-400">₦{discountedPrice.toLocaleString()}</span>
-                        <span className="font-mono text-xs text-gray-400 line-through">₦{item.price.toLocaleString()}</span>
                       </div>
 
                       <button
@@ -775,11 +899,35 @@ export default function LandingView({
           </div>
 
           {filteredProducts.length === 0 ? (
-            <div className="p-16 text-center bg-white dark:bg-slate-900 rounded-[32px] border border-gray-200 dark:border-slate-800 shadow-sm">
-              <ShoppingBag className="w-12 h-12 text-gray-300 dark:text-slate-700 mx-auto mb-4" />
-              <p className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-1">No products found</p>
-              <p className="text-xs text-gray-400">Try loosening your search query or location filter.</p>
-            </div>
+            db.products.length === 0 ? (
+              /* Fresh marketplace — no listings exist yet, so invite the first seller */
+              <div className="p-16 text-center bg-white dark:bg-slate-900 rounded-[32px] border border-dashed border-gray-300 dark:border-slate-700 shadow-sm">
+                <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto mb-5">
+                  <Store className="w-8 h-8 text-emerald-500" />
+                </div>
+                <p className="text-slate-900 dark:text-white text-base font-display font-black mb-1.5">
+                  The marketplace is just getting started
+                </p>
+                <p className="text-xs text-gray-500 dark:text-slate-400 max-w-sm mx-auto mb-6 leading-relaxed">
+                  No listings yet. Create an account to sell the first item — every order is protected by
+                  GoodSale escrow, released only when the buyer confirms delivery with their PIN.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => onOpenAuth?.('register')}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-sans font-extrabold uppercase tracking-wide rounded-xl shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
+                >
+                  <ShoppingBag className="w-4 h-4" />
+                  List the first item
+                </button>
+              </div>
+            ) : (
+              <div className="p-16 text-center bg-white dark:bg-slate-900 rounded-[32px] border border-gray-200 dark:border-slate-800 shadow-sm">
+                <ShoppingBag className="w-12 h-12 text-gray-300 dark:text-slate-700 mx-auto mb-4" />
+                <p className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-1">No products found</p>
+                <p className="text-xs text-gray-400">Try loosening your search query or location filter.</p>
+              </div>
+            )
           ) : (
             /* DENSE MULTI-COLUMN INTERACTIVE PRODUCT GRID (TEMU & ALIEXPRESS INSPIRED) */
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3" id="products-catalog-grid">

@@ -4,10 +4,10 @@
  */
 
 export function isDemoMode(): boolean {
-  const flag = process.env.NEXT_PUBLIC_DEMO_MODE;
-  if (flag === 'true') return true;
-  if (flag === 'false') return false;
-  return process.env.NODE_ENV !== 'production';
+  // Demo behaviour is strictly opt-in. Anything other than an explicit
+  // NEXT_PUBLIC_DEMO_MODE=true (including unset, dev, or preview builds) runs
+  // against the real Supabase backend, never against fabricated data.
+  return process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 }
 
 export function getRequiredEnv(name: string): string {

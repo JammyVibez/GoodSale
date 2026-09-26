@@ -3,10 +3,8 @@
  * Mirrors lib/env.ts isDemoMode for browser bundles.
  */
 export function isDemoMode(): boolean {
-  const flag = process.env.NEXT_PUBLIC_DEMO_MODE;
-  if (flag === 'true') return true;
-  if (flag === 'false') return false;
-  return process.env.NODE_ENV !== 'production';
+  // Mirror of lib/env.ts isDemoMode: opt-in only, never inferred from NODE_ENV.
+  return process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 }
 
 export const OWNER_ADMIN_EMAILS = [

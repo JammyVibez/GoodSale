@@ -28,7 +28,6 @@ export default function Header({
   onOpenAuth,
 }: HeaderProps) {
   const db = useDBState();
-  const [showRoleSwitcher, setShowRoleSwitcher] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'system'>('dark');
   const [showThemeMenu, setShowThemeMenu] = useState(false);
@@ -152,13 +151,6 @@ export default function Header({
     setThemeMode(mode);
     localStorage.setItem('goodsale_theme', mode);
     setShowThemeMenu(false);
-  };
-
-  const selectUserRole = (role: UserRole) => {
-    dbOperations.updateCurrentUserRole(role);
-    setShowRoleSwitcher(false);
-    // Reload notifications for appropriate view
-    onNavigate('landing');
   };
 
   const user = db.currentUser;

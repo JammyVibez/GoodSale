@@ -349,7 +349,6 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
     { id: 'support', label: 'Help & Live Support', icon: HelpCircle, color: 'text-violet-500' },
     { id: 'legal', label: 'Legal Accordions', icon: FileText, color: 'text-slate-400' },
     { id: 'about', label: 'About GoodSale', icon: Info, color: 'text-gray-400' },
-    { id: 'sandbox', label: 'Dev Tester Sandbox', icon: RefreshCw, color: 'text-cyan-500' },
     { id: 'account_management', label: 'Account Controls', icon: Trash2, color: 'text-red-600' },
   ];
 

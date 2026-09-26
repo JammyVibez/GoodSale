@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import Header from '../components/Header';
 import LandingView from '../components/LandingView';
 import ProductDetailView from '../components/ProductDetailView';
@@ -255,8 +256,14 @@ export default function Home() {
         )}
 
         {/* Visual simple footer */}
-        <footer className="bg-white dark:bg-slate-900 border-t border-gray-100 dark:border-slate-800 py-6 text-center text-[10px] text-gray-400 font-mono tracking-wide mt-auto">
-          © {new Date().getFullYear()} GoodSale Inc. Premium Escrow Nigerian Commerce. All rights reserved.
+        <footer className="bg-white dark:bg-slate-900 border-t border-gray-100 dark:border-slate-800 py-6 mt-auto">
+          <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-5 text-[11px] text-gray-400 font-mono tracking-wide">
+            <span>© {new Date().getFullYear()} GoodSale Inc. Premium Escrow Nigerian Commerce.</span>
+            <span className="flex items-center gap-4">
+              <Link href="/terms" className="hover:text-emerald-500 transition-colors">Terms of Service</Link>
+              <Link href="/privacy" className="hover:text-emerald-500 transition-colors">Privacy Policy</Link>
+            </span>
+          </div>
         </footer>
       </main>
 

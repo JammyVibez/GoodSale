@@ -7,7 +7,8 @@ import {
   CheckCircle2, LogIn, Key, Compass, Eye, EyeOff, ShieldAlert, 
   MapPin, Globe, Languages, Camera, RefreshCw, Lock, AlertTriangle, Cpu
 } from 'lucide-react';
-import { useDBState, dbOperations, UserRole, getDBState, saveDBState } from '../lib/store';
+import { useDBState, dbOperations, UserRole, getDBState, saveDBState, reloadFromSupabase } from '../lib/store';
+import { createClient } from '@/lib/supabase/client';
 import { SmartImage } from './ui/SmartImage';
 
 interface AuthModalProps {
@@ -370,25 +371,50 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
         (profile as any).isOnboarded = true;
       }
 
-      // 2. Award +50 Loyalty GoodPoints for profile completion
-      currentUser.goodPoints += 50;
-      const dbUser = state.users.find(u => u.id === currentUser.id);
-      if (dbUser) {
-        dbUser.goodPoints += 50;
-      }
-
-      // 3. Post system notification
-      state.notifications.unshift({
-        id: state.notifications.length + 1,
-        userId: currentUser.id,
-        title: 'Profile Onboarding Complete!',
-        message: 'Congratulations! Your escrow profile is active. You have been credited with +50 GoodPoints for completion.',
-        type: 'POINTS',
-        isRead: false,
-        createdAt: new Date().toISOString()
-      });
-
+      // 2. Save onboarding straight to Supabase so the profile is live everywhere
       saveDBState(state);
+
+      void (async () => {
+        const client = createClient();
+        if (!client) {
+          // No backend connected — keep the confirmation in local state only
+          state.notifications.unshift({
+            id: state.notifications.length + 1,
+            userId: currentUser.id,
+            title: 'Profile Onboarding Complete!',
+            message: 'Your delivery details are saved for this session.',
+            type: 'POINTS',
+            isRead: false,
+            createdAt: new Date().toISOString(),
+          });
+          saveDBState(state);
+          return;
+        }
+
+        const { error } = await client
+          .from('profiles')
+          .update({
+            address: onboardingAddress,
+            city: onboardingCity,
+            state: onboardingState,
+            photo_url: onboardingPhoto,
+            delivery_preference: onboardingDeliveryPref,
+          })
+          .eq('id', currentUser.id);
+        if (error) {
+          console.error('Failed to persist onboarding:', error.message);
+          return;
+        }
+
+        await client.from('notifications').insert({
+          user_id: currentUser.id,
+          title: 'Profile Onboarding Complete!',
+          message: 'Your escrow profile is active and your delivery preferences are saved.',
+          type: 'POINTS',
+          is_read: false,
+        });
+        await reloadFromSupabase();
+      })();
 
       setSuccessMsg(`✓ Onboarding Complete! Welcome to the Home stage.`);
       setTimeout(() => {

@@ -6,8 +6,26 @@ import type { GoodSaleDBState, User } from '@/lib/types';
 import { createEmptyState, DEFAULT_REVENUE_SETTINGS, DEFAULT_PAYMENT_SETTINGS } from './empty-state';
 import * as M from './mappers';
 
+/**
+ * Per-table row caps so a realtime reload can never pull an unbounded dataset.
+ * Public catalog tables stay generous; high-volume/private streams are tighter.
+ * Override the default with NEXT_PUBLIC_MARKET_FEED_LIMIT.
+ */
+const DEFAULT_ROW_LIMIT = Number(process.env.NEXT_PUBLIC_MARKET_FEED_LIMIT) || 1000;
+const ROW_LIMITS: Record<string, number> = {
+  messages: 500,
+  notifications: 200,
+  delivery_jobs: 500,
+  chat_rooms: 300,
+  wallet_transactions: 300,
+  good_points_transactions: 300,
+  payment_logs: 200,
+  audit_logs: 200,
+};
+
 async function selectAll(client: SupabaseClient, table: string) {
-  const { data, error } = await client.from(table).select('*');
+  const limit = ROW_LIMITS[table] ?? DEFAULT_ROW_LIMIT;
+  const { data, error } = await client.from(table).select('*').limit(limit);
   if (error) {
     console.warn(`[GoodSale] Failed to load ${table}:`, error.message);
     return [];

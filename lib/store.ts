@@ -75,6 +75,8 @@ let dbInstance: GoodSaleDBState | null = null;
 let bootstrapped = false;
 let bootstrapPromise: Promise<void> | null = null;
 let realtimeUnsub: (() => void) | null = null;
+let reloadInFlight = false;
+let reloadQueued = false;
 
 function notify() {
   if (typeof window !== 'undefined') {
@@ -112,6 +114,28 @@ export async function reloadFromSupabase() {
   notify();
 }
 
+/**
+ * Serialize realtime reloads: only one full reload runs at a time, and any
+ * change that arrives while one is in flight coalesces into a single follow-up
+ * reload instead of stacking overlapping queries.
+ */
+async function runCoalescedReload(): Promise<void> {
+  if (reloadInFlight) {
+    reloadQueued = true;
+    return;
+  }
+  reloadInFlight = true;
+  try {
+    await reloadFromSupabase();
+  } finally {
+    reloadInFlight = false;
+    if (reloadQueued) {
+      reloadQueued = false;
+      void runCoalescedReload();
+    }
+  }
+}
+
 export async function bootstrapStore(): Promise<void> {
   if (bootstrapped) return;
   if (bootstrapPromise) return bootstrapPromise;
@@ -124,8 +148,8 @@ export async function bootstrapStore(): Promise<void> {
         onChange: () => {
           if (reloadTimer) clearTimeout(reloadTimer);
           reloadTimer = setTimeout(() => {
-            void reloadFromSupabase();
-          }, 300);
+            void runCoalescedReload();
+          }, 400);
         },
       });
       client.auth.onAuthStateChange(async (event) => {
@@ -273,37 +297,28 @@ export const dbOperations = {
     saveDBState(state);
   },
 
+  /**
+   * Trust tiers are granted by GoodSale review — never self-assigned. The
+   * database enforces this too (a trigger blocks client role writes), so this
+   * helper only mirrors an already-authorized admin action into local state.
+   * Non-admins get an explicit error instead of a silently faked upgrade.
+   */
   updateCurrentUserRole(role: UserRole) {
     const state = getDBState();
-    if (state.currentUser) {
-      state.currentUser.role = role;
-      const dbUser = state.users.find((u) => u.id === state.currentUser!.id);
-      if (dbUser) dbUser.role = role;
+    const current = state.currentUser;
+    if (!current) return { error: 'Not signed in' } as const;
 
-      // Ensure Business exists if switching to BUSINESS
-      if ((role === UserRole.BUSINESS || role === UserRole.VERIFIED_BUSINESS) && !state.businesses.some(b => b.ownerId === state.currentUser!.id)) {
-        const newBizId = Math.max(...state.businesses.map(b => b.id), 0) + 1;
-        state.businesses.push({
-          id: newBizId,
-          ownerId: state.currentUser.id,
-          name: `${state.currentUser.fullName}'s Store`,
-          logoUrl: '',
-          bannerUrl: '',
-          description: `Welcome to our virtual store! Tailored services, high-quality stock items, and escrow secured delivery across Nigeria.`,
-          openingHours: '09:00 AM - 06:00 PM',
-          address: 'No 4 Ikeja Retail Way',
-          city: 'Ikeja',
-          state: 'Lagos',
-          isVerified: role === UserRole.VERIFIED_BUSINESS,
-          trustScore: 100,
-          followers: 42,
-          rating: 5.0,
-          reviewsCount: 1,
-        });
-      }
-
-      saveDBState(state);
+    const isAdmin = current.role === UserRole.ADMIN || current.role === UserRole.SUPER_ADMIN;
+    if (!isAdmin) {
+      console.warn('Role changes require GoodSale verification and are not self-service.');
+      return { error: 'Role changes require verification by GoodSale.' } as const;
     }
+
+    current.role = role;
+    const dbUser = state.users.find((u) => u.id === current.id);
+    if (dbUser) dbUser.role = role;
+    saveDBState(state);
+    return { success: true } as const;
   },
 
   async updateProfile(bio: string, address: string, city: string, stateName: string, deliveryPref: string) {
@@ -1438,21 +1453,64 @@ export const dbOperations = {
       if (n.userId === userId) n.isRead = true;
     });
     saveDBState(state);
+    // Persist so the read state survives the next realtime reload
+    const client = createClient();
+    if (client) {
+      void (async () => {
+        try {
+          await client
+            .from('notifications')
+            .update({ is_read: true })
+            .eq('user_id', userId);
+          await reloadFromSupabase();
+        } catch (err) {
+          console.error('Failed to persist clear notifications:', err);
+        }
+      })();
+    }
   },
 
   toggleNotificationRead(notificationId: number) {
     const state = getDBState();
     const notif = state.notifications.find(n => n.id === notificationId);
-    if (notif) {
-      notif.isRead = !notif.isRead;
-    }
+    if (!notif) return;
+    const nextRead = !notif.isRead;
+    notif.isRead = nextRead;
     saveDBState(state);
+    const client = createClient();
+    if (client) {
+      void (async () => {
+        try {
+          await client
+            .from('notifications')
+            .update({ is_read: nextRead })
+            .eq('id', notificationId);
+          await reloadFromSupabase();
+        } catch (err) {
+          console.error('Failed to persist notification read state:', err);
+        }
+      })();
+    }
   },
 
   deleteNotification(notificationId: number) {
     const state = getDBState();
     state.notifications = state.notifications.filter(n => n.id !== notificationId);
     saveDBState(state);
+    const client = createClient();
+    if (client) {
+      void (async () => {
+        try {
+          await client
+            .from('notifications')
+            .delete()
+            .eq('id', notificationId);
+          await reloadFromSupabase();
+        } catch (err) {
+          console.error('Failed to delete notification:', err);
+        }
+      })();
+    }
   },
 
   createCustomNotification(userId: number, title: string, message: string, type: Notification['type']) {
@@ -1467,6 +1525,19 @@ export const dbOperations = {
       createdAt: new Date().toISOString(),
     });
     saveDBState(state);
+    const client = createClient();
+    if (client) {
+      void (async () => {
+        try {
+          await client
+            .from('notifications')
+            .insert({ user_id: userId, title, message, type, is_read: false });
+          await reloadFromSupabase();
+        } catch (err) {
+          console.error('Failed to persist notification:', err);
+        }
+      })();
+    }
   },
 
   claimDailyReward() {
@@ -1560,10 +1631,35 @@ export const dbOperations = {
           message: `${state.currentUser?.fullName || 'A buyer'} started following you!`,
           type: 'VERIFICATION',
           isRead: false,
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
         });
       }
       saveDBState(state);
+
+      const client = createClient();
+      if (client) {
+        void (async () => {
+          try {
+            await client.from('follower_relations').insert({
+              follower_id: followerId,
+              followed_user_id: followedUserId ?? null,
+              followed_business_id: followedBusinessId ?? null,
+            });
+            if (followedUserId) {
+              await client.from('notifications').insert({
+                user_id: followedUserId,
+                title: 'New Follower Alert!',
+                message: `${state.currentUser?.fullName || 'A buyer'} started following you!`,
+                type: 'VERIFICATION',
+                is_read: false,
+              });
+            }
+            await reloadFromSupabase();
+          } catch (err) {
+            console.error('Failed to persist follow:', err);
+          }
+        })();
+      }
     }
   },
 
@@ -1574,6 +1670,27 @@ export const dbOperations = {
         (followedUserId ? f.followedUserId === followedUserId : f.followedBusinessId === followedBusinessId))
     );
     saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      void (async () => {
+        try {
+          let query = client
+            .from('follower_relations')
+            .delete()
+            .eq('follower_id', followerId);
+          if (followedUserId != null) {
+            query = query.eq('followed_user_id', followedUserId);
+          } else if (followedBusinessId != null) {
+            query = query.eq('followed_business_id', followedBusinessId);
+          }
+          await query;
+          await reloadFromSupabase();
+        } catch (err) {
+          console.error('Failed to persist unfollow:', err);
+        }
+      })();
+    }
   },
 
   createSafeMeetMeetup(orderId: number, locationId: number, scheduledAt: string) {

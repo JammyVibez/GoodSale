@@ -57,11 +57,11 @@ export default function RevenueCenterView() {
   // Retrieve user's wallet (create if doesn't exist)
   let wallet = user ? db.wallets.find(w => w.userId === user.id) : null;
   if (user && !wallet) {
-    // Lazy auto initialize wallet — demo starts with seed credit; production starts at 0
+    // Lazy auto initialize a real wallet at zero balance (top-ups come from Paystack).
     wallet = {
       id: db.wallets.length + 1,
       userId: user.id,
-      balance: isDemoMode() ? 120000 : 0,
+      balance: 0,
     };
     db.wallets.push(wallet);
     saveDBState(db);
