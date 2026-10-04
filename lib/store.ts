@@ -191,25 +191,38 @@ export const dbOperations = {
       throw new Error('Supabase is not configured. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.');
     }
 
-    const { data, error } = await client.auth.signUp({
+    // Email confirmation is disabled for now: the account is created
+    // server-side (auto-confirmed) and we sign in right away so the user lands
+    // in onboarding instead of an email-verification step.
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: email.trim(),
+        password,
+        fullName,
+        username,
+        phoneNumber,
+        role: role || UserRole.BUYER,
+        referralCodeUsed: referralCodeUsed || null,
+      }),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok || !payload.success) {
+      throw new Error(payload.error || 'Registration failed');
+    }
+    const { error: signInError } = await client.auth.signInWithPassword({
       email: email.trim(),
       password,
-      options: {
-        data: {
-          full_name: fullName,
-          username,
-          phone_number: phoneNumber,
-          role: role || UserRole.BUYER,
-          referral_code_used: referralCodeUsed || null,
-        },
-      },
     });
-    if (error) throw error;
-    if (!data.user) throw new Error('Registration failed');
+    if (signInError) throw signInError;
+
+    const { data: authUser } = await client.auth.getUser();
+    const authId = authUser.user?.id ?? (payload.userId as string | undefined) ?? null;
 
     let profile: User | null = null;
-    for (let i = 0; i < 8; i++) {
-      profile = await findProfileByAuthId(client, data.user.id);
+    for (let i = 0; i < 8 && authId; i++) {
+      profile = await findProfileByAuthId(client, authId);
       if (profile) break;
       await new Promise((r) => setTimeout(r, 250));
     }
@@ -1943,7 +1956,7 @@ export const dbOperations = {
     state.notifications.push({
       id: state.notifications.length + 1,
       userId: winnerId,
-      title: '🏆 You Won the Auction!',
+      title: 'You won the auction',
       message: `Congratulations! Your bid of ₦${winningBid.amount.toLocaleString()} on "${product.title}" won the auction! A secure pending escrow order (${orderNumber}) has been generated for you to make your payment deposit.`,
       type: 'ORDER',
       isRead: false,
@@ -2055,7 +2068,7 @@ export const dbOperations = {
       id: state.messages.length + 1,
       roomId,
       senderId: state.currentUser.id,
-      messageText: `🤝 PROPOSED NEGOTIATION OFFER: ₦${amount.toLocaleString()}. I would like to purchase via GoodSale Escrow!`,
+      messageText: `PROPOSED NEGOTIATION OFFER: ₦${amount.toLocaleString()}. I would like to purchase via GoodSale Escrow!`,
       offerDetails: {
         amount,
         productId,
@@ -2069,7 +2082,7 @@ export const dbOperations = {
     
     const room = state.chatRooms.find(r => r.id === roomId);
     if (room) {
-      room.lastMessage = `🤝 Propose: ₦${amount.toLocaleString()}`;
+      room.lastMessage = `Propose: ₦${amount.toLocaleString()}`;
       room.lastMessageTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
 
@@ -2146,7 +2159,7 @@ export const dbOperations = {
         state.notifications.push({
           id: state.notifications.length + 1,
           userId: buyerId,
-          title: '🤝 Negotiated Deal Accepted!',
+          title: 'Negotiated deal accepted',
           message: `Your negotiation offer of ₦${activeAmount.toLocaleString()} has been accepted. A secure escrow order (${orderNumber}) has been generated and activated!`,
           type: 'ORDER',
           isRead: false,
@@ -2168,7 +2181,7 @@ export const dbOperations = {
           id: state.messages.length + 1,
           roomId: message.roomId,
           senderId: updaterId || product.sellerId,
-          messageText: `🎉 NEGOTIATED OFFER ACCEPTED! Secure Escrow contract ${orderNumber} generated successfully for ₦${activeAmount.toLocaleString()}. Funds are safe inside the GoodSale Escrow vault.`,
+          messageText: `NEGOTIATED OFFER ACCEPTED! Secure Escrow contract ${orderNumber} generated successfully for ₦${activeAmount.toLocaleString()}. Funds are safe inside the GoodSale Escrow vault.`,
           createdAt: new Date().toISOString(),
         });
       }
@@ -2177,7 +2190,7 @@ export const dbOperations = {
         id: state.messages.length + 1,
         roomId: message.roomId,
         senderId: updaterId || message.senderId,
-        messageText: `🤝 COUNTER OFFER SUBMITTED: ₦${counterAmount?.toLocaleString()}. Do you accept?`,
+        messageText: `COUNTER OFFER SUBMITTED: ₦${counterAmount?.toLocaleString()}. Do you accept?`,
         offerDetails: {
           amount: message.offerDetails.amount,
           productId: message.offerDetails.productId,
@@ -2192,7 +2205,7 @@ export const dbOperations = {
         id: state.messages.length + 1,
         roomId: message.roomId,
         senderId: updaterId || message.senderId,
-        messageText: `❌ Offer was declined by trading partner.`,
+        messageText: `Offer was declined by trading partner.`,
         createdAt: new Date().toISOString(),
       });
     }
@@ -2299,7 +2312,7 @@ export const dbOperations = {
     state.notifications.push({
       id: state.notifications.length + 1,
       userId: partner.userId,
-      title: '🚚 Delivery Partner Approved!',
+      title: 'Delivery partner approved',
       message: 'Congratulations! Your GoodDispatch™ Delivery Partner application has been approved. Your courier dashboard is now unlocked and you can set yourself to active.',
       type: 'VERIFICATION',
       isRead: false,
@@ -2429,7 +2442,7 @@ export const dbOperations = {
       state.notifications.push({
         id: state.notifications.length + 1,
         userId: order.buyerId,
-        title: '🚚 Dispatch Rider Assigned!',
+        title: 'Dispatch rider assigned',
         message: `${partner.fullName} (${partner.vehicleType}) has been assigned to your order ${order.orderNumber}. ETA: ${job.estDeliveryTime}.`,
         type: 'ORDER',
         isRead: false,
@@ -2598,7 +2611,7 @@ export const dbOperations = {
     state.notifications.push({
       id: state.notifications.length + 1,
       userId,
-      title: '🌟 Subscription Activated!',
+      title: 'Subscription activated',
       message: `Your GoodSale Business ${plan} subscription is now active until ${new Date(expiresAt).toLocaleDateString()}.`,
       type: 'VERIFICATION',
       isRead: false,
@@ -2647,7 +2660,7 @@ export const dbOperations = {
     state.notifications.push({
       id: state.notifications.length + 1,
       userId,
-      title: '⚡ Verified+ Status Activated!',
+      title: 'Verified+ status activated',
       message: 'Verified+ benefits are now unlocked! You have received a Premium verification badge, boosted search listings priority, and enhanced Trust score.',
       type: 'VERIFICATION',
       isRead: false,
@@ -2696,7 +2709,7 @@ export const dbOperations = {
     state.notifications.push({
       id: state.notifications.length + 1,
       userId: product.sellerId,
-      title: '✨ Listing Featured successfully!',
+      title: 'Listing featured successfully',
       message: `Your product "${product.title}" has been promoted to Featured status for ${durationDays} days and will rank higher in search results!`,
       type: 'POINTS',
       isRead: false,
@@ -2745,7 +2758,7 @@ export const dbOperations = {
     state.notifications.push({
       id: state.notifications.length + 1,
       userId: product.sellerId,
-      title: '⚡ Flash Sale Listing Confirmed!',
+      title: 'Flash sale listing confirmed',
       message: `Your product "${product.title}" is now officially scheduled to be featured in the next high-traffic Flash Sale block.`,
       type: 'POINTS',
       isRead: false,
@@ -3058,6 +3071,53 @@ export const dbOperations = {
       await reloadFromSupabase();
     }
     return { success: true, user };
+  },
+
+  /**
+   * Delete one of the signed-in user's own listings (admins may delete any).
+   * Removes it from the local store immediately and persists to Supabase so it
+   * does not reappear on the next realtime reload.
+   */
+  async deleteProduct(productId: number) {
+    const state = getDBState();
+    const current = state.currentUser;
+    if (!current) return { error: 'Sign in to manage your listings.' };
+
+    const product = state.products.find((p) => p.id === productId);
+    if (!product) return { error: 'Product not found' };
+
+    const isAdmin = current.role === UserRole.ADMIN || current.role === UserRole.SUPER_ADMIN;
+    if (product.sellerId !== current.id && !isAdmin) {
+      return { error: 'You can only delete your own listings.' };
+    }
+
+    state.products = state.products.filter((p) => p.id !== productId);
+    state.auctions = state.auctions.filter((a) => a.productId !== productId);
+    saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      // Clear dependent rows that reference the product so the delete never
+      // fails on a foreign-key conflict (bundles, auctions, featured slots).
+      await Promise.allSettled([
+        client.from('product_bundles').delete().eq('product_id', productId),
+        client.from('auctions').delete().eq('product_id', productId),
+        client.from('featured_listings').delete().eq('product_id', productId),
+      ]);
+      const { error } = await client.from('products').delete().eq('id', productId);
+      if (error) {
+        console.error('Failed to delete product:', error.message);
+        await reloadFromSupabase();
+        return {
+          error:
+            error.code === '23503'
+              ? 'This listing has orders attached and cannot be deleted.'
+              : error.message,
+        };
+      }
+      await reloadFromSupabase();
+    }
+    return { success: true };
   },
 
   async adminDeleteProduct(productId: number) {

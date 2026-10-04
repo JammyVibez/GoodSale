@@ -12,6 +12,7 @@ import {
   dbOperations, UserRole, VerificationStatus, OrderStatus, useDBState,
 } from '../lib/store';
 import { createClient } from '@/lib/supabase/client';
+import { confirmDialog } from '@/lib/feedback';
 
 type Tab = 'verifications' | 'users' | 'products' | 'orders_escrow' | 'disputes' | 'dispatch' | 'settings';
 
@@ -26,17 +27,17 @@ const PAY_METHODS = [
 ] as const;
 
 const inp =
-  'w-full bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 px-3 py-2 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono';
+  'w-full bg-ink-50 dark:bg-ink-950 border border-ink-200 dark:border-ink-800 px-3 py-2 rounded-xl text-xs text-ink-800 dark:text-ink-200 focus:outline-none focus:ring-1 focus:ring-jade-500 font-mono';
 const btnOk =
-  'px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs rounded-lg transition-all cursor-pointer disabled:opacity-50 inline-flex items-center gap-1';
+  'px-3 py-1.5 bg-jade-500 hover:bg-jade-600 text-white font-bold text-xs rounded-lg transition-all cursor-pointer disabled:opacity-50 inline-flex items-center gap-1';
 const btnNo =
-  'px-3 py-1.5 bg-white dark:bg-slate-900 text-red-500 hover:bg-red-500/10 border border-gray-200 dark:border-slate-800 font-bold text-xs rounded-lg transition-all cursor-pointer disabled:opacity-50 inline-flex items-center gap-1';
-const card = 'bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl shadow-sm';
+  'px-3 py-1.5 bg-white dark:bg-ink-900 text-ink-500 hover:bg-ink-500/10 border border-ink-200 dark:border-ink-800 font-bold text-xs rounded-lg transition-all cursor-pointer disabled:opacity-50 inline-flex items-center gap-1';
+const card = 'bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-2xl shadow-sm';
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-[10px] font-bold text-slate-500 mb-1">{label}</label>
+      <label className="block text-xs font-bold text-ink-500 mb-1">{label}</label>
       {children}
     </div>
   );
@@ -141,12 +142,12 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
   if (!currentUser) {
     return (
       <div className="max-w-md mx-auto px-4 py-16 text-center select-none">
-        <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-500/20">
-          <Scale className="w-8 h-8 text-red-500" />
+        <div className="w-16 h-16 bg-ink-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-ink-500/20">
+          <Scale className="w-8 h-8 text-ink-500" />
         </div>
-        <h2 className="font-display font-black text-2xl text-slate-900 dark:text-white mb-2">Admin Control Room</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mb-8">Sign in as an authorized administrator to continue.</p>
-        <button onClick={onOpenAuth} className="w-full py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer">
+        <h2 className="font-display font-black text-2xl text-ink-900 dark:text-white mb-2">Admin Control Room</h2>
+        <p className="text-sm text-ink-500 dark:text-ink-400 mb-8">Sign in as an authorized administrator to continue.</p>
+        <button onClick={onOpenAuth} className="w-full py-3 bg-gradient-to-r from-jade-500 to-jade-600 text-white font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer">
           Sign In / Register Account
         </button>
       </div>
@@ -156,11 +157,11 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
   if (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.SUPER_ADMIN) {
     return (
       <div className="max-w-md mx-auto px-4 py-16 text-center select-none">
-        <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-500/20">
-          <ShieldAlert className="w-8 h-8 text-red-500" />
+        <div className="w-16 h-16 bg-ink-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-ink-500/20">
+          <ShieldAlert className="w-8 h-8 text-ink-500" />
         </div>
-        <h2 className="font-display font-black text-2xl text-slate-900 dark:text-white mb-2">Access Strictly Restricted</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Reserved for platform administrators only.</p>
+        <h2 className="font-display font-black text-2xl text-ink-900 dark:text-white mb-2">Access Strictly Restricted</h2>
+        <p className="text-sm text-ink-500 dark:text-ink-400">Reserved for platform administrators only.</p>
       </div>
     );
   }
@@ -176,44 +177,44 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
   ];
 
   const metrics = [
-    { label: 'Users', value: String((db.users || []).length), Icon: Users, color: 'text-emerald-500 bg-emerald-500/10' },
-    { label: 'Products', value: String((db.products || []).length), Icon: Package, color: 'text-sky-500 bg-sky-500/10' },
-    { label: 'Open Escrow Held', value: `₦${openEscrowHeld.toLocaleString()}`, Icon: Wallet, color: 'text-emerald-500 bg-emerald-500/10' },
-    { label: 'Pending Verifications', value: String(pendingVerifications.length), Icon: ClipboardList, color: 'text-amber-500 bg-amber-500/10' },
-    { label: 'Open Disputes', value: String(openDisputes.length), Icon: Scale, color: 'text-red-500 bg-red-500/10' },
-    { label: 'Pending Partners', value: String(pendingPartners.length), Icon: Truck, color: 'text-violet-500 bg-violet-500/10' },
+    { label: 'Users', value: String((db.users || []).length), Icon: Users, color: 'text-jade-500 bg-jade-500/10' },
+    { label: 'Products', value: String((db.products || []).length), Icon: Package, color: 'text-jade-500 bg-jade-500/10' },
+    { label: 'Open Escrow Held', value: `₦${openEscrowHeld.toLocaleString()}`, Icon: Wallet, color: 'text-jade-500 bg-jade-500/10' },
+    { label: 'Pending Verifications', value: String(pendingVerifications.length), Icon: ClipboardList, color: 'text-ink-500 bg-ink-500/10' },
+    { label: 'Open Disputes', value: String(openDisputes.length), Icon: Scale, color: 'text-ink-500 bg-ink-500/10' },
+    { label: 'Pending Partners', value: String(pendingPartners.length), Icon: Truck, color: 'text-jade-500 bg-jade-500/10' },
   ];
 
   const statusBadge = (status: string) => {
     const map: Record<string, string> = {
-      PENDING: 'bg-amber-500/10 text-amber-600',
-      APPROVED: 'bg-emerald-500/10 text-emerald-600',
-      REJECTED: 'bg-red-500/10 text-red-500',
-      RELEASED: 'bg-emerald-500/10 text-emerald-600',
-      REFUNDED: 'bg-red-500/10 text-red-500',
+      PENDING: 'bg-ink-500/10 text-ink-600',
+      APPROVED: 'bg-jade-500/10 text-jade-600',
+      REJECTED: 'bg-ink-500/10 text-ink-500',
+      RELEASED: 'bg-jade-500/10 text-jade-600',
+      REFUNDED: 'bg-ink-500/10 text-ink-500',
     };
-    return map[status] || 'bg-gray-100 dark:bg-slate-800 text-slate-500';
+    return map[status] || 'bg-ink-100 dark:bg-ink-800 text-ink-500';
   };
 
   return (
-    <div className="bg-gray-50 dark:bg-slate-950 min-h-screen py-8 px-4 sm:px-6 lg:px-8 transition-colors duration-300">
+    <div className="bg-ink-50 dark:bg-ink-950 min-h-screen py-8 px-4 sm:px-6 lg:px-8 transition-colors duration-300">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-6 flex flex-col gap-4 border-b border-gray-200 dark:border-slate-800 pb-4">
+        <div className="mb-6 flex flex-col gap-4 border-b border-ink-200 dark:border-ink-800 pb-4">
           <div>
-            <h1 className="font-sans font-extrabold text-2xl text-slate-900 dark:text-white flex items-center gap-2">
-              <ShieldAlert className="w-6 h-6 text-emerald-500" /> GoodSale Admin Control Room
+            <h1 className="font-sans font-extrabold text-2xl text-ink-900 dark:text-white flex items-center gap-2">
+              <ShieldAlert className="w-6 h-6 text-jade-500" /> GoodSale Admin Control Room
             </h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            <p className="text-xs text-ink-500 dark:text-ink-400 mt-1">
               Signed in as {currentUser.fullName} · {currentUser.role}
             </p>
           </div>
-          <div className="flex flex-wrap gap-1.5 bg-gray-100 dark:bg-slate-900 p-1 rounded-xl">
+          <div className="flex flex-wrap gap-1.5 bg-ink-100 dark:bg-ink-900 p-1 rounded-xl">
             {tabs.map((t) => (
               <button
                 key={t.id}
                 onClick={() => setActiveTab(t.id)}
                 className={`px-3 py-2 rounded-lg text-xs font-sans font-bold transition-all cursor-pointer ${
-                  activeTab === t.id ? 'bg-emerald-500 text-white shadow' : 'text-slate-700 dark:text-slate-400 hover:text-white'
+                  activeTab === t.id ? 'bg-jade-500 text-white shadow' : 'text-ink-700 dark:text-ink-400 hover:text-white'
                 }`}
               >
                 {t.label}{typeof t.count === 'number' ? ` (${t.count})` : ''}
@@ -223,18 +224,18 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
         </div>
 
         {actionSuccess && (
-          <div className="mb-4 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-500 font-bold text-xs text-center">{actionSuccess}</div>
+          <div className="mb-4 p-3 bg-jade-500/10 border border-jade-500/20 rounded-xl text-jade-500 font-bold text-xs text-center">{actionSuccess}</div>
         )}
         {actionError && (
-          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 font-bold text-xs text-center">{actionError}</div>
+          <div className="mb-4 p-3 bg-ink-500/10 border border-ink-500/20 rounded-xl text-ink-500 font-bold text-xs text-center">{actionError}</div>
         )}
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
           {metrics.map((m) => (
             <div key={m.label} className={`${card} p-4 flex items-center justify-between gap-2`}>
               <div className="min-w-0">
-                <span className="text-[9px] text-gray-400 uppercase font-bold tracking-wider block truncate">{m.label}</span>
-                <span className="font-sans font-extrabold text-sm sm:text-base text-slate-950 dark:text-white block mt-0.5 truncate">{m.value}</span>
+                <span className="text-xs text-ink-400 uppercase font-bold tracking-wider block truncate">{m.label}</span>
+                <span className="font-sans font-extrabold text-sm sm:text-base text-ink-950 dark:text-white block mt-0.5 truncate">{m.value}</span>
               </div>
               <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${m.color}`}>
                 <m.Icon className="w-4 h-4" />
@@ -246,22 +247,22 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
         {/* Verifications */}
         {activeTab === 'verifications' && (
           <div className={`${card} overflow-hidden`}>
-            <div className="p-4 border-b border-gray-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
-              <span className="font-sans font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
-                <FileCheck className="w-4 h-4 text-emerald-500" /> Identity Verifications
+            <div className="p-4 border-b border-ink-200 dark:border-ink-800 flex flex-wrap items-center justify-between gap-3">
+              <span className="font-sans font-bold text-sm text-ink-900 dark:text-white flex items-center gap-2">
+                <FileCheck className="w-4 h-4 text-jade-500" /> Identity Verifications
               </span>
               <div className="flex gap-1">
                 {(['ALL', VerificationStatus.PENDING, VerificationStatus.APPROVED, VerificationStatus.REJECTED] as const).map((f) => (
-                  <button key={f} onClick={() => setVerFilter(f)} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer ${verFilter === f ? 'bg-emerald-500 text-white' : 'bg-gray-100 dark:bg-slate-800 text-slate-500'}`}>
+                  <button key={f} onClick={() => setVerFilter(f)} className={`px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer ${verFilter === f ? 'bg-jade-500 text-white' : 'bg-ink-100 dark:bg-ink-800 text-ink-500'}`}>
                     {f}
                   </button>
                 ))}
               </div>
             </div>
             {filteredVerifications.length === 0 ? (
-              <div className="p-12 text-center text-xs text-slate-400">No verifications in this filter.</div>
+              <div className="p-12 text-center text-xs text-ink-400">No verifications in this filter.</div>
             ) : (
-              <div className="divide-y divide-gray-100 dark:divide-slate-800">
+              <div className="divide-y divide-ink-100 dark:divide-ink-800">
                 {filteredVerifications.map((v) => {
                   const applicant = (db.users || []).find((u) => u.id === v.userId);
                   const notes = verNotes[v.id] ?? '';
@@ -274,17 +275,17 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
                     <div key={v.id} className="p-4 flex flex-col lg:flex-row gap-4 justify-between text-xs">
                       <div className="space-y-1.5 min-w-0">
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="font-bold text-sm text-slate-950 dark:text-white">{v.fullName}</span>
-                          <span className="px-1.5 py-0.5 bg-gray-100 dark:bg-slate-800 text-slate-500 rounded text-[9px] font-bold">@{applicant?.username || 'user'}</span>
-                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${statusBadge(v.status)}`}>{v.status}</span>
+                          <span className="font-bold text-sm text-ink-950 dark:text-white">{v.fullName}</span>
+                          <span className="px-1.5 py-0.5 bg-ink-100 dark:bg-ink-800 text-ink-500 rounded text-xs font-bold">@{applicant?.username || 'user'}</span>
+                          <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${statusBadge(v.status)}`}>{v.status}</span>
                         </div>
-                        <p className="text-gray-400 font-mono">#{v.id} · User {v.userId} · {v.documentType} ({v.documentNumber})</p>
+                        <p className="text-ink-400 font-mono">#{v.id} · User {v.userId} · {v.documentType} ({v.documentNumber})</p>
                         {v.documentImageUrl ? (
-                          <a href={v.documentImageUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-emerald-500 font-bold hover:underline">
+                          <a href={v.documentImageUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-jade-500 font-bold hover:underline">
                             <ExternalLink className="w-3 h-3" /> View document
                           </a>
-                        ) : <span className="text-slate-400">No document image</span>}
-                        {v.adminNotes && <p className="text-slate-500 italic">Notes: {v.adminNotes}</p>}
+                        ) : <span className="text-ink-400">No document image</span>}
+                        {v.adminNotes && <p className="text-ink-500 italic">Notes: {v.adminNotes}</p>}
                       </div>
                       {v.status === VerificationStatus.PENDING && (
                         <div className="flex flex-col gap-2 min-w-[220px]">
@@ -323,14 +324,14 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
         {/* Users */}
         {activeTab === 'users' && (
           <div className={`${card} overflow-hidden`}>
-            <div className="p-4 border-b border-gray-200 dark:border-slate-800 flex flex-wrap gap-3 items-center justify-between">
-              <span className="font-sans font-bold text-sm text-slate-900 dark:text-white">Users ({filteredUsers.length})</span>
+            <div className="p-4 border-b border-ink-200 dark:border-ink-800 flex flex-wrap gap-3 items-center justify-between">
+              <span className="font-sans font-bold text-sm text-ink-900 dark:text-white">Users ({filteredUsers.length})</span>
               <div className="relative">
-                <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-ink-400" />
                 <input value={userSearch} onChange={(e) => setUserSearch(e.target.value)} placeholder="Search name, email, phone…" className={`${inp} pl-8 w-64`} />
               </div>
             </div>
-            <div className="divide-y divide-gray-100 dark:divide-slate-800 max-h-[70vh] overflow-y-auto">
+            <div className="divide-y divide-ink-100 dark:divide-ink-800 max-h-[70vh] overflow-y-auto">
               {filteredUsers.map((u) => {
                 const isSelf = u.id === currentUser.id;
                 const onlyAdminSelf = isSelf && adminCount <= 1 && (u.role === UserRole.ADMIN || u.role === UserRole.SUPER_ADMIN);
@@ -338,12 +339,12 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
                   <div key={u.id} className="p-4 flex flex-col sm:flex-row gap-3 justify-between text-xs">
                     <div className="space-y-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="font-bold text-sm text-slate-950 dark:text-white">{u.fullName}</span>
-                        <span className="text-slate-400">@{u.username}</span>
-                        {u.isSuspended && <span className="px-1.5 py-0.5 bg-red-500/10 text-red-500 rounded text-[9px] font-bold">SUSPENDED</span>}
-                        {isSelf && <span className="px-1.5 py-0.5 bg-emerald-500/10 text-emerald-600 rounded text-[9px] font-bold">YOU</span>}
+                        <span className="font-bold text-sm text-ink-950 dark:text-white">{u.fullName}</span>
+                        <span className="text-ink-400">@{u.username}</span>
+                        {u.isSuspended && <span className="px-1.5 py-0.5 bg-ink-500/10 text-ink-500 rounded text-xs font-bold">SUSPENDED</span>}
+                        {isSelf && <span className="px-1.5 py-0.5 bg-jade-500/10 text-jade-600 rounded text-xs font-bold">YOU</span>}
                       </div>
-                      <p className="text-slate-500 font-mono truncate">{u.email} · {u.phoneNumber || '—'} · Trust {u.trustScore} · {u.role}</p>
+                      <p className="text-ink-500 font-mono truncate">{u.email} · {u.phoneNumber || '—'} · Trust {u.trustScore} · {u.role}</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <select value={u.role} disabled={busy} className={`${inp} w-auto`} onChange={(e) => {
@@ -376,22 +377,22 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
         {/* Products */}
         {activeTab === 'products' && (
           <div className={`${card} overflow-hidden`}>
-            <div className="p-4 border-b border-gray-200 dark:border-slate-800 flex flex-wrap gap-3 items-center justify-between">
-              <span className="font-sans font-bold text-sm text-slate-900 dark:text-white">Products ({filteredProducts.length})</span>
+            <div className="p-4 border-b border-ink-200 dark:border-ink-800 flex flex-wrap gap-3 items-center justify-between">
+              <span className="font-sans font-bold text-sm text-ink-900 dark:text-white">Products ({filteredProducts.length})</span>
               <div className="relative">
-                <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-ink-400" />
                 <input value={productSearch} onChange={(e) => setProductSearch(e.target.value)} placeholder="Search products…" className={`${inp} pl-8 w-64`} />
               </div>
             </div>
-            <div className="divide-y divide-gray-100 dark:divide-slate-800 max-h-[70vh] overflow-y-auto">
-              {filteredProducts.length === 0 && <div className="p-12 text-center text-xs text-slate-400">No products found.</div>}
+            <div className="divide-y divide-ink-100 dark:divide-ink-800 max-h-[70vh] overflow-y-auto">
+              {filteredProducts.length === 0 && <div className="p-12 text-center text-xs text-ink-400">No products found.</div>}
               {filteredProducts.map((p) => {
                 const draft = productDrafts[p.id] ?? { price: String(p.price), stockStatus: p.stockStatus };
                 return (
                   <div key={p.id} className="p-4 flex flex-col lg:flex-row gap-3 justify-between text-xs">
                     <div className="min-w-0">
-                      <span className="font-bold text-sm text-slate-950 dark:text-white block truncate">{p.title}</span>
-                      <p className="text-slate-400 font-mono mt-0.5">#{p.id} · {p.category} · Seller {p.sellerId} · Qty {p.quantity}</p>
+                      <span className="font-bold text-sm text-ink-950 dark:text-white block truncate">{p.title}</span>
+                      <p className="text-ink-400 font-mono mt-0.5">#{p.id} · {p.category} · Seller {p.sellerId} · Qty {p.quantity}</p>
                     </div>
                     <div className="flex flex-wrap items-end gap-2">
                       <Field label="Price ₦">
@@ -412,8 +413,8 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
                         if (res && 'error' in res && res.error) throw new Error(res.error);
                         setProductDrafts((s) => { const n = { ...s }; delete n[p.id]; return n; });
                       }, 'Product updated')}>Save</button>
-                      <button disabled={busy} className={btnNo} onClick={() => {
-                        if (!confirm(`Delete product “${p.title}”?`)) return;
+                      <button disabled={busy} className={btnNo} onClick={async () => {
+                        if (!(await confirmDialog({ title: 'Delete product', message: `Delete product “${p.title}”? This cannot be undone.`, confirmText: 'Delete', danger: true }))) return;
                         void run(async () => {
                           const res = await dbOperations.adminDeleteProduct(p.id);
                           if (res && 'error' in res && res.error) throw new Error(res.error);
@@ -431,7 +432,7 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
         {activeTab === 'orders_escrow' && (
           <div className="space-y-3">
             {(db.orders || []).length === 0 ? (
-              <div className={`${card} p-12 text-center text-xs text-slate-400`}>No orders yet.</div>
+              <div className={`${card} p-12 text-center text-xs text-ink-400`}>No orders yet.</div>
             ) : (db.orders || []).map((order) => {
               const escrow = (db.escrows || []).find((e) => e.orderId === order.id);
               const notes = escrowNotes[order.id] ?? '';
@@ -442,30 +443,30 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
                   <div className="flex flex-col sm:flex-row justify-between gap-2">
                     <div>
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="font-bold text-sm text-slate-900 dark:text-white">{order.orderNumber}</span>
-                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${statusBadge(order.status)}`}>{order.status}</span>
-                        {escrow?.isReleased && <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${statusBadge('RELEASED')}`}>RELEASED</span>}
-                        {escrow?.isRefunded && <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${statusBadge('REFUNDED')}`}>REFUNDED</span>}
+                        <span className="font-bold text-sm text-ink-900 dark:text-white">{order.orderNumber}</span>
+                        <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${statusBadge(order.status)}`}>{order.status}</span>
+                        {escrow?.isReleased && <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${statusBadge('RELEASED')}`}>RELEASED</span>}
+                        {escrow?.isRefunded && <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${statusBadge('REFUNDED')}`}>REFUNDED</span>}
                       </div>
-                      <p className="text-slate-400 mt-1 font-mono">{order.productTitle} · ₦{order.totalAmount.toLocaleString()} · Held ₦{held.toLocaleString()}</p>
-                      <p className="text-amber-600 dark:text-amber-400 font-mono font-bold mt-1">Delivery PIN: {order.deliveryPin}</p>
+                      <p className="text-ink-400 mt-1 font-mono">{order.productTitle} · ₦{order.totalAmount.toLocaleString()} · Held ₦{held.toLocaleString()}</p>
+                      <p className="text-ink-600 dark:text-ink-400 font-mono font-bold mt-1">Delivery PIN: {order.deliveryPin}</p>
                     </div>
-                    <div className="text-right text-slate-400 font-mono">Buyer #{order.buyerId} · Seller #{order.sellerId}</div>
+                    <div className="text-right text-ink-400 font-mono">Buyer #{order.buyerId} · Seller #{order.sellerId}</div>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
                     <input placeholder="Notes for force actions" value={notes} onChange={(e) => setEscrowNotes((s) => ({ ...s, [order.id]: e.target.value }))} className={`${inp} flex-1`} />
                     <div className="flex flex-wrap gap-2">
                       <button disabled={busy} className={btnOk} onClick={() => run(async () => { await dbOperations.adminUpdateOrderStatus(order.id, OrderStatus.SHIPPED); }, 'Marked as shipped')}>Ship</button>
                       <button disabled={busy} className={btnOk} onClick={() => run(async () => { await dbOperations.adminUpdateOrderStatus(order.id, OrderStatus.OUT_FOR_DELIVERY); }, 'Out for delivery')}>Out for delivery</button>
-                      <button disabled={busy || closed} className={btnOk} onClick={() => {
-                        if (!confirm('Force release funds to seller?')) return;
+                      <button disabled={busy || closed} className={btnOk} onClick={async () => {
+                        if (!(await confirmDialog({ title: 'Force release', message: 'Force release funds to the seller? This cannot be undone.', confirmText: 'Release funds' }))) return;
                         void run(async () => {
                           const res = await dbOperations.adminForceEscrowAction(order.id, 'RELEASE_SELLER', notes || 'Admin force release to seller');
                           if (res && 'error' in res && res.error) throw new Error(res.error);
                         }, 'Escrow released to seller');
                       }}>Force Release</button>
-                      <button disabled={busy || closed} className={btnNo} onClick={() => {
-                        if (!confirm('Force refund to buyer?')) return;
+                      <button disabled={busy || closed} className={btnNo} onClick={async () => {
+                        if (!(await confirmDialog({ title: 'Force refund', message: 'Force refund the buyer? This cannot be undone.', confirmText: 'Refund buyer', danger: true }))) return;
                         void run(async () => {
                           const res = await dbOperations.adminForceEscrowAction(order.id, 'REFUND_BUYER', notes || 'Admin force refund to buyer');
                           if (res && 'error' in res && res.error) throw new Error(res.error);
@@ -483,7 +484,7 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
         {activeTab === 'disputes' && (
           <div className="space-y-3">
             {(db.disputes || []).length === 0 ? (
-              <div className={`${card} p-12 text-center text-xs text-slate-400`}>No disputes.</div>
+              <div className={`${card} p-12 text-center text-xs text-ink-400`}>No disputes.</div>
             ) : (db.disputes || []).map((d) => {
               const order = (db.orders || []).find((o) => o.id === d.orderId);
               const buyer = (db.users || []).find((u) => u.id === d.openedById);
@@ -492,13 +493,13 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
               return (
                 <div key={d.id} className={`${card} p-4 space-y-3 text-xs`}>
                   <div>
-                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${pending ? 'bg-red-500/10 text-red-500' : 'bg-slate-500/10 text-slate-500'}`}>
+                    <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${pending ? 'bg-ink-500/10 text-ink-500' : 'bg-ink-500/10 text-ink-500'}`}>
                       {pending ? 'PENDING' : d.resolution}
                     </span>
-                    <h4 className="font-bold text-sm text-slate-900 dark:text-white mt-1">Dispute #{d.id} · {d.orderNumber}</h4>
-                    <p className="text-slate-500 mt-1">Buyer: {buyer?.fullName || d.openedById} · Locked ₦{(order?.totalAmount || 0).toLocaleString()}</p>
-                    <p className="text-slate-600 dark:text-slate-400 mt-1">&quot;{d.reason}&quot;</p>
-                    {d.adminNotes && <p className="text-slate-400 italic mt-1">Admin: {d.adminNotes}</p>}
+                    <h4 className="font-bold text-sm text-ink-900 dark:text-white mt-1">Dispute #{d.id} · {d.orderNumber}</h4>
+                    <p className="text-ink-500 mt-1">Buyer: {buyer?.fullName || d.openedById} · Locked ₦{(order?.totalAmount || 0).toLocaleString()}</p>
+                    <p className="text-ink-600 dark:text-ink-400 mt-1">&quot;{d.reason}&quot;</p>
+                    {d.adminNotes && <p className="text-ink-400 italic mt-1">Admin: {d.adminNotes}</p>}
                   </div>
                   {pending && (
                     <div className="flex flex-col sm:flex-row gap-2">
@@ -516,23 +517,23 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
         {/* Dispatch */}
         {activeTab === 'dispatch' && (
           <div className={`${card} overflow-hidden`}>
-            <div className="p-4 border-b border-gray-200 dark:border-slate-800">
-              <span className="font-sans font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
-                <Truck className="w-4 h-4 text-emerald-500" /> Delivery Partners
+            <div className="p-4 border-b border-ink-200 dark:border-ink-800">
+              <span className="font-sans font-bold text-sm text-ink-900 dark:text-white flex items-center gap-2">
+                <Truck className="w-4 h-4 text-jade-500" /> Delivery Partners
               </span>
             </div>
             {(db.deliveryPartners || []).length === 0 ? (
-              <div className="p-12 text-center text-xs text-slate-400">No delivery partners.</div>
+              <div className="p-12 text-center text-xs text-ink-400">No delivery partners.</div>
             ) : (
-              <div className="divide-y divide-gray-100 dark:divide-slate-800">
+              <div className="divide-y divide-ink-100 dark:divide-ink-800">
                 {(db.deliveryPartners || []).map((p) => (
                   <div key={p.id} className="p-4 flex flex-col sm:flex-row justify-between gap-3 text-xs">
                     <div>
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="font-bold text-sm text-slate-950 dark:text-white">{p.fullName}</span>
-                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${statusBadge(p.status)}`}>{p.status}</span>
+                        <span className="font-bold text-sm text-ink-950 dark:text-white">{p.fullName}</span>
+                        <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${statusBadge(p.status)}`}>{p.status}</span>
                       </div>
-                      <p className="text-slate-400 font-mono mt-1">{p.email} · {p.phone} · {p.vehicleType} · {p.city}, {p.state}</p>
+                      <p className="text-ink-400 font-mono mt-1">{p.email} · {p.phone} · {p.vehicleType} · {p.city}, {p.state}</p>
                     </div>
                     {p.status === 'PENDING' && (
                       <div className="flex gap-2 items-start">
@@ -565,21 +566,21 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
         {activeTab === 'settings' && (
           <div className="space-y-6">
             <div className={`${card} p-4 flex items-start gap-3`}>
-              <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
-              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                <strong className="text-slate-700 dark:text-slate-300">System:</strong> Cloud sync and production ops — see{' '}
-                <code className="font-mono text-[11px] text-emerald-600 dark:text-emerald-400">PRODUCTION.md</code>.
+              <AlertTriangle className="w-4 h-4 text-ink-500 mt-0.5 shrink-0" />
+              <p className="text-xs text-ink-500 dark:text-ink-400 leading-relaxed">
+                <strong className="text-ink-700 dark:text-ink-300">System:</strong> Cloud sync and production ops — see{' '}
+                <code className="font-mono text-xs text-jade-600 dark:text-jade-400">PRODUCTION.md</code>.
               </p>
             </div>
 
             <div className={`${card} p-5 flex flex-col md:flex-row md:items-center justify-between gap-3`}>
               <div>
-                <h3 className="font-sans font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-emerald-500" /> Revenue & Payment Settings
+                <h3 className="font-sans font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
+                  <DollarSign className="w-5 h-5 text-jade-500" /> Revenue & Payment Settings
                 </h3>
-                <p className="text-xs text-slate-500 mt-1">Commissions, tiers, escrow fees, and checkout channels.</p>
+                <p className="text-xs text-ink-500 mt-1">Commissions, tiers, escrow fees, and checkout channels.</p>
               </div>
-              <div className="flex items-center gap-1.5 bg-emerald-500/10 text-emerald-500 font-mono text-[11px] px-2.5 py-1.5 rounded-lg">
+              <div className="flex items-center gap-1.5 bg-jade-500/10 text-jade-500 font-mono text-xs px-2.5 py-1.5 rounded-lg">
                 <Activity className="w-3.5 h-3.5" /> Live
               </div>
             </div>
@@ -611,8 +612,8 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
             >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className={`${card} p-5 space-y-3`}>
-                  <div className="flex items-center gap-2 border-b border-gray-100 dark:border-slate-800 pb-2">
-                    <Scale className="w-4 h-4 text-emerald-500" /><h4 className="font-bold text-sm text-slate-900 dark:text-white">Escrow Fees</h4>
+                  <div className="flex items-center gap-2 border-b border-ink-100 dark:border-ink-800 pb-2">
+                    <Scale className="w-4 h-4 text-jade-500" /><h4 className="font-bold text-sm text-ink-900 dark:text-white">Escrow Fees</h4>
                   </div>
                   <div className="grid grid-cols-3 gap-3">
                     <Field label="Fee %"><input type="number" step="0.05" value={fees.escrowPercentageFee} onChange={(e) => setFee('escrowPercentageFee', e.target.value)} className={inp} required /></Field>
@@ -621,8 +622,8 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
                   </div>
                 </div>
                 <div className={`${card} p-5 space-y-3`}>
-                  <div className="flex items-center gap-2 border-b border-gray-100 dark:border-slate-800 pb-2">
-                    <Percent className="w-4 h-4 text-emerald-500" /><h4 className="font-bold text-sm text-slate-900 dark:text-white">Delivery & Protect</h4>
+                  <div className="flex items-center gap-2 border-b border-ink-100 dark:border-ink-800 pb-2">
+                    <Percent className="w-4 h-4 text-jade-500" /><h4 className="font-bold text-sm text-ink-900 dark:text-white">Delivery & Protect</h4>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="Courier %"><input type="number" step="0.5" value={fees.deliveryCommissionPercentage} onChange={(e) => setFee('deliveryCommissionPercentage', e.target.value)} className={inp} required /></Field>
@@ -630,8 +631,8 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
                   </div>
                 </div>
                 <div className={`${card} p-5 space-y-3`}>
-                  <div className="flex items-center gap-2 border-b border-gray-100 dark:border-slate-800 pb-2">
-                    <Award className="w-4 h-4 text-emerald-500" /><h4 className="font-bold text-sm text-slate-900 dark:text-white">Subscriptions ₦/mo</h4>
+                  <div className="flex items-center gap-2 border-b border-ink-100 dark:border-ink-800 pb-2">
+                    <Award className="w-4 h-4 text-jade-500" /><h4 className="font-bold text-sm text-ink-900 dark:text-white">Subscriptions ₦/mo</h4>
                   </div>
                   <div className="grid grid-cols-3 gap-3">
                     <Field label="Pro"><input type="number" value={fees.subProPrice} onChange={(e) => setFee('subProPrice', e.target.value)} className={inp} required /></Field>
@@ -640,8 +641,8 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
                   </div>
                 </div>
                 <div className={`${card} p-5 space-y-3`}>
-                  <div className="flex items-center gap-2 border-b border-gray-100 dark:border-slate-800 pb-2">
-                    <Sparkles className="w-4 h-4 text-emerald-500" /><h4 className="font-bold text-sm text-slate-900 dark:text-white">Listing Features</h4>
+                  <div className="flex items-center gap-2 border-b border-ink-100 dark:border-ink-800 pb-2">
+                    <Sparkles className="w-4 h-4 text-jade-500" /><h4 className="font-bold text-sm text-ink-900 dark:text-white">Listing Features</h4>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="Verified+ ₦"><input type="number" value={fees.verifiedPlusPrice} onChange={(e) => setFee('verifiedPlusPrice', e.target.value)} className={inp} required /></Field>
@@ -651,8 +652,8 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
                   </div>
                 </div>
                 <div className={`${card} p-5 space-y-3 md:col-span-2`}>
-                  <div className="flex items-center gap-2 border-b border-gray-100 dark:border-slate-800 pb-2">
-                    <Shield className="w-4 h-4 text-emerald-500" /><h4 className="font-bold text-sm text-slate-900 dark:text-white">Checkout Channels</h4>
+                  <div className="flex items-center gap-2 border-b border-ink-100 dark:border-ink-800 pb-2">
+                    <Shield className="w-4 h-4 text-jade-500" /><h4 className="font-bold text-sm text-ink-900 dark:text-white">Checkout Channels</h4>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
                     {PAY_METHODS.map((m) => {
@@ -666,11 +667,11 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
                             if ('locked' in m && m.locked) return;
                             setEnabledMethods(on ? enabledMethods.filter((x) => x !== m.id) : [...enabledMethods, m.id]);
                           }}
-                          className={`p-3 rounded-xl border text-left transition-all cursor-pointer disabled:opacity-60 ${on ? 'border-emerald-500/40 bg-emerald-500/[0.04]' : 'border-gray-200 dark:border-slate-800'}`}
+                          className={`p-3 rounded-xl border text-left transition-all cursor-pointer disabled:opacity-60 ${on ? 'border-jade-500/40 bg-jade-500/[0.04]' : 'border-ink-200 dark:border-ink-800'}`}
                         >
-                          <m.Icon className="w-4 h-4 text-emerald-500 mb-1" />
-                          <div className="font-bold text-xs text-slate-800 dark:text-slate-200">{m.name}</div>
-                          <div className="text-[9px] text-slate-400 mt-0.5">{on ? 'On' : 'Off'}</div>
+                          <m.Icon className="w-4 h-4 text-jade-500 mb-1" />
+                          <div className="font-bold text-xs text-ink-800 dark:text-ink-200">{m.name}</div>
+                          <div className="text-xs text-ink-400 mt-0.5">{on ? 'On' : 'Off'}</div>
                         </button>
                       );
                     })}

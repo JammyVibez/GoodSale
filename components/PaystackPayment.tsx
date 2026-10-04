@@ -175,16 +175,16 @@ export default function PaystackPayment({
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 select-none">
-      <div className="bg-[#112330] w-full max-w-md border border-[#1d3243] rounded-3xl overflow-hidden shadow-2xl relative text-white flex flex-col">
-        <div className="bg-[#0b1a26] px-6 py-4 flex items-center justify-between border-b border-[#1d3243]">
+    <div className="fixed inset-0 bg-ink-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 select-none">
+      <div className="bg-[#1a201e] w-full max-w-md border border-[#29302d] rounded-3xl overflow-hidden shadow-2xl relative text-white flex flex-col">
+        <div className="bg-[#0b0f0d] px-6 py-4 flex items-center justify-between border-b border-[#29302d]">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-[#09a5db]/10 flex items-center justify-center border border-[#09a5db]/30">
-              <Shield className="w-4 h-4 text-[#09a5db]" />
+            <div className="w-8 h-8 rounded-full bg-[#1fb377]/10 flex items-center justify-center border border-[#1fb377]/30">
+              <Shield className="w-4 h-4 text-[#1fb377]" />
             </div>
             <div>
               <p className="font-sans font-black text-xs text-white uppercase tracking-wider">Paystack Secured</p>
-              <p className="text-[10px] text-slate-400 font-mono">
+              <p className="text-xs text-ink-400 font-mono">
                 Order #{orderId} · {publicKey ? 'Live Inline' : demo ? 'Demo Mode' : 'Not Configured'}
               </p>
             </div>
@@ -192,36 +192,36 @@ export default function PaystackPayment({
           <button
             type="button"
             onClick={onCancel}
-            className="w-8 h-8 rounded-full bg-[#172b3a] flex items-center justify-center hover:bg-red-500/20 text-slate-400 hover:text-red-400 cursor-pointer transition-colors"
+            className="w-8 h-8 rounded-full bg-[#222826] flex items-center justify-center hover:bg-ink-500/20 text-ink-400 hover:text-ink-400 cursor-pointer transition-colors"
             aria-label="Close payment"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="bg-[#122637] p-6 text-center space-y-1">
-          <p className="text-slate-400 text-[10px] uppercase tracking-widest font-mono">Paying GoodSale Escrow Ltd</p>
-          <p className="font-mono text-3xl font-black text-[#09a5db]">₦{amount.toLocaleString()}</p>
-          <p className="text-slate-500 text-[10px]">{email}</p>
+        <div className="bg-[#171c1a] p-6 text-center space-y-1">
+          <p className="text-ink-400 text-xs uppercase tracking-widest font-mono">Paying GoodSale Escrow Ltd</p>
+          <p className="font-mono text-3xl font-black text-[#1fb377]">₦{amount.toLocaleString()}</p>
+          <p className="text-ink-500 text-xs">{email}</p>
         </div>
 
         <div className="p-6 flex-1 flex flex-col">
           {(step === 'READY' || step === 'ERROR') && (
             <div className="space-y-5 flex-1 flex flex-col">
               {error && (
-                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 flex items-center gap-2 text-xs">
+                <div className="p-3 bg-ink-500/10 border border-ink-500/20 rounded-xl text-ink-400 flex items-center gap-2 text-xs">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>{error}</span>
                 </div>
               )}
 
-              <div className="p-4 bg-[#0b1a26] border border-[#1d3243] rounded-2xl space-y-3 text-xs text-slate-300 leading-relaxed">
+              <div className="p-4 bg-[#0b0f0d] border border-[#29302d] rounded-2xl space-y-3 text-xs text-ink-300 leading-relaxed">
                 <p className="flex items-start gap-2">
-                  <Lock className="w-4 h-4 text-[#09a5db] shrink-0 mt-0.5" />
+                  <Lock className="w-4 h-4 text-[#1fb377] shrink-0 mt-0.5" />
                   Card numbers, CVV, and ATM PINs are collected only inside Paystack&apos;s PCI-compliant checkout — never on GoodSale.
                 </p>
                 <p className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  <CheckCircle2 className="w-4 h-4 text-jade-400 shrink-0 mt-0.5" />
                   Escrow is credited only after server-side verification of the payment reference.
                 </p>
               </div>
@@ -229,7 +229,7 @@ export default function PaystackPayment({
               <button
                 type="button"
                 onClick={() => void handlePaystackInline()}
-                className="w-full py-3.5 bg-[#09a5db] hover:bg-[#078bb9] text-white font-sans font-extrabold text-xs uppercase tracking-wider rounded-xl cursor-pointer shadow-lg shadow-[#09a5db]/20 flex items-center justify-center gap-2 transition-all"
+                className="w-full py-3.5 bg-[#1fb377] hover:bg-[#26cc84] text-white font-sans font-extrabold text-xs uppercase tracking-wider rounded-xl cursor-pointer shadow-lg shadow-[#1fb377]/20 flex items-center justify-center gap-2 transition-all"
               >
                 <CreditCard className="w-4 h-4" />
                 {publicKey ? 'Pay with Paystack' : 'Simulate Escrow Hold (Demo)'}
@@ -240,7 +240,7 @@ export default function PaystackPayment({
                   type="button"
                   disabled={demoTransfer}
                   onClick={() => void handleDemoBankTransfer()}
-                  className="w-full py-3.5 bg-[#0b1a26] border border-[#1d3243] hover:border-[#09a5db]/40 text-slate-200 font-sans font-extrabold text-xs uppercase tracking-wider rounded-xl cursor-pointer flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                  className="w-full py-3.5 bg-[#0b0f0d] border border-[#29302d] hover:border-[#1fb377]/40 text-ink-200 font-sans font-extrabold text-xs uppercase tracking-wider rounded-xl cursor-pointer flex items-center justify-center gap-2 transition-all disabled:opacity-50"
                 >
                   <Landmark className="w-4 h-4" />
                   {demoTransfer ? 'Verifying…' : 'Demo Bank Transfer'}
@@ -251,29 +251,29 @@ export default function PaystackPayment({
 
           {step === 'PROCESSING' && (
             <div className="flex-1 flex flex-col items-center justify-center text-center space-y-4 py-12">
-              <div className="w-12 h-12 rounded-full border-4 border-slate-700 border-t-[#09a5db] animate-spin" />
+              <div className="w-12 h-12 rounded-full border-4 border-ink-700 border-t-[#1fb377] animate-spin" />
               <div className="space-y-1">
                 <p className="font-sans font-black text-xs text-white uppercase tracking-widest">Verifying Payment</p>
-                <p className="text-[10px] text-slate-400">Confirming transaction with Paystack…</p>
+                <p className="text-xs text-ink-400">Confirming transaction with Paystack…</p>
               </div>
             </div>
           )}
 
           {step === 'SUCCESS' && (
             <div className="flex-1 flex flex-col items-center justify-center text-center space-y-4 py-12">
-              <div className="w-14 h-14 bg-emerald-500/10 rounded-full flex items-center justify-center border border-emerald-500/30 animate-bounce">
-                <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+              <div className="w-14 h-14 bg-jade-500/10 rounded-full flex items-center justify-center border border-jade-500/30 animate-bounce">
+                <CheckCircle2 className="w-8 h-8 text-jade-400" />
               </div>
               <div className="space-y-1">
-                <p className="font-sans font-black text-sm text-emerald-400 uppercase tracking-widest">Escrow Hold Secure</p>
-                <p className="text-[10px] text-slate-400">Payment verified. Funds locked in escrow ledger.</p>
+                <p className="font-sans font-black text-sm text-jade-400 uppercase tracking-widest">Escrow Hold Secure</p>
+                <p className="text-xs text-ink-400">Payment verified. Funds locked in escrow ledger.</p>
               </div>
             </div>
           )}
         </div>
 
-        <div className="bg-[#0b1a26] px-6 py-4 border-t border-[#1d3243] flex items-center justify-center gap-1.5 text-[10px] text-slate-400">
-          <Lock className="w-3.5 h-3.5 text-slate-500" />
+        <div className="bg-[#0b0f0d] px-6 py-4 border-t border-[#29302d] flex items-center justify-center gap-1.5 text-xs text-ink-400">
+          <Lock className="w-3.5 h-3.5 text-ink-500" />
           <span>PCI DSS via Paystack · Server-verified references only</span>
         </div>
       </div>

@@ -69,22 +69,22 @@ const SECTIONS: { heading: string; body: string[] }[] = [
 
 export default function PrivacyPage() {
   return (
-    <main className="min-h-screen bg-gray-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200">
+    <main className="min-h-screen bg-ink-50 dark:bg-ink-950 text-ink-800 dark:text-ink-200">
       <div className="max-w-3xl mx-auto px-5 sm:px-8 py-12">
         <Link
           href="/"
-          className="inline-flex items-center gap-2 text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline mb-8"
+          className="inline-flex items-center gap-2 text-xs font-bold text-jade-600 dark:text-jade-400 hover:underline mb-8"
         >
           ← Back to GoodSale
         </Link>
 
-        <p className="text-[11px] font-mono uppercase tracking-widest text-emerald-600 dark:text-emerald-400 font-bold">
+        <p className="text-xs font-mono uppercase tracking-widest text-jade-600 dark:text-jade-400 font-bold">
           Legal
         </p>
-        <h1 className="font-display font-black text-3xl sm:text-4xl mt-2 text-slate-900 dark:text-white">
+        <h1 className="font-display font-black text-3xl sm:text-4xl mt-2 text-ink-900 dark:text-white">
           Privacy Policy
         </h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-3">
+        <p className="text-sm text-ink-500 dark:text-ink-400 mt-3">
           Last updated: September 2026. This policy explains what personal data GoodSale collects,
           why we collect it, and the choices you have.
         </p>
@@ -92,11 +92,11 @@ export default function PrivacyPage() {
         <div className="mt-10 space-y-8">
           {SECTIONS.map((section) => (
             <section key={section.heading}>
-              <h2 className="font-display font-black text-lg text-slate-900 dark:text-white">
+              <h2 className="font-display font-black text-lg text-ink-900 dark:text-white">
                 {section.heading}
               </h2>
               {section.body.map((paragraph, i) => (
-                <p key={i} className="text-sm leading-relaxed text-slate-600 dark:text-slate-400 mt-3">
+                <p key={i} className="text-sm leading-relaxed text-ink-600 dark:text-ink-400 mt-3">
                   {paragraph}
                 </p>
               ))}
@@ -104,11 +104,11 @@ export default function PrivacyPage() {
           ))}
         </div>
 
-        <div className="mt-12 p-5 rounded-2xl border border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm">
-          <p className="text-slate-500 dark:text-slate-400">
+        <div className="mt-12 p-5 rounded-2xl border border-ink-200 dark:border-ink-800 bg-white dark:bg-ink-900 text-sm">
+          <p className="text-ink-500 dark:text-ink-400">
             Questions about your data? Contact us from Help &amp; Support in your account settings.
             See our{' '}
-            <Link href="/terms" className="text-emerald-600 dark:text-emerald-400 font-bold hover:underline">
+            <Link href="/terms" className="text-jade-600 dark:text-jade-400 font-bold hover:underline">
               Terms of Service
             </Link>{' '}
             for the rules that govern the marketplace.

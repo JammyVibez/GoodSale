@@ -156,41 +156,41 @@ export default function VerificationBadgeView() {
   };
 
   return (
-    <div className="bg-gray-50 dark:bg-slate-950 min-h-screen py-10 px-4 sm:px-6 lg:px-8 transition-colors duration-300">
+    <div className="bg-ink-50 dark:bg-ink-950 min-h-screen py-10 px-4 sm:px-6 lg:px-8 transition-colors duration-300">
       <div className="max-w-2xl mx-auto">
         
         {/* Main Badge Card */}
-        <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
+        <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
           
           <div className="text-center">
-            <div className="w-16 h-16 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-500 mx-auto mb-4">
-              <ShieldCheck className="w-8 h-8 fill-amber-500/10 animate-pulse" />
+            <div className="w-16 h-16 rounded-2xl bg-ink-500/10 flex items-center justify-center text-ink-500 mx-auto mb-4">
+              <ShieldCheck className="w-8 h-8 fill-ink-500/10 animate-pulse" />
             </div>
-            <h1 className="font-sans font-extrabold text-xl sm:text-2xl tracking-tight text-slate-950 dark:text-white">
+            <h1 className="font-sans font-extrabold text-xl sm:text-2xl tracking-tight text-ink-950 dark:text-white">
               GoodSale Gold Trust Badge Verification
             </h1>
-            <p className="text-xs text-gray-500 dark:text-slate-400 max-w-md mx-auto mt-1.5 leading-relaxed">
+            <p className="text-xs text-ink-500 dark:text-ink-400 max-w-md mx-auto mt-1.5 leading-relaxed">
               Verify your credentials using secure server-side storage and Nigeria&apos;s national ID registers (BVN/NIN). Certified merchants receive gold trust badges and immediate search rankings.
             </p>
           </div>
 
           {isVerified ? (
-            <div className="p-8 bg-emerald-500/5 border border-emerald-500/20 rounded-3xl text-center space-y-3 relative overflow-hidden">
-              <div className="absolute -top-10 -right-10 w-32 h-32 bg-emerald-500/5 rounded-full blur-xl" />
-              <CheckCircle className="w-12 h-12 text-emerald-500 mx-auto" />
-              <h3 className="font-sans font-extrabold text-base text-slate-900 dark:text-white flex items-center justify-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-amber-500 fill-amber-500" />
+            <div className="p-8 bg-jade-500/5 border border-jade-500/20 rounded-3xl text-center space-y-3 relative overflow-hidden">
+              <div className="absolute -top-10 -right-10 w-32 h-32 bg-jade-500/5 rounded-full blur-xl" />
+              <CheckCircle className="w-12 h-12 text-jade-500 mx-auto" />
+              <h3 className="font-sans font-extrabold text-base text-ink-900 dark:text-white flex items-center justify-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-ink-500 fill-ink-500" />
                 Profile Status: Verified Merchant
               </h3>
-              <p className="text-xs text-gray-500 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
+              <p className="text-xs text-ink-500 dark:text-ink-400 max-w-md mx-auto leading-relaxed">
                 Your profile has received the prestigious **Gold Trust Badge**. All your product listings are now boosted with priority ranking, and customers see your verification badge on the catalog grid.
               </p>
               <div className="pt-2 flex flex-wrap gap-2 justify-center">
-                <span className="px-3 py-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold rounded-lg text-[10px] flex items-center gap-1">
+                <span className="px-3 py-1 bg-ink-500/10 text-ink-600 dark:text-ink-400 font-bold rounded-lg text-xs flex items-center gap-1">
                   <Award className="w-3.5 h-3.5" />
                   Gold Trust Badge
                 </span>
-                <span className="px-3 py-1 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold rounded-lg text-[10px] flex items-center gap-1">
+                <span className="px-3 py-1 bg-jade-500/10 text-jade-600 dark:text-jade-400 font-bold rounded-lg text-xs flex items-center gap-1">
                   +200 GoodPoints Granted
                 </span>
               </div>
@@ -200,11 +200,11 @@ export default function VerificationBadgeView() {
               
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-slate-500 dark:text-slate-400 block mb-1 font-extrabold font-sans">Apply as Merchant Type</label>
+                  <label className="text-ink-500 dark:text-ink-400 block mb-1 font-extrabold font-sans">Apply as Merchant Type</label>
                   <select
                     value={userRoleSelection}
                     onChange={(e) => setUserRoleSelection(e.target.value as 'SELLER' | 'BUSINESS')}
-                    className="w-full px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white font-semibold cursor-pointer outline-none focus:border-emerald-500 transition-colors"
+                    className="w-full px-3 py-2 bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl text-ink-800 dark:text-white font-semibold cursor-pointer outline-none focus:border-jade-500 transition-colors"
                   >
                     <option value="SELLER">Verified Individual Seller</option>
                     <option value="BUSINESS">Verified Enterprise Store</option>
@@ -212,11 +212,11 @@ export default function VerificationBadgeView() {
                 </div>
 
                 <div>
-                  <label className="text-slate-500 dark:text-slate-400 block mb-1 font-extrabold font-sans">Government ID Type</label>
+                  <label className="text-ink-500 dark:text-ink-400 block mb-1 font-extrabold font-sans">Government ID Type</label>
                   <select
                     value={documentType}
                     onChange={(e) => setDocumentType(e.target.value as DocumentType)}
-                    className="w-full px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white font-semibold cursor-pointer outline-none focus:border-emerald-500 transition-colors"
+                    className="w-full px-3 py-2 bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl text-ink-800 dark:text-white font-semibold cursor-pointer outline-none focus:border-jade-500 transition-colors"
                   >
                     <option value={DocumentType.NIN}>National ID Card (NIN Slip)</option>
                     <option value={DocumentType.PASSPORT}>Nigerian International Passport</option>
@@ -226,7 +226,7 @@ export default function VerificationBadgeView() {
                 </div>
 
                 <div>
-                  <label className="text-slate-500 dark:text-slate-400 block mb-1 font-extrabold font-sans">Bank Verification Number (11-digit BVN)</label>
+                  <label className="text-ink-500 dark:text-ink-400 block mb-1 font-extrabold font-sans">Bank Verification Number (11-digit BVN)</label>
                   <input
                     type="password"
                     maxLength={11}
@@ -234,12 +234,12 @@ export default function VerificationBadgeView() {
                     value={bvn}
                     onChange={(e) => setBvn(e.target.value.replace(/\D/g, ''))}
                     placeholder="e.g. 22233344455"
-                    className="w-full px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white font-mono tracking-widest outline-none focus:border-emerald-500 transition-colors"
+                    className="w-full px-3 py-2 bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl text-ink-800 dark:text-white font-mono tracking-widest outline-none focus:border-jade-500 transition-colors"
                   />
                 </div>
 
                 <div>
-                  <label className="text-slate-500 dark:text-slate-400 block mb-1 font-extrabold font-sans">National ID Number (11-digit NIN)</label>
+                  <label className="text-ink-500 dark:text-ink-400 block mb-1 font-extrabold font-sans">National ID Number (11-digit NIN)</label>
                   <input
                     type="text"
                     maxLength={11}
@@ -247,14 +247,14 @@ export default function VerificationBadgeView() {
                     value={nin}
                     onChange={(e) => setNin(e.target.value.replace(/\D/g, ''))}
                     placeholder="e.g. 99988877766"
-                    className="w-full px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white font-mono tracking-widest outline-none focus:border-emerald-500 transition-colors"
+                    className="w-full px-3 py-2 bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl text-ink-800 dark:text-white font-mono tracking-widest outline-none focus:border-jade-500 transition-colors"
                   />
                 </div>
               </div>
 
               {/* Upload Document Slot with Supabase and Drag-and-Drop */}
               <div>
-                <label className="text-slate-500 dark:text-slate-400 block mb-1 font-extrabold font-sans">
+                <label className="text-ink-500 dark:text-ink-400 block mb-1 font-extrabold font-sans">
                   Upload Government Photo ID (NIN Slip, Voter Card, or Passport)
                 </label>
                 
@@ -274,31 +274,31 @@ export default function VerificationBadgeView() {
                   onClick={handleTriggerFileInput}
                   className={`p-6 border-2 border-dashed rounded-2xl text-center cursor-pointer transition-all ${
                     dragActive 
-                      ? 'border-emerald-500 bg-emerald-500/5' 
-                      : 'border-gray-200 dark:border-slate-800 hover:border-emerald-500/50 bg-gray-50/50 dark:bg-slate-950/20'
+                      ? 'border-jade-500 bg-jade-500/5' 
+                      : 'border-ink-200 dark:border-ink-800 hover:border-jade-500/50 bg-ink-50/50 dark:bg-ink-950/20'
                   }`}
                 >
                   {uploading ? (
                     <div className="py-4 space-y-2 flex flex-col items-center">
-                      <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
-                      <p className="font-bold text-slate-700 dark:text-slate-300">Uploading securely to Supabase Storage...</p>
-                      <p className="text-[10px] text-slate-400">Encrypting file buffer & verifying payload size...</p>
+                      <Loader2 className="w-8 h-8 text-jade-500 animate-spin" />
+                      <p className="font-bold text-ink-700 dark:text-ink-300">Uploading securely to Supabase Storage...</p>
+                      <p className="text-xs text-ink-400">Encrypting file buffer & verifying payload size...</p>
                     </div>
                   ) : uploadedUrl ? (
                     <div className="py-2 space-y-3">
-                      <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center mx-auto">
+                      <div className="w-12 h-12 rounded-xl bg-jade-500/10 text-jade-500 flex items-center justify-center mx-auto">
                         <CheckCircle className="w-6 h-6" />
                       </div>
                       <div>
-                        <p className="font-bold text-slate-900 dark:text-white text-xs">File Uploaded Successfully!</p>
-                        <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono mt-0.5">
+                        <p className="font-bold text-ink-900 dark:text-white text-xs">File Uploaded Successfully!</p>
+                        <p className="text-xs text-jade-600 dark:text-jade-400 font-mono mt-0.5">
                           Source: {uploadSource}
                         </p>
                       </div>
                       
                       {/* Document Preview Thumbnail if image */}
                       {file && file.type.startsWith('image/') && (
-                        <div className="relative mx-auto w-32 aspect-[3/2] rounded-lg overflow-hidden border border-gray-200 dark:border-slate-800 mt-2 shadow-sm bg-white dark:bg-slate-900">
+                        <div className="relative mx-auto w-32 aspect-[3/2] rounded-lg overflow-hidden border border-ink-200 dark:border-ink-800 mt-2 shadow-sm bg-white dark:bg-ink-900">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img 
                             src={uploadedUrl} 
@@ -308,17 +308,17 @@ export default function VerificationBadgeView() {
                         </div>
                       )}
 
-                      <p className="text-[10px] text-gray-400 underline font-semibold">
+                      <p className="text-xs text-ink-400 underline font-semibold">
                         Click or drop another file to replace
                       </p>
                     </div>
                   ) : (
                     <div className="py-4">
-                      <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2.5" />
-                      <span className="font-extrabold block text-slate-800 dark:text-slate-200 mb-1 font-sans">
+                      <Upload className="w-8 h-8 text-ink-400 mx-auto mb-2.5" />
+                      <span className="font-extrabold block text-ink-800 dark:text-ink-200 mb-1 font-sans">
                         Click to select government ID or drag-and-drop
                       </span>
-                      <span className="text-[10px] text-gray-400 block">
+                      <span className="text-xs text-ink-400 block">
                         PDF, PNG, JPG (Max size 5MB)
                       </span>
                     </div>
@@ -327,16 +327,16 @@ export default function VerificationBadgeView() {
               </div>
 
               {uploadedUrl && (
-                <div className="p-3 bg-indigo-500/5 border border-indigo-500/10 rounded-xl flex items-start gap-2.5">
-                  <Info className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-                  <p className="text-[11px] text-indigo-600 dark:text-indigo-400 leading-relaxed font-sans">
+                <div className="p-3 bg-jade-500/5 border border-jade-500/10 rounded-xl flex items-start gap-2.5">
+                  <Info className="w-4 h-4 text-jade-500 shrink-0 mt-0.5" />
+                  <p className="text-xs text-jade-600 dark:text-jade-400 leading-relaxed font-sans">
                     <strong>Secure Link:</strong> Government ID is isolated in server storage. Only automated security scanners can inspect details to protect your privacy.
                   </p>
                 </div>
               )}
 
               {bvnError && (
-                <p className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 font-bold text-center">
+                <p className="p-3 bg-ink-500/10 border border-ink-500/20 rounded-xl text-ink-500 font-bold text-center">
                   {bvnError}
                 </p>
               )}
@@ -344,7 +344,7 @@ export default function VerificationBadgeView() {
               <button
                 type="submit"
                 disabled={uploading}
-                className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-sans font-extrabold text-xs rounded-xl transition-all shadow-md shadow-emerald-500/10 cursor-pointer flex items-center justify-center gap-1 disabled:opacity-50"
+                className="w-full py-3 bg-jade-500 hover:bg-jade-600 text-white font-sans font-extrabold text-xs rounded-xl transition-all shadow-md shadow-jade-500/10 cursor-pointer flex items-center justify-center gap-1 disabled:opacity-50"
               >
                 Submit ID Verification & Auto-Verify Profile
                 <ChevronRight className="w-4 h-4" />

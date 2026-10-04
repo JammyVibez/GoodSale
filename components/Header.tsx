@@ -5,9 +5,10 @@ import React, { useState, useEffect } from 'react';
 import { 
   Search, ShoppingCart, Bell, User as UserIcon, Shield, RefreshCw, 
   Award, Store, Sun, Moon, Laptop, LogIn, CheckCircle, Sparkles,
-  X, Gavel, Package, Eye, EyeOff, Trash, MessageSquare, Truck, DollarSign
+  X, Gavel, Package, Eye, EyeOff, Trash, MessageSquare, Truck, DollarSign,
+  Wallet, ChevronDown, Settings as SettingsIcon, LogOut, LayoutGrid, BadgeCheck
 } from 'lucide-react';
-import { User, UserRole, getDBState, saveDBState, dbOperations, useDBState } from '../lib/store';
+import { UserRole, dbOperations, useDBState } from '../lib/store';
 import Logo from './LogoIcon';
 
 interface HeaderProps {
@@ -33,6 +34,7 @@ export default function Header({
   const [showThemeMenu, setShowThemeMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [notifFilter, setNotifFilter] = useState<'all' | 'unread'>('all');
+  const [showUserMenu, setShowUserMenu] = useState(false);
 
   // Search History States
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
@@ -164,23 +166,23 @@ export default function Header({
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-gray-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md transition-colors duration-300">
+    <header className="sticky top-0 z-50 w-full border-b border-ink-200 dark:border-ink-800 bg-white/95 dark:bg-ink-900/95 backdrop-blur-md transition-colors duration-300">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 gap-4">
           
           {/* Logo */}
           <div 
             id="logo-container"
-            onClick={() => onNavigate('landing')}
+            onClick={() => onNavigate('marketplace')}
             className="flex items-center gap-2 cursor-pointer select-none shrink-0"
           >
             <Logo iconSize={36} />
           </div>
 
           {/* Search Bar - Hidden on minimal views */}
-          {currentView === 'landing' && (
+          {(currentView === 'marketplace' || currentView === 'product') && (
             <div className="hidden md:flex flex-1 max-w-md relative">
-              <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-400">
+              <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-ink-400">
                 <Search className="w-4 h-4" />
               </div>
               <input
@@ -197,20 +199,20 @@ export default function Header({
                   }
                 }}
                 onChange={(e) => onSearchChange(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 text-sm bg-gray-100 dark:bg-slate-800 border-none rounded-full focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800 dark:text-white transition-all placeholder:text-gray-400 dark:placeholder:text-slate-500"
+                className="w-full pl-10 pr-4 py-2 text-sm bg-ink-100 dark:bg-ink-800 border-none rounded-full focus:outline-none focus:ring-2 focus:ring-jade-500 text-ink-800 dark:text-white transition-all placeholder:text-ink-400 dark:placeholder:text-ink-500"
               />
 
               {/* Recent Searches Dropdown */}
               {showRecentDropdown && recentSearches.length > 0 && (
                 <div 
-                  className="absolute left-0 right-0 top-full mt-2 bg-white dark:bg-slate-900 border border-gray-150 dark:border-slate-800 rounded-2xl shadow-xl z-50 py-3 overflow-hidden animate-slide-in"
+                  className="absolute left-0 right-0 top-full mt-2 bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 rounded-2xl shadow-xl z-50 py-3 overflow-hidden animate-slide-in"
                   onMouseDown={(e) => e.preventDefault()}
                 >
-                  <div className="flex items-center justify-between px-4 pb-2 mb-1 border-b border-gray-50 dark:border-slate-800/50 text-[10px] font-bold text-gray-400 dark:text-slate-500 font-mono tracking-wider">
+                  <div className="flex items-center justify-between px-4 pb-2 mb-1 border-b border-ink-50 dark:border-ink-800/50 text-xs font-bold text-ink-400 dark:text-ink-500 font-mono tracking-wider">
                     <span>RECENT SEARCHES</span>
                     <button 
                       onClick={handleClearAllRecent}
-                      className="hover:text-red-500 transition-colors flex items-center gap-0.5 cursor-pointer"
+                      className="hover:text-ink-500 transition-colors flex items-center gap-0.5 cursor-pointer"
                     >
                       <Trash className="w-3 h-3" />
                       Clear All
@@ -221,15 +223,15 @@ export default function Header({
                       <div
                         key={index}
                         onClick={() => handleSelectRecentSearch(item)}
-                        className="flex items-center justify-between px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/80 cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-300 transition-colors group"
+                        className="flex items-center justify-between px-4 py-2 hover:bg-ink-50 dark:hover:bg-ink-800/80 cursor-pointer text-xs font-semibold text-ink-700 dark:text-ink-300 transition-colors group"
                       >
                         <span className="flex items-center gap-2 truncate">
-                          <RefreshCw className="w-3.5 h-3.5 text-gray-400 dark:text-slate-500 group-hover:text-emerald-500" />
+                          <RefreshCw className="w-3.5 h-3.5 text-ink-400 dark:text-ink-500 group-hover:text-jade-500" />
                           <span className="truncate">{item}</span>
                         </span>
                         <button
                           onClick={(e) => handleDeleteRecentSearch(e, item)}
-                          className="p-1 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-md text-gray-400 dark:text-slate-500 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                          className="p-1 hover:bg-ink-50 dark:hover:bg-ink-950/20 rounded-md text-ink-400 dark:text-ink-500 hover:text-ink-500 transition-colors opacity-0 group-hover:opacity-100"
                           title="Delete search"
                         >
                           <X className="w-3 h-3" />
@@ -243,17 +245,36 @@ export default function Header({
           )}
 
           {/* Core Button Navigation Row */}
-          <div className="hidden md:flex items-center gap-1.5 bg-gray-50/80 dark:bg-slate-850/80 p-1 rounded-xl border border-gray-200/50 dark:border-slate-800/80">
+          <div className="hidden md:flex items-center gap-1.5 bg-ink-50/80 dark:bg-ink-850/80 p-1 rounded-xl border border-ink-200/50 dark:border-ink-800/80">
             <button
-              onClick={() => onNavigate('landing')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold tracking-wide transition-all cursor-pointer ${
-                currentView === 'landing'
-                  ? 'bg-emerald-500 text-white shadow-sm'
-                  : 'text-slate-600 dark:text-slate-300 hover:text-emerald-500 dark:hover:text-emerald-400'
+              onClick={() => onNavigate('marketplace')}
+              aria-current={currentView === 'marketplace' ? 'page' : undefined}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-extrabold tracking-wide transition-all cursor-pointer ${
+                currentView === 'marketplace'
+                  ? 'bg-jade-500 text-white shadow-sm shadow-jade-500/30 [&_svg]:text-white'
+                  : 'text-ink-600 dark:text-ink-300 hover:text-jade-500 dark:hover:text-jade-400'
               }`}
             >
               <Store className="w-3.5 h-3.5" />
-              <span>Market</span>
+              <span>Marketplace</span>
+            </button>
+            <button
+              onClick={() => {
+                if (user) {
+                  onNavigate('wallet');
+                } else {
+                  onOpenAuth?.('register');
+                }
+              }}
+              aria-current={currentView === 'wallet' ? 'page' : undefined}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-extrabold tracking-wide transition-all cursor-pointer ${
+                currentView === 'wallet'
+                  ? 'bg-jade-500 text-white shadow-sm shadow-jade-500/30 [&_svg]:text-white'
+                  : 'text-ink-600 dark:text-ink-300 hover:text-jade-500 dark:hover:text-jade-400'
+              }`}
+            >
+              <Wallet className="w-3.5 h-3.5" />
+              <span>Wallet</span>
             </button>
             <button
               onClick={() => {
@@ -263,13 +284,14 @@ export default function Header({
                   onOpenAuth?.('login');
                 }
               }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold tracking-wide transition-all cursor-pointer ${
+              aria-current={currentView === 'chats' ? 'page' : undefined}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-extrabold tracking-wide transition-all cursor-pointer ${
                 currentView === 'chats'
-                  ? 'bg-emerald-500 text-white shadow-sm'
-                  : 'text-slate-600 dark:text-slate-300 hover:text-emerald-500 dark:hover:text-emerald-400'
+                  ? 'bg-jade-500 text-white shadow-sm shadow-jade-500/30 [&_svg]:text-white'
+                  : 'text-ink-600 dark:text-ink-300 hover:text-jade-500 dark:hover:text-jade-400'
               }`}
             >
-              <MessageSquare className="w-3.5 h-3.5 text-blue-500" />
+              <MessageSquare className="w-3.5 h-3.5" />
               <span>Chats</span>
             </button>
             <button
@@ -280,28 +302,16 @@ export default function Header({
                 }
                 onNavigate('cart');
               }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold tracking-wide transition-all cursor-pointer ${
+              aria-current={currentView === 'cart' ? 'page' : undefined}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-extrabold tracking-wide transition-all cursor-pointer ${
                 currentView === 'cart'
-                  ? 'bg-emerald-500 text-white shadow-sm'
-                  : 'text-slate-600 dark:text-slate-300 hover:text-emerald-500 dark:hover:text-emerald-400'
+                  ? 'bg-jade-500 text-white shadow-sm shadow-jade-500/30 [&_svg]:text-white'
+                  : 'text-ink-600 dark:text-ink-300 hover:text-jade-500 dark:hover:text-jade-400'
               }`}
             >
-              <ShoppingCart className="w-3.5 h-3.5 text-orange-500" />
-              <span>Cart ({cartCount})</span>
+              <ShoppingCart className="w-3.5 h-3.5" />
+              <span>Cart ({cartCount})</span>)
             </button>
-            {user && (
-              <button
-                onClick={() => onNavigate('loyalty')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold tracking-wide transition-all cursor-pointer ${
-                  currentView === 'loyalty'
-                    ? 'bg-emerald-500 text-white shadow-sm'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-emerald-500 dark:hover:text-emerald-400'
-                }`}
-              >
-                <Award className="w-3.5 h-3.5 text-amber-500" />
-                <span>Loyalty</span>
-              </button>
-            )}
           </div>          {/* Actions & Switching Panel */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             
@@ -315,11 +325,11 @@ export default function Header({
                 }
                 onNavigate('cart');
               }}
-              className="p-2 text-slate-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-xl transition-colors relative cursor-pointer"
+              className="p-2 text-ink-500 dark:text-ink-400 hover:bg-ink-100 dark:hover:bg-ink-800 rounded-xl transition-colors relative cursor-pointer"
             >
               <ShoppingCart className="w-5 h-5" />
               {cartCount > 0 && (
-                <span className="absolute top-1 right-1 w-4 h-4 bg-emerald-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-bounce">
+                <span className="absolute top-1 right-1 w-4 h-4 bg-jade-500 text-white text-xs font-bold rounded-full flex items-center justify-center animate-bounce">
                   {cartCount}
                 </span>
               )}
@@ -333,23 +343,23 @@ export default function Header({
                   setShowNotifications(!showNotifications);
                   if (showMobileMenu) setShowMobileMenu(false);
                 }}
-                className="p-2 text-slate-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-xl transition-colors relative cursor-pointer"
+                className="p-2 text-ink-500 dark:text-ink-400 hover:bg-ink-100 dark:hover:bg-ink-800 rounded-xl transition-colors relative cursor-pointer"
               >
                 <Bell className="w-5 h-5" />
                 {unreadNotifications.length > 0 && (
-                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full animate-ping" />
+                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-jade-500 rounded-full animate-ping" />
                 )}
               </button>
 
               {showNotifications && (
-                <div id="notifications-tray" className="absolute right-0 mt-3 w-96 max-h-[500px] overflow-y-auto bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl shadow-2xl z-50 flex flex-col animate-slide-in">
+                <div id="notifications-tray" className="absolute right-0 mt-3 w-96 max-h-[500px] overflow-y-auto bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-2xl shadow-2xl z-50 flex flex-col animate-slide-in">
                   
                   {/* Header */}
-                  <div className="px-4 py-3 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center bg-gray-50/50 dark:bg-slate-950/20">
+                  <div className="px-4 py-3 border-b border-ink-100 dark:border-ink-800 flex justify-between items-center bg-ink-50/50 dark:bg-ink-950/20">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-sm text-slate-900 dark:text-white font-sans">Notification Hub</span>
+                      <span className="font-bold text-sm text-ink-900 dark:text-white font-sans">Notification Hub</span>
                       {unreadNotifications.length > 0 && (
-                        <span className="px-2 py-0.5 text-[10px] font-black bg-red-500/10 text-red-500 dark:text-red-400 rounded-full">
+                        <span className="px-2 py-0.5 text-xs font-black bg-ink-500/10 text-ink-500 dark:text-ink-400 rounded-full">
                           {unreadNotifications.length} New
                         </span>
                       )}
@@ -357,7 +367,7 @@ export default function Header({
                     {unreadNotifications.length > 0 && (
                       <button 
                         onClick={handleClearNotifications}
-                        className="text-[11px] text-emerald-600 hover:text-emerald-500 dark:text-emerald-400 font-extrabold hover:underline"
+                        className="text-xs text-jade-600 hover:text-jade-500 dark:text-jade-400 font-extrabold hover:underline"
                       >
                         Mark all read
                       </button>
@@ -365,23 +375,23 @@ export default function Header({
                   </div>
 
                   {/* Filters Tab Panel */}
-                  <div className="px-4 py-2 border-b border-gray-100 dark:border-slate-800 flex gap-2 bg-white dark:bg-slate-900">
+                  <div className="px-4 py-2 border-b border-ink-100 dark:border-ink-800 flex gap-2 bg-white dark:bg-ink-900">
                     <button
                       onClick={() => setNotifFilter('all')}
-                      className={`px-3 py-1 text-[10px] font-black uppercase tracking-wider rounded-md border transition-all cursor-pointer ${
+                      className={`px-3 py-1 text-xs font-black uppercase tracking-wider rounded-md border transition-all cursor-pointer ${
                         notifFilter === 'all'
-                          ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 border-slate-900 dark:border-slate-100'
-                          : 'bg-transparent text-slate-500 dark:text-slate-400 border-gray-200 dark:border-slate-800 hover:text-slate-700'
+                          ? 'bg-ink-900 dark:bg-ink-100 text-white dark:text-ink-900 border-ink-900 dark:border-ink-100'
+                          : 'bg-transparent text-ink-500 dark:text-ink-400 border-ink-200 dark:border-ink-800 hover:text-ink-700'
                       }`}
                     >
                       All ({db.notifications.filter(n => n.userId === user?.id).length})
                     </button>
                     <button
                       onClick={() => setNotifFilter('unread')}
-                      className={`px-3 py-1 text-[10px] font-black uppercase tracking-wider rounded-md border transition-all cursor-pointer ${
+                      className={`px-3 py-1 text-xs font-black uppercase tracking-wider rounded-md border transition-all cursor-pointer ${
                         notifFilter === 'unread'
-                          ? 'bg-emerald-500 text-white border-emerald-500'
-                          : 'bg-transparent text-slate-500 dark:text-slate-400 border-gray-200 dark:border-slate-800 hover:text-emerald-500'
+                          ? 'bg-jade-500 text-white border-jade-500'
+                          : 'bg-transparent text-ink-500 dark:text-ink-400 border-ink-200 dark:border-ink-800 hover:text-jade-500'
                       }`}
                     >
                       Unread ({unreadNotifications.length})
@@ -389,12 +399,12 @@ export default function Header({
                   </div>
 
                   {/* Notification List Container */}
-                  <div className="divide-y divide-gray-100 dark:divide-slate-850 max-h-64 overflow-y-auto flex-1">
+                  <div className="divide-y divide-ink-100 dark:divide-ink-850 max-h-64 overflow-y-auto flex-1">
                     {db.notifications.filter(n => n.userId === user?.id && (notifFilter === 'all' || !n.isRead)).length === 0 ? (
-                      <div className="p-8 text-center text-slate-400 dark:text-slate-500 space-y-2">
-                        <Bell className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-700 animate-bounce" />
-                        <p className="text-xs font-medium font-sans text-slate-800 dark:text-slate-200">No {notifFilter === 'unread' ? 'unread' : ''} notifications</p>
-                        <p className="text-[10px] text-slate-400 leading-relaxed font-sans">
+                      <div className="p-8 text-center text-ink-400 dark:text-ink-500 space-y-2">
+                        <Bell className="w-8 h-8 mx-auto text-ink-300 dark:text-ink-700 animate-bounce" />
+                        <p className="text-xs font-medium font-sans text-ink-800 dark:text-ink-200">No {notifFilter === 'unread' ? 'unread' : ''} notifications</p>
+                        <p className="text-xs text-ink-400 leading-relaxed font-sans">
                           Your safe trading updates, bids, and escrow dispatches will appear here.
                         </p>
                       </div>
@@ -404,19 +414,19 @@ export default function Header({
                         .map((notif) => {
                           // Icon selector based on type
                           let IconComp = Bell;
-                          let iconBg = "bg-purple-500/10 text-purple-600 dark:text-purple-400";
+                          let iconBg = "bg-jade-500/10 text-jade-600 dark:text-jade-400";
                           if (notif.type === 'BID') {
                             IconComp = Gavel;
-                            iconBg = "bg-amber-500/10 text-amber-600 dark:text-amber-400";
+                            iconBg = "bg-ink-500/10 text-ink-600 dark:text-ink-400";
                           } else if (notif.type === 'SAFEMEET') {
                             IconComp = Shield;
-                            iconBg = "bg-blue-500/10 text-blue-600 dark:text-blue-400";
+                            iconBg = "bg-jade-500/10 text-jade-600 dark:text-jade-400";
                           } else if (notif.type === 'ESCROW') {
                             IconComp = Package;
-                            iconBg = "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
+                            iconBg = "bg-jade-500/10 text-jade-600 dark:text-jade-400";
                           } else if (notif.type === 'POINTS') {
                             IconComp = Award;
-                            iconBg = "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400";
+                            iconBg = "bg-ink-500/10 text-ink-600 dark:text-ink-400";
                           }
 
                           return (
@@ -424,13 +434,13 @@ export default function Header({
                               key={notif.id} 
                               className={`p-3.5 flex items-start gap-3 transition-colors relative group ${
                                 notif.isRead 
-                                  ? 'opacity-75 hover:opacity-100 bg-white dark:bg-slate-900' 
-                                  : 'bg-emerald-50/10 dark:bg-emerald-500/[0.02] hover:bg-emerald-50/20 dark:hover:bg-emerald-500/[0.04]'
+                                  ? 'opacity-75 hover:opacity-100 bg-white dark:bg-ink-900' 
+                                  : 'bg-jade-50/10 dark:bg-jade-500/[0.02] hover:bg-jade-50/20 dark:hover:bg-jade-500/[0.04]'
                               }`}
                             >
                               {/* Unread dot */}
                               {!notif.isRead && (
-                                <span className="absolute top-4 left-1.5 w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                                <span className="absolute top-4 left-1.5 w-2 h-2 bg-jade-500 rounded-full animate-pulse" />
                               )}
 
                               {/* Icon category */}
@@ -441,14 +451,14 @@ export default function Header({
                               {/* Content text */}
                               <div className="flex-1 min-w-0 pr-8">
                                 <div className="flex items-baseline justify-between gap-2 mb-0.5">
-                                  <h5 className="font-extrabold text-slate-900 dark:text-slate-100 text-xs truncate font-sans">
+                                  <h5 className="font-extrabold text-ink-900 dark:text-ink-100 text-xs truncate font-sans">
                                     {notif.title}
                                   </h5>
-                                  <span className="text-[9px] text-gray-400 dark:text-slate-500 font-mono shrink-0">
+                                  <span className="text-xs text-ink-400 dark:text-ink-500 font-mono shrink-0">
                                     {notif.createdAt ? new Date(notif.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                                   </span>
                                 </div>
-                                <p className="text-slate-600 dark:text-slate-400 text-[11px] leading-relaxed break-words font-sans">
+                                <p className="text-ink-600 dark:text-ink-400 text-xs leading-relaxed break-words font-sans">
                                   {notif.message}
                                 </p>
                               </div>
@@ -457,14 +467,14 @@ export default function Header({
                               <div className="absolute right-2 top-3.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button
                                   onClick={() => dbOperations.toggleNotificationRead(notif.id)}
-                                  className="p-1 rounded bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white cursor-pointer"
+                                  className="p-1 rounded bg-ink-100 hover:bg-ink-200 dark:bg-ink-800 dark:hover:bg-ink-700 text-ink-500 hover:text-ink-800 dark:text-ink-400 dark:hover:text-white cursor-pointer"
                                   title={notif.isRead ? "Mark as Unread" : "Mark as Read"}
                                 >
                                   {notif.isRead ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                                 </button>
                                 <button
                                   onClick={() => dbOperations.deleteNotification(notif.id)}
-                                  className="p-1 rounded bg-red-500/10 hover:bg-red-500/20 text-red-500 dark:text-red-400 cursor-pointer"
+                                  className="p-1 rounded bg-ink-500/10 hover:bg-ink-500/20 text-ink-500 dark:text-ink-400 cursor-pointer"
                                   title="Delete notification"
                                 >
                                   <Trash className="w-3.5 h-3.5" />
@@ -489,96 +499,13 @@ export default function Header({
                 <div 
                   id="points-badge"
                   onClick={() => onNavigate('loyalty')}
-                  className="flex items-center gap-1.5 bg-gradient-to-r from-amber-500/10 to-yellow-500/10 hover:from-amber-500/20 hover:to-yellow-500/20 border border-amber-500/30 dark:border-yellow-500/20 text-amber-600 dark:text-yellow-400 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all shrink-0"
+                  className="flex items-center gap-1.5 bg-gradient-to-r from-ink-500/10 to-ink-500/10 hover:from-ink-500/20 hover:to-ink-500/20 border border-ink-500/30 dark:border-ink-500/20 text-ink-600 dark:text-ink-400 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all shrink-0"
                   title="Your GoodPoints Loyalty Balance"
                 >
-                  <Award className="w-3.5 h-3.5 text-amber-500 fill-amber-500/20" />
+                  <Award className="w-3.5 h-3.5 text-ink-500 fill-ink-500/20" />
                   <span>{user.goodPoints.toLocaleString()} GP</span>
                 </div>
               )}
-
-              {/* Brand Kit Showcase Button */}
-              <button
-                id="brand-center-link"
-                onClick={() => onNavigate('brand-center')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border select-none ${
-                  currentView === 'brand-center'
-                    ? 'bg-emerald-500 text-white border-emerald-500 shadow-md shadow-emerald-500/10'
-                    : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-emerald-500 hover:bg-slate-100 dark:hover:bg-slate-750 border-gray-200 dark:border-slate-700'
-                }`}
-                title="Open GoodSale Brand Identity Kit"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Brand Spec</span>
-              </button>
-
-              {/* My Buyer Profile Link */}
-              {user ? (
-                <button
-                  id="buyer-profile-link"
-                  onClick={() => onNavigate('buyer-profile')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border select-none ${
-                    currentView === 'buyer-profile'
-                      ? 'bg-orange-500 text-white border-orange-500 shadow-md shadow-orange-500/10'
-                      : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-orange-500 hover:bg-slate-100 dark:hover:bg-slate-750 border-gray-200 dark:border-slate-700'
-                  }`}
-                  title="View Buyer Profile"
-                >
-                  <UserIcon className="w-3.5 h-3.5 text-orange-500" />
-                  <span>My Profile</span>
-                </button>
-              ) : null}
-
-              {/* Settings Configuration Link */}
-              {user ? (
-                <button
-                  id="settings-link"
-                  onClick={() => onNavigate('settings')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border select-none ${
-                    currentView === 'settings'
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-600/10'
-                      : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-indigo-500 hover:bg-slate-100 dark:hover:bg-slate-750 border-gray-200 dark:border-slate-700'
-                  }`}
-                  title="Configure Settings"
-                >
-                  <UserIcon className="w-3.5 h-3.5 text-indigo-500" />
-                  <span>Settings</span>
-                </button>
-              ) : null}
-
-              {/* GoodDispatch Link */}
-              {user ? (
-                <button
-                  id="dispatch-link"
-                  onClick={() => onNavigate('dispatch')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border select-none ${
-                    currentView === 'dispatch'
-                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10'
-                      : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-emerald-500 hover:bg-slate-100 dark:hover:bg-slate-750 border-gray-200 dark:border-slate-700'
-                  }`}
-                  title="Open GoodDispatch Delivery Network"
-                >
-                  <Truck className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>GoodDispatch™</span>
-                </button>
-              ) : null}
-
-              {/* Revenue Hub Link */}
-              {user ? (
-                <button
-                  id="revenue-link"
-                  onClick={() => onNavigate('revenue')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border select-none ${
-                    currentView === 'revenue'
-                      ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10'
-                      : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-amber-500 hover:bg-slate-100 dark:hover:bg-slate-750 border-gray-200 dark:border-slate-700'
-                  }`}
-                  title="Open Revenue Hub"
-                >
-                  <DollarSign className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Revenue Hub</span>
-                </button>
-              ) : null}
 
               {/* Sign In / Register / Logout Buttons */}
               {!user ? (
@@ -586,15 +513,15 @@ export default function Header({
                   <button
                     id="auth-login-btn"
                     onClick={() => onOpenAuth?.('login')}
-                    className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 font-sans font-bold rounded-lg text-xs hover:shadow-sm transition-all cursor-pointer select-none border border-gray-200 dark:border-slate-755"
+                    className="flex items-center gap-1 px-2.5 py-1.5 bg-ink-100 hover:bg-ink-200 dark:bg-ink-800 dark:hover:bg-ink-750 text-ink-700 dark:text-ink-300 font-sans font-bold rounded-lg text-xs hover:shadow-sm transition-all cursor-pointer select-none border border-ink-200 dark:border-ink-750"
                   >
-                    <LogIn className="w-3.5 h-3.5 text-emerald-500" />
+                    <LogIn className="w-3.5 h-3.5 text-jade-500" />
                     <span>Login</span>
                   </button>
                   <button
                     id="auth-register-btn"
                     onClick={() => onOpenAuth?.('register')}
-                    className="flex items-center gap-1 px-2.5 py-1.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-sans font-bold rounded-lg text-xs hover:shadow-md transition-all cursor-pointer select-none border border-emerald-500/10"
+                    className="flex items-center gap-1 px-2.5 py-1.5 bg-gradient-to-r from-jade-500 to-jade-600 hover:from-jade-600 hover:to-jade-700 text-white font-sans font-bold rounded-lg text-xs hover:shadow-md transition-all cursor-pointer select-none border border-jade-500/10"
                   >
                     <Sparkles className="w-3.5 h-3.5" />
                     <span>Sign Up</span>
@@ -602,17 +529,93 @@ export default function Header({
                   {/* Guest login removed — use Supabase Auth */}
                 </div>
               ) : (
-                <button
-                  id="auth-logout-btn"
-                  onClick={async () => {
-                    await dbOperations.logout();
-                    onNavigate('landing');
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border border-red-500/20 bg-red-500/5 text-red-600 dark:text-red-400 hover:bg-red-500/10 hover:border-red-500/30 select-none shrink-0"
-                  title="Log Out of current session"
-                >
-                  <span>Log Out</span>
-                </button>
+                <div className="relative">
+                  <button
+                    id="user-menu-btn"
+                    onClick={() => {
+                      setShowUserMenu(!showUserMenu);
+                      if (showNotifications) setShowNotifications(false);
+                    }}
+                    aria-haspopup="menu"
+                    aria-expanded={showUserMenu}
+                    className={`flex items-center gap-2 pl-1.5 pr-2.5 py-1.5 rounded-xl border transition-all cursor-pointer select-none ${
+                      showUserMenu
+                        ? 'bg-ink-100 dark:bg-ink-800 border-ink-300 dark:border-ink-700'
+                        : 'bg-white dark:bg-ink-900 border-ink-200 dark:border-ink-750 hover:bg-ink-100 dark:hover:bg-ink-800'
+                    }`}
+                  >
+                    <span className="w-7 h-7 rounded-lg bg-jade-500/10 text-jade-600 dark:text-jade-400 flex items-center justify-center font-black text-xs">
+                      {(user.fullName || 'G').trim().charAt(0).toUpperCase()}
+                    </span>
+                    <span className="hidden lg:block text-xs font-bold text-ink-800 dark:text-ink-200 max-w-[96px] truncate">
+                      {user.fullName || 'My account'}
+                    </span>
+                    <ChevronDown className={`w-3.5 h-3.5 text-ink-400 transition-transform ${showUserMenu ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {showUserMenu && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
+                      <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-2xl shadow-2xl z-50 py-2 animate-slide-in">
+                        <div className="px-4 py-2.5 border-b border-ink-100 dark:border-ink-800">
+                          <p className="text-sm font-black text-ink-900 dark:text-white truncate">
+                            {user.fullName}
+                          </p>
+                          <p className="text-xs text-ink-500 font-mono truncate">
+                            {user.role.replace(/_/g, ' ').toLowerCase()}
+                          </p>
+                        </div>
+                        <div className="py-1.5">
+                          {([
+                            { id: 'buyer-profile', label: 'My profile', icon: UserIcon },
+                            { id: 'wallet', label: 'Wallet', icon: Wallet },
+                            { id: 'revenue', label: 'Revenue hub', icon: DollarSign },
+                            { id: 'loyalty', label: 'GoodPoints', icon: Award },
+                            { id: 'verification', label: 'Verification', icon: BadgeCheck },
+                            { id: 'dashboard', label: 'Seller hub', icon: Store, roles: [UserRole.BUSINESS, UserRole.VERIFIED_BUSINESS, UserRole.SELLER, UserRole.VERIFIED_SELLER] },
+                            { id: 'dispatch', label: 'GoodDispatch', icon: Truck, roles: [UserRole.BUSINESS, UserRole.VERIFIED_BUSINESS, UserRole.SELLER, UserRole.VERIFIED_SELLER, UserRole.ADMIN, UserRole.SUPER_ADMIN] },
+                            { id: 'brand-center', label: 'Brand center', icon: Sparkles },
+                            { id: 'admin', label: 'Admin panel', icon: Shield, roles: [UserRole.ADMIN, UserRole.SUPER_ADMIN] },
+                            { id: 'settings', label: 'Settings', icon: SettingsIcon },
+                            { id: 'landing', label: 'About GoodSale', icon: LayoutGrid },
+                          ] as Array<{ id: string; label: string; icon: React.ComponentType<{ className?: string }>; roles?: UserRole[] }>)
+                            .filter((item) => !item.roles || item.roles.includes(user.role))
+                            .map((item) => (
+                              <button
+                                key={item.id}
+                                onClick={() => {
+                                  setShowUserMenu(false);
+                                  onNavigate(item.id);
+                                }}
+                                className={`w-full text-left px-4 py-2.5 text-xs font-bold flex items-center gap-3 transition-colors cursor-pointer ${
+                                  currentView === item.id
+                                    ? 'text-jade-600 dark:text-jade-400 bg-jade-500/5'
+                                    : 'text-ink-700 dark:text-ink-300 hover:bg-ink-50 dark:hover:bg-ink-850'
+                                }`}
+                              >
+                                <item.icon className="w-4 h-4 shrink-0" />
+                                {item.label}
+                              </button>
+                            ))}
+                        </div>
+                        <div className="border-t border-ink-100 dark:border-ink-800 pt-1.5">
+                          <button
+                            id="auth-logout-btn"
+                            onClick={async () => {
+                              setShowUserMenu(false);
+                              await dbOperations.logout();
+                              onNavigate('landing');
+                            }}
+                            className="w-full text-left px-4 py-2.5 text-xs font-bold flex items-center gap-3 text-ink-600 dark:text-ink-400 hover:bg-ink-50 dark:hover:bg-ink-850 transition-colors cursor-pointer"
+                          >
+                            <LogOut className="w-4 h-4 shrink-0" />
+                            Log out
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
 
               {/* Theme System Selector */}
@@ -620,61 +623,61 @@ export default function Header({
                 <button
                   id="theme-toggle-btn"
                   onClick={() => setShowThemeMenu(!showThemeMenu)}
-                  className="p-2 text-slate-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer flex items-center justify-center"
+                  className="p-2 text-ink-500 dark:text-ink-400 hover:bg-ink-100 dark:hover:bg-ink-800 rounded-lg transition-colors cursor-pointer flex items-center justify-center"
                   title={`Theme: ${themeMode}`}
                 >
-                  {themeMode === 'light' && <Sun className="w-5 h-5 text-amber-500" />}
-                  {themeMode === 'dark' && <Moon className="w-5 h-5 text-emerald-400" />}
-                  {themeMode === 'system' && <Laptop className="w-5 h-5 text-indigo-400" />}
+                  {themeMode === 'light' && <Sun className="w-5 h-5 text-ink-500" />}
+                  {themeMode === 'dark' && <Moon className="w-5 h-5 text-jade-400" />}
+                  {themeMode === 'system' && <Laptop className="w-5 h-5 text-jade-400" />}
                 </button>
 
                 {showThemeMenu && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setShowThemeMenu(false)} />
-                    <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl shadow-2xl z-50 py-1.5 animate-slide-in">
-                      <div className="px-3 py-1.5 border-b border-gray-100 dark:border-slate-800 mb-1">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Appearance Mode</span>
+                    <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-xl shadow-2xl z-50 py-1.5 animate-slide-in">
+                      <div className="px-3 py-1.5 border-b border-ink-100 dark:border-ink-800 mb-1">
+                        <span className="text-xs font-bold text-ink-400 uppercase tracking-wider">Appearance Mode</span>
                       </div>
                       
                       <button
                         onClick={() => selectTheme('light')}
-                        className={`w-full text-left px-3 py-2 text-xs font-sans hover:bg-gray-50 dark:hover:bg-slate-850 flex items-center gap-2 transition-colors ${themeMode === 'light' ? 'text-emerald-500 font-semibold bg-emerald-50/25 dark:bg-emerald-500/5' : 'text-slate-700 dark:text-slate-300'}`}
+                        className={`w-full text-left px-3 py-2 text-xs font-sans hover:bg-ink-50 dark:hover:bg-ink-850 flex items-center gap-2 transition-colors ${themeMode === 'light' ? 'text-jade-500 font-semibold bg-jade-50/25 dark:bg-jade-500/5' : 'text-ink-700 dark:text-ink-300'}`}
                       >
-                        <Sun className="w-4 h-4 text-amber-500 shrink-0" />
+                        <Sun className="w-4 h-4 text-ink-500 shrink-0" />
                         <div className="flex-1">
                           <div className="flex items-center justify-between">
                             <span>Light Theme</span>
-                            {themeMode === 'light' && <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />}
+                            {themeMode === 'light' && <CheckCircle className="w-3.5 h-3.5 text-jade-500" />}
                           </div>
-                          <span className="text-[9px] text-gray-400 block leading-none mt-0.5 font-normal font-sans">Crisp and clear off-white</span>
+                          <span className="text-xs text-ink-400 block leading-none mt-0.5 font-normal font-sans">Crisp and clear off-white</span>
                         </div>
                       </button>
 
                       <button
                         onClick={() => selectTheme('dark')}
-                        className={`w-full text-left px-3 py-2 text-xs font-sans hover:bg-gray-50 dark:hover:bg-slate-850 flex items-center gap-2 transition-colors ${themeMode === 'dark' ? 'text-emerald-500 font-semibold bg-emerald-50/25 dark:bg-emerald-500/5' : 'text-slate-700 dark:text-slate-300'}`}
+                        className={`w-full text-left px-3 py-2 text-xs font-sans hover:bg-ink-50 dark:hover:bg-ink-850 flex items-center gap-2 transition-colors ${themeMode === 'dark' ? 'text-jade-500 font-semibold bg-jade-50/25 dark:bg-jade-500/5' : 'text-ink-700 dark:text-ink-300'}`}
                       >
-                        <Moon className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <Moon className="w-4 h-4 text-jade-400 shrink-0" />
                         <div className="flex-1">
                           <div className="flex items-center justify-between">
                             <span>Dark Theme</span>
-                            {themeMode === 'dark' && <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />}
+                            {themeMode === 'dark' && <CheckCircle className="w-3.5 h-3.5 text-jade-500" />}
                           </div>
-                          <span className="text-[9px] text-gray-400 block leading-none mt-0.5 font-normal font-sans">Deep Navy premium night mode</span>
+                          <span className="text-xs text-ink-400 block leading-none mt-0.5 font-normal font-sans">Inky black premium night mode</span>
                         </div>
                       </button>
 
                       <button
                         onClick={() => selectTheme('system')}
-                        className={`w-full text-left px-3 py-2 text-xs font-sans hover:bg-gray-50 dark:hover:bg-slate-850 flex items-center gap-2 transition-colors ${themeMode === 'system' ? 'text-emerald-500 font-semibold bg-emerald-50/25 dark:bg-emerald-500/5' : 'text-slate-700 dark:text-slate-300'}`}
+                        className={`w-full text-left px-3 py-2 text-xs font-sans hover:bg-ink-50 dark:hover:bg-ink-850 flex items-center gap-2 transition-colors ${themeMode === 'system' ? 'text-jade-500 font-semibold bg-jade-50/25 dark:bg-jade-500/5' : 'text-ink-700 dark:text-ink-300'}`}
                       >
-                        <Laptop className="w-4 h-4 text-indigo-400 shrink-0" />
+                        <Laptop className="w-4 h-4 text-jade-400 shrink-0" />
                         <div className="flex-1">
                           <div className="flex items-center justify-between">
                             <span>Follow Device</span>
-                            {themeMode === 'system' && <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />}
+                            {themeMode === 'system' && <CheckCircle className="w-3.5 h-3.5 text-jade-500" />}
                           </div>
-                          <span className="text-[9px] text-gray-400 block leading-none mt-0.5 font-normal font-sans">Auto-sync with system theme</span>
+                          <span className="text-xs text-ink-400 block leading-none mt-0.5 font-normal font-sans">Auto-sync with system theme</span>
                         </div>
                       </button>
                     </div>
@@ -684,29 +687,6 @@ export default function Header({
 
 
 
-              {/* Custom Sidebar Nav Indicators for Dashboards */}
-              {user && (
-                user.role === UserRole.ADMIN || 
-                user.role === UserRole.SUPER_ADMIN
-              ) && (
-                <button 
-                  onClick={() => onNavigate('admin')}
-                  className={`p-1.5 rounded-lg border text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${currentView === 'admin' ? 'bg-emerald-500 text-white border-emerald-500 shadow-md' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-gray-200 dark:border-slate-700 hover:bg-gray-200'}`}
-                >
-                  <Shield className="w-3.5 h-3.5" />
-                  <span>Admin Panel</span>
-                </button>
-              )}
-
-              {user && (user.role === UserRole.BUSINESS || user.role === UserRole.VERIFIED_BUSINESS || user.role === UserRole.SELLER || user.role === UserRole.VERIFIED_SELLER) && (
-                <button 
-                  onClick={() => onNavigate('dashboard')}
-                  className={`p-1.5 rounded-lg border text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${currentView === 'dashboard' ? 'bg-amber-500 text-white border-amber-500 shadow-md' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-gray-200 dark:border-slate-700 hover:bg-gray-200'}`}
-                >
-                  <Store className="w-3.5 h-3.5" />
-                  <span>Seller Hub</span>
-                </button>
-              )}
             </div>
 
           </div>
@@ -714,11 +694,11 @@ export default function Header({
         </div>
       </div>
 
-      {/* Mobile-responsive search bar - visible only on smaller viewports when in landing view */}
-      {currentView === 'landing' && (
-        <div className="md:hidden px-4 pb-3 pt-0.5 border-t border-gray-100 dark:border-slate-800/65 bg-white/95 dark:bg-slate-900/95 relative">
+      {/* Mobile-responsive search bar - visible while browsing the marketplace */}
+      {(currentView === 'marketplace' || currentView === 'product') && (
+        <div className="md:hidden px-4 pb-3 pt-0.5 border-t border-ink-100 dark:border-ink-800/65 bg-white/95 dark:bg-ink-900/95 relative">
           <div className="relative">
-            <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-400">
+            <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-ink-400">
               <Search className="w-4 h-4" />
             </div>
             <input
@@ -735,21 +715,21 @@ export default function Header({
                 }
               }}
               onChange={(e) => onSearchChange(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 text-xs bg-gray-100 dark:bg-slate-800 border-none rounded-full focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800 dark:text-white transition-all placeholder:text-gray-400 dark:placeholder:text-slate-500 font-sans font-medium"
+              className="w-full pl-10 pr-4 py-2 text-xs bg-ink-100 dark:bg-ink-800 border-none rounded-full focus:outline-none focus:ring-2 focus:ring-jade-500 text-ink-800 dark:text-white transition-all placeholder:text-ink-400 dark:placeholder:text-ink-500 font-sans font-medium"
             />
           </div>
 
           {/* Mobile Recent Searches Dropdown */}
           {showMobileRecentDropdown && recentSearches.length > 0 && (
             <div 
-              className="absolute left-4 right-4 bg-white dark:bg-slate-900 border border-gray-150 dark:border-slate-800 rounded-2xl shadow-xl z-50 mt-1 py-3 overflow-hidden animate-slide-in"
+              className="absolute left-4 right-4 bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 rounded-2xl shadow-xl z-50 mt-1 py-3 overflow-hidden animate-slide-in"
               onMouseDown={(e) => e.preventDefault()}
             >
-              <div className="flex items-center justify-between px-4 pb-2 mb-1 border-b border-gray-50 dark:border-slate-800/50 text-[10px] font-bold text-gray-400 dark:text-slate-500 font-mono tracking-wider">
+              <div className="flex items-center justify-between px-4 pb-2 mb-1 border-b border-ink-50 dark:border-ink-800/50 text-xs font-bold text-ink-400 dark:text-ink-500 font-mono tracking-wider">
                 <span>RECENT SEARCHES</span>
                 <button 
                   onClick={handleClearAllRecent}
-                  className="hover:text-red-500 transition-colors flex items-center gap-0.5 cursor-pointer"
+                  className="hover:text-ink-500 transition-colors flex items-center gap-0.5 cursor-pointer"
                 >
                   <Trash className="w-3 h-3" />
                   Clear All
@@ -760,15 +740,15 @@ export default function Header({
                   <div
                     key={index}
                     onClick={() => handleSelectRecentSearch(item)}
-                    className="flex items-center justify-between px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/80 cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-300 transition-colors group"
+                    className="flex items-center justify-between px-4 py-2 hover:bg-ink-50 dark:hover:bg-ink-800/80 cursor-pointer text-xs font-semibold text-ink-700 dark:text-ink-300 transition-colors group"
                   >
                     <span className="flex items-center gap-2 truncate">
-                      <RefreshCw className="w-3.5 h-3.5 text-gray-400 dark:text-slate-500 group-hover:text-emerald-500" />
+                      <RefreshCw className="w-3.5 h-3.5 text-ink-400 dark:text-ink-500 group-hover:text-jade-500" />
                       <span className="truncate">{item}</span>
                     </span>
                     <button
                       onClick={(e) => handleDeleteRecentSearch(e, item)}
-                      className="p-1 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-md text-gray-400 dark:text-slate-500 hover:text-red-500 transition-colors"
+                      className="p-1 hover:bg-ink-50 dark:hover:bg-ink-950/20 rounded-md text-ink-400 dark:text-ink-500 hover:text-ink-500 transition-colors"
                     >
                       <X className="w-3 h-3" />
                     </button>

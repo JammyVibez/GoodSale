@@ -17,11 +17,18 @@ const VIDEO_MAX_BYTES = 25 * 1024 * 1024;
  * Note: identity documents intentionally stay on the private Supabase bucket
  * (signed URLs) — they are never sent to a public CDN.
  */
+/** Accept either the server name or the public-prefixed name from the dashboard. */
+function cloudinaryCloudName(): string {
+  return (
+    process.env.CLOUDINARY_CLOUD_NAME ||
+    process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME ||
+    ''
+  );
+}
+
 function cloudinaryConfigured(): boolean {
   return Boolean(
-    process.env.CLOUDINARY_CLOUD_NAME &&
-      process.env.CLOUDINARY_API_KEY &&
-      process.env.CLOUDINARY_API_SECRET
+    cloudinaryCloudName() && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET
   );
 }
 
@@ -41,7 +48,7 @@ async function uploadToCloudinary(
   filename: string,
   mimeType: string
 ): Promise<CloudinaryResult> {
-  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const cloudName = cloudinaryCloudName();
   const apiKey = process.env.CLOUDINARY_API_KEY;
   if (!cloudinaryConfigured()) return null;
 
@@ -108,6 +115,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid bucket' }, { status: 400 });
     }
 
+    const admin = createAdminClient();
+
+    // First-run safety: make sure the bucket exists so uploads never 400 with
+    // "Bucket not found" on a fresh project.
+    if (admin) {
+      try {
+        const { data: buckets } = await admin.storage.listBuckets();
+        const exists = buckets?.some((b) => b.name === bucket);
+        if (!exists) {
+          await admin.storage.createBucket(bucket, { public: bucket !== 'government-ids' });
+        }
+      } catch (bucketError) {
+        logger.warn('Could not ensure storage bucket', { bucket, error: String(bucketError) });
+      }
+    }
+
     const isVideo = file.type.startsWith('video/');
     const maxBytes = isVideo ? VIDEO_MAX_BYTES : IMAGE_MAX_BYTES;
     if (file.size <= 0 || file.size > maxBytes) {
@@ -138,7 +161,6 @@ export async function POST(req: NextRequest) {
 
     // --- Supabase Storage (fallback + private buckets) ---
     let uploader = supabase;
-    const admin = createAdminClient();
     const { error: uploadError } = await uploader.storage.from(bucket).upload(path, buffer, {
       contentType: file.type || 'application/octet-stream',
       upsert: false,

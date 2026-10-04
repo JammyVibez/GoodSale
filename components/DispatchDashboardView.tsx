@@ -5,7 +5,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   Truck, Shield, MapPin, Navigation, Compass, AlertCircle, CheckCircle2, 
   DollarSign, Clock, List, FileText, UserCheck, Plus, Check, Map, Eye,
-  RefreshCw, TrendingUp, Key, Lock, Phone, User, Star, ChevronRight
+  RefreshCw, TrendingUp, Key, Lock, Phone, User, Star, ChevronRight,
+  Camera, CreditCard, Bike
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { 
@@ -15,6 +16,7 @@ import { SmartAvatar } from './ui/SmartImage';
 import LiveDispatchMap from './LiveDispatchMap';
 import { useLiveLocation } from '@/lib/hooks/useLiveLocation';
 import { bestCoords, formatDistanceKm, haversineKm, estimateEtaMinutes, resolveCityCoords } from '@/lib/geo';
+import { toast } from '@/lib/feedback';
 
 export default function DispatchDashboardView() {
   const [db, setDb] = useState(getDBState());
@@ -160,7 +162,7 @@ export default function DispatchDashboardView() {
   const claimJob = (jobId: number) => {
     if (!courier) return;
     if (courier.status !== 'APPROVED') {
-      alert('Only approved dispatch riders can accept delivery jobs.');
+      toast.error('Only approved dispatch riders can accept delivery jobs.');
       return;
     }
     if (liveGps.coords) {
@@ -275,12 +277,12 @@ export default function DispatchDashboardView() {
       job.trackingHistory.push({
         status: DeliveryJobStatus.IN_TRANSIT,
         time: new Date().toISOString(),
-        note: `⚠️ SOS EMERGENCY TRIGGERED: Courier reported active safety/security alert. Real-time rescue coordinates: ${mapLat.toFixed(4)}° N, ${mapLng.toFixed(4)}° E. Urgent support dispatched.`
+        note: `SOS EMERGENCY TRIGGERED: Courier reported active safety/security alert. Real-time rescue coordinates: ${mapLat.toFixed(4)}° N, ${mapLng.toFixed(4)}° E. Urgent support dispatched.`
       });
       saveDBState(state);
       setDb(state);
       setSosActive(true);
-      setSosSuccessMessage('🚨 Emergency SOS alert sent! GoodDispatch™ Operations and emergency medical/security partners have been notified with your live coordinates.');
+      setSosSuccessMessage('Emergency SOS alert sent! GoodDispatch™ Operations and emergency medical/security partners have been notified with your live coordinates.');
       dbOperations.addAuditLog(user?.id || 0, 'SOS_ALERT', 'deliveryJobs', simulatedJob.id, `Courier Dele Coker triggered SOS emergency panic signal`);
       setTimeout(() => setSosSuccessMessage(null), 8000);
     }
@@ -297,7 +299,7 @@ export default function DispatchDashboardView() {
       job.trackingHistory.push({
         status: DeliveryJobStatus.IN_TRANSIT,
         time: new Date().toISOString(),
-        note: `⚠️ DISPATCH INCIDENT [${typeLabel}]: ${incidentNote}`
+        note: `DISPATCH INCIDENT [${typeLabel}]: ${incidentNote}`
       });
       saveDBState(state);
       setDb(state);
@@ -380,29 +382,29 @@ export default function DispatchDashboardView() {
     <div className="max-w-7xl mx-auto px-4 py-8 font-sans" id="gooddispatch-dashboard">
       
       {/* Top Banner with visual brand identity */}
-      <div className="bg-gradient-to-r from-emerald-600 via-emerald-800 to-slate-900 rounded-3xl p-6 md:p-8 text-white shadow-xl relative overflow-hidden mb-8">
+      <div className="bg-gradient-to-r from-jade-600 via-jade-800 to-ink-900 rounded-3xl p-6 md:p-8 text-white shadow-xl relative overflow-hidden mb-8">
         <div className="absolute right-0 top-0 opacity-10 transform translate-x-12 -translate-y-12">
           <Truck className="w-96 h-96" />
         </div>
         <div className="relative z-10 space-y-2 max-w-xl">
-          <div className="inline-flex items-center gap-1.5 bg-emerald-500/20 border border-emerald-400/30 px-3 py-1 rounded-full text-xs font-semibold tracking-wide text-emerald-300">
-            <Shield className="w-3.5 h-3.5 text-amber-400" />
+          <div className="inline-flex items-center gap-1.5 bg-jade-500/20 border border-jade-400/30 px-3 py-1 rounded-full text-xs font-semibold tracking-wide text-jade-300">
+            <Shield className="w-3.5 h-3.5 text-ink-400" />
             GoodDispatch™ Smart Logistics
           </div>
           <h1 className="text-2xl md:text-4xl font-extrabold tracking-tight">
             Logistics Dashboard
           </h1>
-          <p className="text-xs md:text-sm text-emerald-100 font-medium">
+          <p className="text-xs md:text-sm text-jade-100 font-medium">
             Register as an elite logistics partner. Deliver verified escrow orders across Nigeria with real-time GPS tracking and instant secure wallet payouts.
           </p>
         </div>
       </div>
 
       {!user ? (
-        <div className="text-center py-16 bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-3xl shadow-md p-8">
-          <AlertCircle className="w-16 h-16 text-amber-500 mx-auto mb-4 animate-pulse" />
-          <h3 className="text-lg font-bold text-slate-800 dark:text-white">Authentication Required</h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto mt-2">
+        <div className="text-center py-16 bg-white dark:bg-ink-900 border border-ink-100 dark:border-ink-800 rounded-3xl shadow-md p-8">
+          <AlertCircle className="w-16 h-16 text-ink-500 mx-auto mb-4 animate-pulse" />
+          <h3 className="text-lg font-bold text-ink-800 dark:text-white">Authentication Required</h3>
+          <p className="text-xs text-ink-500 dark:text-ink-400 max-w-sm mx-auto mt-2">
             Please log in or register your account to access GoodDispatch™ Delivery Partner network on GoodSale.
           </p>
         </div>
@@ -411,43 +413,43 @@ export default function DispatchDashboardView() {
           
           {/* Side Menu & Quick Profile Status */}
           <div className="lg:col-span-1 space-y-6">
-            <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-6">
+            <div className="bg-white dark:bg-ink-900 border border-ink-100 dark:border-ink-800 rounded-3xl p-6 shadow-sm space-y-6">
               
               {/* Profile Card */}
               <div className="flex items-center gap-3">
                 <SmartAvatar 
                   src={courier?.photoUrl || db.profiles.find(p => p.userId === user.id)?.photoUrl}
                   name={courier?.fullName || user.fullName}
-                  className="w-12 h-12 border-2 border-emerald-500 shadow-sm"
+                  className="w-12 h-12 border-2 border-jade-500 shadow-sm"
                 />
                 <div>
-                  <h4 className="text-sm font-extrabold text-slate-800 dark:text-white truncate max-w-[150px]">
+                  <h4 className="text-sm font-extrabold text-ink-800 dark:text-white truncate max-w-[150px]">
                     {courier?.fullName || user.fullName}
                   </h4>
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono mt-0.5">
+                  <p className="text-xs text-ink-400 dark:text-ink-500 font-mono mt-0.5">
                     ID: GS-COURIER-{(courier?.id || 100).toString().padStart(4, '0')}
                   </p>
                 </div>
               </div>
 
               {/* Verified Badge/State */}
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 space-y-1.5 text-center">
-                <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">Courier Application Status</span>
+              <div className="p-3 rounded-2xl bg-ink-50 dark:bg-ink-950 border border-ink-100 dark:border-ink-800 space-y-1.5 text-center">
+                <span className="text-xs text-ink-400 dark:text-ink-500 uppercase tracking-wider font-semibold">Courier Application Status</span>
                 <div>
                   {courier ? (
                     courier.status === 'APPROVED' ? (
-                      <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs px-3 py-1 rounded-full font-black">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                      <span className="inline-flex items-center gap-1 bg-jade-500/10 text-jade-600 dark:text-jade-400 text-xs px-3 py-1 rounded-full font-black">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-jade-500" />
                         Approved Rider
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs px-3 py-1 rounded-full font-black animate-pulse">
-                        <Clock className="w-3.5 h-3.5 text-amber-500" />
+                      <span className="inline-flex items-center gap-1 bg-ink-500/10 text-ink-600 dark:text-ink-400 text-xs px-3 py-1 rounded-full font-black animate-pulse">
+                        <Clock className="w-3.5 h-3.5 text-ink-500" />
                         Under Review
                       </span>
                     )
                   ) : (
-                    <span className="inline-flex items-center gap-1 bg-gray-100 dark:bg-slate-850 text-gray-500 dark:text-slate-400 text-xs px-3 py-1 rounded-full font-bold">
+                    <span className="inline-flex items-center gap-1 bg-ink-100 dark:bg-ink-850 text-ink-500 dark:text-ink-400 text-xs px-3 py-1 rounded-full font-bold">
                       Not Registered
                     </span>
                   )}
@@ -456,16 +458,16 @@ export default function DispatchDashboardView() {
 
               {/* Status Toggle Switch (Only for approved couriers) */}
               {courier && courier.status === 'APPROVED' && (
-                <div className="flex items-center justify-between p-3 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-100/30">
+                <div className="flex items-center justify-between p-3 rounded-2xl bg-jade-50/50 dark:bg-jade-950/20 border border-jade-100/30">
                   <div className="space-y-0.5">
-                    <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 block">Duty Status</span>
-                    <span className="text-[9px] text-slate-400 dark:text-slate-500 font-mono">
-                      {courier.isAvailable ? '🟢 ACTIVE / ONLINE' : '🔴 OFFLINE'}
+                    <span className="text-xs font-bold text-ink-700 dark:text-ink-300 block">Duty Status</span>
+                    <span className="text-xs text-ink-400 dark:text-ink-500 font-mono">
+                      {courier.isAvailable ? 'ACTIVE / ONLINE' : 'OFFLINE'}
                     </span>
                   </div>
                   <button 
                     onClick={toggleAvailability}
-                    className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${courier.isAvailable ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-slate-800'}`}
+                    className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${courier.isAvailable ? 'bg-jade-500' : 'bg-ink-300 dark:bg-ink-800'}`}
                   >
                     <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-all ${courier.isAvailable ? 'left-5.5' : 'left-0.5'}`} />
                   </button>
@@ -473,14 +475,14 @@ export default function DispatchDashboardView() {
               )}
 
               {/* Navigation Menu Links */}
-              <div className="space-y-1.5 pt-4 border-t border-gray-100 dark:border-slate-800">
+              <div className="space-y-1.5 pt-4 border-t border-ink-100 dark:border-ink-800">
                 {!courier && (
                   <button
                     onClick={() => setActiveSubTab('onboarding')}
                     className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-bold transition-all ${
                       activeSubTab === 'onboarding' 
-                        ? 'bg-emerald-500 text-white shadow-sm' 
-                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-850'
+                        ? 'bg-jade-500 text-white shadow-sm' 
+                        : 'text-ink-600 dark:text-ink-400 hover:bg-ink-50 dark:hover:bg-ink-850'
                     }`}
                   >
                     <UserCheck className="w-4 h-4" />
@@ -492,8 +494,8 @@ export default function DispatchDashboardView() {
                     onClick={() => setActiveSubTab('onboarding')}
                     className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-bold transition-all ${
                       activeSubTab === 'onboarding' 
-                        ? 'bg-emerald-500 text-white shadow-sm' 
-                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-850'
+                        ? 'bg-jade-500 text-white shadow-sm' 
+                        : 'text-ink-600 dark:text-ink-400 hover:bg-ink-50 dark:hover:bg-ink-850'
                     }`}
                   >
                     <Eye className="w-4 h-4" />
@@ -506,8 +508,8 @@ export default function DispatchDashboardView() {
                       onClick={() => setActiveSubTab('marketplace')}
                       className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left text-xs font-bold transition-all ${
                         activeSubTab === 'marketplace' 
-                          ? 'bg-emerald-500 text-white shadow-sm' 
-                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-850'
+                          ? 'bg-jade-500 text-white shadow-sm' 
+                          : 'text-ink-600 dark:text-ink-400 hover:bg-ink-50 dark:hover:bg-ink-850'
                       }`}
                     >
                       <span className="flex items-center gap-2.5">
@@ -515,7 +517,7 @@ export default function DispatchDashboardView() {
                         Delivery Marketplace
                       </span>
                       {availableJobs.length > 0 && (
-                        <span className="bg-red-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">
+                        <span className="bg-ink-500 text-white text-xs font-extrabold px-1.5 py-0.5 rounded-full">
                           {availableJobs.length}
                         </span>
                       )}
@@ -525,8 +527,8 @@ export default function DispatchDashboardView() {
                       onClick={() => setActiveSubTab('active_jobs')}
                       className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left text-xs font-bold transition-all ${
                         activeSubTab === 'active_jobs' 
-                          ? 'bg-emerald-500 text-white shadow-sm' 
-                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-850'
+                          ? 'bg-jade-500 text-white shadow-sm' 
+                          : 'text-ink-600 dark:text-ink-400 hover:bg-ink-50 dark:hover:bg-ink-850'
                       }`}
                     >
                       <span className="flex items-center gap-2.5">
@@ -534,7 +536,7 @@ export default function DispatchDashboardView() {
                         Active Job Tracker
                       </span>
                       {activeJob && (
-                        <span className="w-2.5 h-2.5 bg-indigo-500 rounded-full animate-ping" />
+                        <span className="w-2.5 h-2.5 bg-jade-500 rounded-full animate-ping" />
                       )}
                     </button>
 
@@ -542,8 +544,8 @@ export default function DispatchDashboardView() {
                       onClick={() => setActiveSubTab('earnings')}
                       className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-bold transition-all ${
                         activeSubTab === 'earnings' 
-                          ? 'bg-emerald-500 text-white shadow-sm' 
-                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-850'
+                          ? 'bg-jade-500 text-white shadow-sm' 
+                          : 'text-ink-600 dark:text-ink-400 hover:bg-ink-50 dark:hover:bg-ink-850'
                       }`}
                     >
                       <DollarSign className="w-4 h-4" />
@@ -558,55 +560,55 @@ export default function DispatchDashboardView() {
 
           {/* Main SubTab Content Container */}
           <div className="lg:col-span-3">
-            <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-3xl p-6 md:p-8 shadow-sm min-h-[500px]">
+            <div className="bg-white dark:bg-ink-900 border border-ink-100 dark:border-ink-800 rounded-3xl p-6 md:p-8 shadow-sm min-h-[500px]">
               
               {/* ONBOARDING SUB-TAB */}
               {activeSubTab === 'onboarding' && (
                 <div className="space-y-6">
                   {courier ? (
                     <div className="space-y-6 text-center py-12">
-                      <div className="w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto mb-4 animate-bounce">
-                        <Clock className="w-8 h-8 text-amber-500" />
+                      <div className="w-16 h-16 rounded-full bg-ink-500/10 border border-ink-500/20 flex items-center justify-center mx-auto mb-4 animate-bounce">
+                        <Clock className="w-8 h-8 text-ink-500" />
                       </div>
-                      <h3 className="text-xl font-extrabold text-slate-850 dark:text-white">Application Under Review</h3>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
-                        Thank you, <span className="font-extrabold text-slate-800 dark:text-slate-200">{courier.fullName}</span>! Your courier profile and vehicle registration credentials for vehicle plate <span className="font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded font-bold text-slate-850 dark:text-white">{courier.plateNumber}</span> are currently being reviewed by GoodSale Administrators.
+                      <h3 className="text-xl font-extrabold text-ink-850 dark:text-white">Application Under Review</h3>
+                      <p className="text-xs text-ink-500 dark:text-ink-400 max-w-md mx-auto leading-relaxed">
+                        Thank you, <span className="font-extrabold text-ink-800 dark:text-ink-200">{courier.fullName}</span>! Your courier profile and vehicle registration credentials for vehicle plate <span className="font-mono bg-ink-100 dark:bg-ink-800 px-1.5 py-0.5 rounded font-bold text-ink-850 dark:text-white">{courier.plateNumber}</span> are currently being reviewed by GoodSale Administrators.
                       </p>
                       
                       {/* Driver submitted specs summary */}
-                      <div className="max-w-md mx-auto bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-gray-100 dark:border-slate-800 text-left space-y-2">
-                        <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider font-mono">Submitted Credentials</h4>
-                        <div className="grid grid-cols-2 gap-3 text-[11px] text-slate-600 dark:text-slate-400 font-sans">
-                          <div><span className="text-slate-400 font-semibold block">Vehicle Type:</span> {courier.vehicleType}</div>
-                          <div><span className="text-slate-400 font-semibold block">Plate Number:</span> {courier.plateNumber}</div>
-                          <div><span className="text-slate-400 font-semibold block">Vehicle Brand:</span> {courier.brand} {courier.model}</div>
-                          <div><span className="text-slate-400 font-semibold block">NIN ID Number:</span> {courier.nin.slice(0, 4)}*******</div>
+                      <div className="max-w-md mx-auto bg-ink-50 dark:bg-ink-950 p-4 rounded-2xl border border-ink-100 dark:border-ink-800 text-left space-y-2">
+                        <h4 className="text-xs font-bold text-ink-700 dark:text-ink-300 uppercase tracking-wider font-mono">Submitted Credentials</h4>
+                        <div className="grid grid-cols-2 gap-3 text-xs text-ink-600 dark:text-ink-400 font-sans">
+                          <div><span className="text-ink-400 font-semibold block">Vehicle Type:</span> {courier.vehicleType}</div>
+                          <div><span className="text-ink-400 font-semibold block">Plate Number:</span> {courier.plateNumber}</div>
+                          <div><span className="text-ink-400 font-semibold block">Vehicle Brand:</span> {courier.brand} {courier.model}</div>
+                          <div><span className="text-ink-400 font-semibold block">NIN ID Number:</span> {courier.nin.slice(0, 4)}*******</div>
                         </div>
                       </div>
 
-                      <div className="p-3 bg-indigo-50/50 dark:bg-indigo-950/20 rounded-2xl max-w-sm mx-auto text-xs text-indigo-500 font-medium">
-                        ⏳ Estimated approval time: Less than 24 hours.
+                      <div className="mx-auto max-w-sm rounded-2xl bg-jade-50/50 p-3 text-xs font-medium text-jade-700 dark:bg-jade-950/20 dark:text-jade-400">
+                        Estimated approval time: less than 24 hours.
                       </div>
                     </div>
                   ) : (
                     <form onSubmit={handleRegister} className="space-y-6">
                       
                       <div className="space-y-1">
-                        <h3 className="text-lg font-bold text-slate-800 dark:text-white">Delivery Partner Onboarding</h3>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                        <h3 className="text-lg font-bold text-ink-800 dark:text-white">Delivery Partner Onboarding</h3>
+                        <p className="text-xs text-ink-500 dark:text-ink-400">
                           Submit your vehicle specs, license, and national identity ID details to register as a Verified GoodDispatch™ rider.
                         </p>
                       </div>
 
                       {formError && (
-                        <div className="p-4 bg-red-500/10 text-red-500 text-xs rounded-2xl border border-red-500/20 font-medium flex items-center gap-2">
+                        <div className="p-4 bg-ink-500/10 text-ink-500 text-xs rounded-2xl border border-ink-500/20 font-medium flex items-center gap-2">
                           <AlertCircle className="w-4 h-4 flex-shrink-0" />
                           <span>{formError}</span>
                         </div>
                       )}
 
                       {formSuccess && (
-                        <div className="p-4 bg-emerald-500/10 text-emerald-500 text-xs rounded-2xl border border-emerald-500/20 font-medium flex items-center gap-2">
+                        <div className="p-4 bg-jade-500/10 text-jade-500 text-xs rounded-2xl border border-jade-500/20 font-medium flex items-center gap-2">
                           <Check className="w-4 h-4 flex-shrink-0" />
                           <span>Onboarding application submitted successfully! Administrators will review your vehicle specs shortly.</span>
                         </div>
@@ -616,70 +618,70 @@ export default function DispatchDashboardView() {
                         
                         {/* 1. PERSONAL INFORMATION */}
                         <div className="space-y-4">
-                          <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-emerald-600 dark:text-emerald-400">1. Personal Credentials</h4>
+                          <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-jade-600 dark:text-jade-400">1. Personal Credentials</h4>
                           
                           <div className="space-y-1">
-                            <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Full Name (Legal Name)</label>
+                            <label className="text-xs font-bold text-ink-500 dark:text-ink-400">Full Name (Legal Name)</label>
                             <input 
                               type="text"
                               value={fullName}
                               onChange={(e) => setFullName(e.target.value)}
                               placeholder="e.g. Dele Coker"
-                              className="w-full text-xs px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 focus:outline-none focus:border-emerald-500 text-slate-850 dark:text-white font-medium"
+                              className="w-full text-xs px-4 py-3 rounded-xl bg-ink-50 dark:bg-ink-950 border border-ink-100 dark:border-ink-800 focus:outline-none focus:border-jade-500 text-ink-850 dark:text-white font-medium"
                             />
                           </div>
 
                           <div className="space-y-1">
-                            <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Phone Number (Active)</label>
+                            <label className="text-xs font-bold text-ink-500 dark:text-ink-400">Phone Number (Active)</label>
                             <input 
                               type="text"
                               value={phone}
                               onChange={(e) => setPhone(e.target.value)}
                               placeholder="e.g. 08123456789"
-                              className="w-full text-xs px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 focus:outline-none focus:border-emerald-500 text-slate-850 dark:text-white font-medium"
+                              className="w-full text-xs px-4 py-3 rounded-xl bg-ink-50 dark:bg-ink-950 border border-ink-100 dark:border-ink-800 focus:outline-none focus:border-jade-500 text-ink-850 dark:text-white font-medium"
                             />
                           </div>
 
                           <div className="space-y-1">
-                            <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Email Address</label>
+                            <label className="text-xs font-bold text-ink-500 dark:text-ink-400">Email Address</label>
                             <input 
                               type="email"
                               value={email}
                               onChange={(e) => setEmail(e.target.value)}
                               placeholder="e.g. dele.coker@gmail.com"
-                              className="w-full text-xs px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 focus:outline-none focus:border-emerald-500 text-slate-850 dark:text-white font-medium"
+                              className="w-full text-xs px-4 py-3 rounded-xl bg-ink-50 dark:bg-ink-950 border border-ink-100 dark:border-ink-800 focus:outline-none focus:border-jade-500 text-ink-850 dark:text-white font-medium"
                             />
                           </div>
 
                           <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1">
-                              <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400">State of Residence</label>
+                              <label className="text-xs font-bold text-ink-500 dark:text-ink-400">State of Residence</label>
                               <input 
                                 type="text"
                                 value={stateName}
                                 onChange={(e) => setStateName(e.target.value)}
-                                className="w-full text-xs px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 text-slate-850 dark:text-white font-medium"
+                                className="w-full text-xs px-4 py-3 rounded-xl bg-ink-50 dark:bg-ink-950 border border-ink-100 dark:border-ink-800 text-ink-850 dark:text-white font-medium"
                               />
                             </div>
                             <div className="space-y-1">
-                              <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400">City</label>
+                              <label className="text-xs font-bold text-ink-500 dark:text-ink-400">City</label>
                               <input 
                                 type="text"
                                 value={cityName}
                                 onChange={(e) => setCityName(e.target.value)}
-                                className="w-full text-xs px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 text-slate-850 dark:text-white font-medium"
+                                className="w-full text-xs px-4 py-3 rounded-xl bg-ink-50 dark:bg-ink-950 border border-ink-100 dark:border-ink-800 text-ink-850 dark:text-white font-medium"
                               />
                             </div>
                           </div>
 
                           <div className="space-y-1">
-                            <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Address</label>
+                            <label className="text-xs font-bold text-ink-500 dark:text-ink-400">Address</label>
                             <input 
                               type="text"
                               value={address}
                               onChange={(e) => setAddress(e.target.value)}
                               placeholder="e.g. 22 Allen Avenue"
-                              className="w-full text-xs px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 text-slate-850 dark:text-white font-medium"
+                              className="w-full text-xs px-4 py-3 rounded-xl bg-ink-50 dark:bg-ink-950 border border-ink-100 dark:border-ink-800 text-ink-850 dark:text-white font-medium"
                             />
                           </div>
 
@@ -687,15 +689,15 @@ export default function DispatchDashboardView() {
 
                         {/* 2. VEHICLE SPECIFICATIONS */}
                         <div className="space-y-4">
-                          <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-emerald-600 dark:text-emerald-400">2. Fleet Specs & Verification ID</h4>
+                          <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-jade-600 dark:text-jade-400">2. Fleet Specs & Verification ID</h4>
 
                           <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1">
-                              <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Vehicle Type</label>
+                              <label className="text-xs font-bold text-ink-500 dark:text-ink-400">Vehicle Type</label>
                               <select 
                                 value={vehicleType}
                                 onChange={(e) => setVehicleType(e.target.value as any)}
-                                className="w-full text-xs px-3 py-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 text-slate-850 dark:text-white font-semibold cursor-pointer"
+                                className="w-full text-xs px-3 py-3 rounded-xl bg-ink-50 dark:bg-ink-950 border border-ink-100 dark:border-ink-800 text-ink-850 dark:text-white font-semibold cursor-pointer"
                               >
                                 <option value="BICYCLE">Bicycle</option>
                                 <option value="MOTORCYCLE">Motorcycle</option>
@@ -708,82 +710,82 @@ export default function DispatchDashboardView() {
                               </select>
                             </div>
                             <div className="space-y-1">
-                              <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Plate Number</label>
+                              <label className="text-xs font-bold text-ink-500 dark:text-ink-400">Plate Number</label>
                               <input 
                                 type="text"
                                 value={plateNumber}
                                 onChange={(e) => setPlateNumber(e.target.value)}
                                 placeholder="e.g. LSR-432-AB"
-                                className="w-full text-xs px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 text-slate-850 dark:text-white font-mono"
+                                className="w-full text-xs px-4 py-3 rounded-xl bg-ink-50 dark:bg-ink-950 border border-ink-100 dark:border-ink-800 text-ink-850 dark:text-white font-mono"
                               />
                             </div>
                           </div>
 
                           <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1">
-                              <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Vehicle Brand</label>
+                              <label className="text-xs font-bold text-ink-500 dark:text-ink-400">Vehicle Brand</label>
                               <input 
                                 type="text"
                                 value={brand}
                                 onChange={(e) => setBrand(e.target.value)}
                                 placeholder="e.g. Suzuki / TVS"
-                                className="w-full text-xs px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 text-slate-850 dark:text-white font-medium"
+                                className="w-full text-xs px-4 py-3 rounded-xl bg-ink-50 dark:bg-ink-950 border border-ink-100 dark:border-ink-800 text-ink-850 dark:text-white font-medium"
                               />
                             </div>
                             <div className="space-y-1">
-                              <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Vehicle Model</label>
+                              <label className="text-xs font-bold text-ink-500 dark:text-ink-400">Vehicle Model</label>
                               <input 
                                 type="text"
                                 value={model}
                                 onChange={(e) => setModel(e.target.value)}
                                 placeholder="e.g. GR150 / Neo"
-                                className="w-full text-xs px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 text-slate-850 dark:text-white font-medium"
+                                className="w-full text-xs px-4 py-3 rounded-xl bg-ink-50 dark:bg-ink-950 border border-ink-100 dark:border-ink-800 text-ink-850 dark:text-white font-medium"
                               />
                             </div>
                           </div>
 
                           <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1">
-                              <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Vehicle Color</label>
+                              <label className="text-xs font-bold text-ink-500 dark:text-ink-400">Vehicle Color</label>
                               <input 
                                 type="text"
                                 value={color}
                                 onChange={(e) => setColor(e.target.value)}
                                 placeholder="e.g. Red"
-                                className="w-full text-xs px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 text-slate-850 dark:text-white font-medium"
+                                className="w-full text-xs px-4 py-3 rounded-xl bg-ink-50 dark:bg-ink-950 border border-ink-100 dark:border-ink-800 text-ink-850 dark:text-white font-medium"
                               />
                             </div>
                             <div className="space-y-1">
-                              <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Capacity Box</label>
+                              <label className="text-xs font-bold text-ink-500 dark:text-ink-400">Capacity Box</label>
                               <input 
                                 type="text"
                                 value={capacity}
                                 onChange={(e) => setCapacity(e.target.value)}
-                                className="w-full text-xs px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 text-slate-850 dark:text-white font-medium"
+                                className="w-full text-xs px-4 py-3 rounded-xl bg-ink-50 dark:bg-ink-950 border border-ink-100 dark:border-ink-800 text-ink-850 dark:text-white font-medium"
                               />
                             </div>
                           </div>
 
                           <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1">
-                              <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400">NIN Card Number</label>
+                              <label className="text-xs font-bold text-ink-500 dark:text-ink-400">NIN Card Number</label>
                               <input 
                                 type="text"
                                 value={nin}
                                 onChange={(e) => setNin(e.target.value)}
                                 placeholder="11 digit NIN"
                                 maxLength={11}
-                                className="w-full text-xs px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 text-slate-850 dark:text-white font-mono"
+                                className="w-full text-xs px-4 py-3 rounded-xl bg-ink-50 dark:bg-ink-950 border border-ink-100 dark:border-ink-800 text-ink-850 dark:text-white font-mono"
                               />
                             </div>
                             <div className="space-y-1">
-                              <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Driver License ID</label>
+                              <label className="text-xs font-bold text-ink-500 dark:text-ink-400">Driver License ID</label>
                               <input 
                                 type="text"
                                 value={licenseNumber}
                                 onChange={(e) => setLicenseNumber(e.target.value)}
                                 placeholder="e.g. DL-29381-XYZ"
-                                className="w-full text-xs px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 text-slate-850 dark:text-white font-mono"
+                                className="w-full text-xs px-4 py-3 rounded-xl bg-ink-50 dark:bg-ink-950 border border-ink-100 dark:border-ink-800 text-ink-850 dark:text-white font-mono"
                               />
                             </div>
                           </div>
@@ -793,29 +795,29 @@ export default function DispatchDashboardView() {
                       </div>
 
                       {/* Mock File Upload Sections (Highly visual with placeholders) */}
-                      <div className="space-y-3 pt-4 border-t border-gray-100 dark:border-slate-800">
-                        <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-500">3. Document Upload Check</h4>
+                      <div className="space-y-3 pt-4 border-t border-ink-100 dark:border-ink-800">
+                        <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-ink-500">3. Document Upload Check</h4>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                           
                           {/* Photo Selfie */}
-                          <div className="border border-dashed border-gray-200 dark:border-slate-800 rounded-2xl p-4 text-center cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-950/40 transition-colors">
-                            <span className="text-2xl block mb-1">📸</span>
-                            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 block">Selfie with Vehicle</span>
-                            <p className="text-[9px] text-slate-400 mt-1">Uploaded self_photo.png</p>
+                          <div className="border border-dashed border-ink-200 dark:border-ink-800 rounded-2xl p-4 text-center cursor-pointer hover:bg-ink-50 dark:hover:bg-ink-950/40 transition-colors">
+                            <Camera className="w-7 h-7 block mx-auto mb-1 text-jade-500" />
+                            <span className="text-xs font-bold text-ink-700 dark:text-ink-300 block">Selfie with Vehicle</span>
+                            <p className="text-xs text-ink-400 mt-1">Uploaded self_photo.png</p>
                           </div>
 
                           {/* Drivers License */}
-                          <div className="border border-dashed border-gray-200 dark:border-slate-800 rounded-2xl p-4 text-center cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-950/40 transition-colors">
-                            <span className="text-2xl block mb-1">💳</span>
-                            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 block">Driver&apos;s License Photo</span>
-                            <p className="text-[9px] text-slate-400 mt-1">Uploaded license_front.png</p>
+                          <div className="border border-dashed border-ink-200 dark:border-ink-800 rounded-2xl p-4 text-center cursor-pointer hover:bg-ink-50 dark:hover:bg-ink-950/40 transition-colors">
+                            <CreditCard className="w-7 h-7 block mx-auto mb-1 text-jade-500" />
+                            <span className="text-xs font-bold text-ink-700 dark:text-ink-300 block">Driver&apos;s License Photo</span>
+                            <p className="text-xs text-ink-400 mt-1">Uploaded license_front.png</p>
                           </div>
 
                           {/* Vehicle Photo */}
-                          <div className="border border-dashed border-gray-200 dark:border-slate-800 rounded-2xl p-4 text-center cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-950/40 transition-colors">
-                            <span className="text-2xl block mb-1">🏍️</span>
-                            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 block">Vehicle Box Photo</span>
-                            <p className="text-[9px] text-slate-400 mt-1">Uploaded dispatch_bike.png</p>
+                          <div className="border border-dashed border-ink-200 dark:border-ink-800 rounded-2xl p-4 text-center cursor-pointer hover:bg-ink-50 dark:hover:bg-ink-950/40 transition-colors">
+                            <Bike className="w-7 h-7 block mx-auto mb-1 text-jade-500" />
+                            <span className="text-xs font-bold text-ink-700 dark:text-ink-300 block">Vehicle Box Photo</span>
+                            <p className="text-xs text-ink-400 mt-1">Uploaded dispatch_bike.png</p>
                           </div>
 
                         </div>
@@ -825,7 +827,7 @@ export default function DispatchDashboardView() {
                       <div className="flex justify-end pt-4">
                         <button
                           type="submit"
-                          className="px-8 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-sans font-bold text-xs rounded-xl shadow-md cursor-pointer flex items-center gap-1.5 transition-transform active:scale-95"
+                          className="px-8 py-3 bg-gradient-to-r from-jade-500 to-jade-600 hover:from-jade-600 hover:to-jade-700 text-white font-sans font-bold text-xs rounded-xl shadow-md cursor-pointer flex items-center gap-1.5 transition-transform active:scale-95"
                         >
                           <Truck className="w-4 h-4" />
                           Submit Onboarding Application
@@ -842,24 +844,24 @@ export default function DispatchDashboardView() {
                 <div className="space-y-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="text-lg font-bold text-slate-800 dark:text-white">Delivery Job Marketplace</h3>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                      <h3 className="text-lg font-bold text-ink-800 dark:text-white">Delivery Job Marketplace</h3>
+                      <p className="text-xs text-ink-500 dark:text-ink-400">
                         Available delivery jobs in your area. Accept requests matching your vehicle capacity.
                       </p>
                     </div>
                     
                     {/* Live reload pulse indicators */}
-                    <div className="flex items-center gap-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold px-2.5 py-1 rounded-full">
-                      <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping" />
+                    <div className="flex items-center gap-1 bg-jade-500/10 text-jade-600 dark:text-jade-400 text-xs font-bold px-2.5 py-1 rounded-full">
+                      <span className="w-1.5 h-1.5 bg-jade-500 rounded-full animate-ping" />
                       Live Feed
                     </div>
                   </div>
 
                   {availableJobs.length === 0 ? (
-                    <div className="text-center py-16 bg-slate-50 dark:bg-slate-950/50 border border-gray-100 dark:border-slate-800 rounded-3xl p-8 space-y-4">
-                      <Compass className="w-12 h-12 text-slate-400 mx-auto animate-spin" />
-                      <h4 className="text-sm font-bold text-slate-750 dark:text-slate-200">Scanning for Jobs...</h4>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+                    <div className="text-center py-16 bg-ink-50 dark:bg-ink-950/50 border border-ink-100 dark:border-ink-800 rounded-3xl p-8 space-y-4">
+                      <Compass className="w-12 h-12 text-ink-400 mx-auto animate-spin" />
+                      <h4 className="text-sm font-bold text-ink-750 dark:text-ink-200">Scanning for Jobs...</h4>
+                      <p className="text-xs text-ink-500 dark:text-ink-400 max-w-sm mx-auto">
                         Currently no pending delivery jobs are available in Lagos. High frequency blocks usually trigger when customers checkout escrow orders.
                       </p>
                       
@@ -872,10 +874,10 @@ export default function DispatchDashboardView() {
                             dbOperations.createDeliveryJob(lastOrder.id, 'STANDARD', 3500);
                             setDb(getDBState());
                           } else {
-                            alert('No orders found to deliver. Please place an order first.');
+                            toast.error('No orders found to deliver. Please place an order first.');
                           }
                         }}
-                        className="mx-auto flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[10px] px-3 py-2 rounded-xl cursor-pointer"
+                        className="mx-auto flex items-center gap-1.5 bg-jade-500 hover:bg-jade-600 text-white font-bold text-xs px-3 py-2 rounded-xl cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         Simulate Customer Delivery Request
@@ -890,69 +892,69 @@ export default function DispatchDashboardView() {
                         return (
                           <div 
                             key={job.id}
-                            className="bg-slate-50 dark:bg-slate-950 rounded-2xl p-5 border border-gray-100 dark:border-slate-800/80 hover:shadow-md transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
+                            className="bg-ink-50 dark:bg-ink-950 rounded-2xl p-5 border border-ink-100 dark:border-ink-800/80 hover:shadow-md transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
                           >
                             <div className="space-y-2 flex-1">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-[10px] font-bold bg-indigo-100 dark:bg-indigo-950/40 text-indigo-500 dark:text-indigo-400 px-2 py-0.5 rounded">
+                                <span className="text-xs font-bold bg-jade-100 dark:bg-jade-950/40 text-jade-500 dark:text-jade-400 px-2 py-0.5 rounded">
                                   {job.serviceType}
                                 </span>
-                                <span className="text-[10px] font-mono text-slate-400">
+                                <span className="text-xs font-mono text-ink-400">
                                   Job ID: #JOB-{job.id}
                                 </span>
-                                <span className="text-[10px] font-mono font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded">
+                                <span className="text-xs font-mono font-bold text-jade-600 bg-jade-500/10 px-2 py-0.5 rounded">
                                   {formatDistanceKm(distanceKm)} · ~{etaMinutes} mins
                                 </span>
                               </div>
 
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-xs text-slate-600 dark:text-slate-400">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-xs text-ink-600 dark:text-ink-400">
                                 <div>
-                                  <span className="font-bold text-slate-400 block text-[9px] uppercase font-mono">Pickup Point (Seller)</span>
-                                  <span className="font-medium text-slate-800 dark:text-slate-200">
+                                  <span className="font-bold text-ink-400 block text-xs uppercase font-mono">Pickup Point (Seller)</span>
+                                  <span className="font-medium text-ink-800 dark:text-ink-200">
                                     {seller?.fullName || 'Seller'} — {order?.deliveryCity || 'Lagos'}
                                   </span>
                                 </div>
                                 <div>
-                                  <span className="font-bold text-slate-400 block text-[9px] uppercase font-mono">Delivery Point (Buyer)</span>
-                                  <span className="font-medium text-slate-800 dark:text-slate-200">
+                                  <span className="font-bold text-ink-400 block text-xs uppercase font-mono">Delivery Point (Buyer)</span>
+                                  <span className="font-medium text-ink-800 dark:text-ink-200">
                                     {order?.deliveryAddress || buyer?.fullName || 'Buyer destination'}
                                   </span>
                                 </div>
                               </div>
 
                               {/* Smart Match Compatibility Shield */}
-                              <div className="mt-2.5 p-3 bg-emerald-500/5 rounded-xl border border-emerald-500/10 flex items-center justify-between gap-3 text-[11px] text-slate-600 dark:text-slate-400">
+                              <div className="mt-2.5 p-3 bg-jade-500/5 rounded-xl border border-jade-500/10 flex items-center justify-between gap-3 text-xs text-ink-600 dark:text-ink-400">
                                 <div className="flex items-center gap-2">
-                                  <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center font-black text-[10px] text-emerald-600">
+                                  <div className="w-8 h-8 rounded-full bg-jade-500/10 flex items-center justify-center font-black text-xs text-jade-600">
                                     {smartScore}%
                                   </div>
                                   <div>
-                                    <span className="font-bold text-slate-800 dark:text-white block text-[10px]">Proximity Smart Match</span>
-                                    <span className="text-[9px] text-slate-400">
+                                    <span className="font-bold text-ink-800 dark:text-white block text-xs">Proximity Smart Match</span>
+                                    <span className="text-xs text-ink-400">
                                       Ranked by live GPS distance to buyer ({formatDistanceKm(distanceKm)} away).
                                     </span>
                                   </div>
                                 </div>
-                                <span className="text-[9px] font-mono text-emerald-600 font-bold bg-emerald-500/10 px-2 py-0.5 rounded shrink-0">
+                                <span className="text-xs font-mono text-jade-600 font-bold bg-jade-500/10 px-2 py-0.5 rounded shrink-0">
                                   NEAR YOU
                                 </span>
                               </div>
                             </div>
 
                             {/* Earnings breakdown & Accept CTA */}
-                            <div className="flex items-center justify-between md:justify-end gap-6 border-t md:border-t-0 pt-3 md:pt-0 border-gray-100 dark:border-slate-850">
+                            <div className="flex items-center justify-between md:justify-end gap-6 border-t md:border-t-0 pt-3 md:pt-0 border-ink-100 dark:border-ink-850">
                               <div className="text-right">
-                                <span className="text-[9px] text-slate-400 uppercase tracking-wider font-mono">Courier Pay</span>
-                                <p className="text-lg font-black text-emerald-500 font-mono">
+                                <span className="text-xs text-ink-400 uppercase tracking-wider font-mono">Courier Pay</span>
+                                <p className="text-lg font-black text-jade-500 font-mono">
                                   ₦{job.courierEarnings.toLocaleString()}
                                 </p>
-                                <span className="text-[9px] text-slate-400 block">
+                                <span className="text-xs text-ink-400 block">
                                   Fee: ₦{job.deliveryFee.toLocaleString()}
                                 </span>
                               </div>
                               <button
                                 onClick={() => claimJob(job.id)}
-                                className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer transition-transform active:scale-95"
+                                className="px-5 py-2.5 bg-jade-500 hover:bg-jade-600 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer transition-transform active:scale-95"
                               >
                                 Accept Delivery Job
                               </button>
@@ -974,23 +976,23 @@ export default function DispatchDashboardView() {
                     <div className="space-y-6">
                       
                       {/* Active Job summary header */}
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100/20">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-2xl bg-jade-50/50 dark:bg-jade-950/20 border border-jade-100/20">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
-                            <span className="bg-indigo-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase">
+                            <span className="bg-jade-500 text-white text-xs font-extrabold px-1.5 py-0.5 rounded uppercase">
                               Active Journey
                             </span>
-                            <span className="text-xs font-mono text-slate-500">
+                            <span className="text-xs font-mono text-ink-500">
                               Job ID: #JOB-{simulatedJob.id}
                             </span>
                           </div>
-                          <h4 className="text-sm font-bold text-slate-800 dark:text-white">
+                          <h4 className="text-sm font-bold text-ink-800 dark:text-white">
                             Delivering for Order #{simulatedJob.orderId}
                           </h4>
                         </div>
                         <div className="text-right">
-                          <span className="text-[10px] text-slate-400 font-mono uppercase block">Your Commission Payout</span>
-                          <span className="text-xl font-black text-emerald-500 font-mono">
+                          <span className="text-xs text-ink-400 font-mono uppercase block">Your Commission Payout</span>
+                          <span className="text-xl font-black text-jade-500 font-mono">
                             ₦{simulatedJob.courierEarnings.toLocaleString()}
                           </span>
                         </div>
@@ -1022,14 +1024,14 @@ export default function DispatchDashboardView() {
                         {/* RIGHT COLUMN: Journey log & Action panels */}
                         <div className="space-y-6">
                           
-                          <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-gray-100 dark:border-slate-800 space-y-4">
-                            <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-500">Journey Controls</h4>
+                          <div className="bg-ink-50 dark:bg-ink-950 p-4 rounded-2xl border border-ink-100 dark:border-ink-800 space-y-4">
+                            <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-ink-500">Journey Controls</h4>
                             
                             <div className="space-y-2">
                               {simulatedJob.status === DeliveryJobStatus.ACCEPTED && (
                                 <button
                                   onClick={() => transitionJobStatus(DeliveryJobStatus.PICKED_UP)}
-                                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-transform active:scale-95 flex items-center justify-center gap-2"
+                                  className="w-full py-3 bg-jade-600 hover:bg-jade-700 text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-transform active:scale-95 flex items-center justify-center gap-2"
                                 >
                                   <Truck className="w-4 h-4" />
                                   Scan & Pickup Package
@@ -1039,7 +1041,7 @@ export default function DispatchDashboardView() {
                               {simulatedJob.status === DeliveryJobStatus.PICKED_UP && (
                                 <button
                                   onClick={() => transitionJobStatus(DeliveryJobStatus.IN_TRANSIT)}
-                                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-transform active:scale-95 flex items-center justify-center gap-2"
+                                  className="w-full py-3 bg-jade-600 hover:bg-jade-700 text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-transform active:scale-95 flex items-center justify-center gap-2"
                                 >
                                   <Navigation className="w-4 h-4" />
                                   Start Live GPS Transit
@@ -1047,16 +1049,16 @@ export default function DispatchDashboardView() {
                               )}
 
                               {simulatedJob.status === DeliveryJobStatus.IN_TRANSIT && (
-                                <div className="p-3 bg-slate-100 dark:bg-slate-850 rounded-xl text-center text-xs text-slate-500 space-y-2">
-                                  <div className="font-extrabold text-slate-700 dark:text-slate-300">
+                                <div className="p-3 bg-ink-100 dark:bg-ink-850 rounded-xl text-center text-xs text-ink-500 space-y-2">
+                                  <div className="font-extrabold text-ink-700 dark:text-ink-300">
                                     Live GPS sharing active
                                   </div>
-                                  <p className="text-[10px] text-slate-400">
+                                  <p className="text-xs text-ink-400">
                                     Your phone location is streaming to buyer & seller maps. ETA ~{simEta} mins.
                                   </p>
                                   <button
                                     onClick={() => transitionJobStatus(DeliveryJobStatus.ARRIVED)}
-                                    className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs rounded-xl cursor-pointer"
+                                    className="w-full py-2.5 bg-jade-500 hover:bg-jade-600 text-white font-bold text-xs rounded-xl cursor-pointer"
                                   >
                                     Mark Arrived at Buyer
                                   </button>
@@ -1064,11 +1066,11 @@ export default function DispatchDashboardView() {
                               )}
 
                               {[DeliveryJobStatus.ARRIVED].includes(simulatedJob.status) && (
-                                <div className="space-y-4 pt-2 border-t border-gray-200 dark:border-slate-800">
+                                <div className="space-y-4 pt-2 border-t border-ink-200 dark:border-ink-800">
                                   
                                   <div className="space-y-1">
-                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono block">
-                                      🔑 Buyer Verification PIN Code
+                                    <label className="text-xs font-bold text-ink-500 uppercase tracking-wider font-mono block">
+                                      Buyer Verification PIN Code
                                     </label>
                                     <input 
                                       type="text"
@@ -1076,28 +1078,28 @@ export default function DispatchDashboardView() {
                                       onChange={(e) => setPinCode(e.target.value)}
                                       placeholder="Enter 4-Digit Code"
                                       maxLength={4}
-                                      className="w-full text-center tracking-widest font-mono text-sm font-black px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 focus:outline-none"
+                                      className="w-full text-center tracking-widest font-mono text-sm font-black px-4 py-2.5 rounded-xl bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 focus:outline-none"
                                     />
-                                    <p className="text-[9px] text-slate-400">
+                                    <p className="text-xs text-ink-400">
                                       Ask the buyer for the unique 4-digit PIN generated on their invoice checkout.
                                     </p>
                                   </div>
 
                                   {pinError && (
-                                    <p className="text-[10px] font-bold text-red-500">
-                                      ❌ {pinError}
+                                    <p className="text-xs font-bold text-ink-500">
+                                      {pinError}
                                     </p>
                                   )}
 
                                   {pinSuccess && (
-                                    <p className="text-[10px] font-bold text-emerald-500">
-                                      🎉 Pin Verified! Earnings Released!
+                                    <p className="text-xs font-bold text-jade-500">
+                                      Pin Verified! Earnings Released!
                                     </p>
                                   )}
 
                                   <button
                                     onClick={handleVerifyPin}
-                                    className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-transform active:scale-95 flex items-center justify-center gap-2"
+                                    className="w-full py-3 bg-jade-500 hover:bg-jade-600 text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-transform active:scale-95 flex items-center justify-center gap-2"
                                   >
                                     <Check className="w-4 h-4" />
                                     Verify Code & Complete
@@ -1110,19 +1112,19 @@ export default function DispatchDashboardView() {
                           </div>
 
                           {/* GoodDispatch Safety Center Panel */}
-                          <div className="bg-red-500/5 dark:bg-red-950/10 p-5 rounded-2xl border border-red-500/20 space-y-4">
+                          <div className="bg-ink-500/5 dark:bg-ink-950/10 p-5 rounded-2xl border border-ink-500/20 space-y-4">
                             <div className="flex items-center gap-2">
-                              <Shield className="w-5 h-5 text-red-500 shrink-0" />
+                              <Shield className="w-5 h-5 text-ink-500 shrink-0" />
                               <div>
-                                <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-red-500">GoodDispatch™ Safety Center</h4>
-                                <p className="text-[10px] text-slate-500">Emergency SOS routing and real-time incident reporting</p>
+                                <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-ink-500">GoodDispatch™ Safety Center</h4>
+                                <p className="text-xs text-ink-500">Emergency SOS routing and real-time incident reporting</p>
                               </div>
                             </div>
 
                             {sosSuccessMessage && (
-                              <div className="p-3 bg-red-600 text-white rounded-xl text-[11px] font-semibold animate-pulse space-y-1">
+                              <div className="p-3 bg-ink-600 text-white rounded-xl text-xs font-semibold animate-pulse space-y-1">
                                 <div>{sosSuccessMessage}</div>
-                                <div className="font-mono text-[9px] opacity-90">GPS Coordinates: {mapLat.toFixed(5)}° N, {mapLng.toFixed(5)}° E</div>
+                                <div className="font-mono text-xs opacity-90">GPS Coordinates: {mapLat.toFixed(5)}° N, {mapLng.toFixed(5)}° E</div>
                               </div>
                             )}
 
@@ -1131,16 +1133,16 @@ export default function DispatchDashboardView() {
                                 onClick={handleTriggerSos}
                                 className={`flex-1 py-2.5 rounded-xl font-bold text-xs uppercase cursor-pointer select-none transition-all duration-350 text-center ${
                                   sosActive 
-                                    ? 'bg-red-700 text-white animate-pulse' 
-                                    : 'bg-red-600 hover:bg-red-700 text-white shadow-md shadow-red-500/20'
+                                    ? 'bg-ink-700 text-white animate-pulse' 
+                                    : 'bg-ink-600 hover:bg-ink-700 text-white shadow-md shadow-ink-500/20'
                                 }`}
                               >
-                                {sosActive ? '🚨 SOS EMERGENCY ACTIVE' : '🚨 Trigger SOS Panic'}
+                                {sosActive ? 'SOS EMERGENCY ACTIVE' : 'Trigger SOS Panic'}
                               </button>
 
                               <button
                                 onClick={() => setShowIncidentForm(!showIncidentForm)}
-                                className="px-3 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl cursor-pointer"
+                                className="px-3 py-2.5 bg-ink-100 dark:bg-ink-800 hover:bg-ink-200 dark:hover:bg-ink-750 text-ink-700 dark:text-ink-300 font-bold text-xs rounded-xl cursor-pointer"
                                 title="Report mechanical failure, puncture or delay"
                               >
                                 Report Incident
@@ -1148,19 +1150,19 @@ export default function DispatchDashboardView() {
                             </div>
 
                             {showIncidentForm && (
-                              <form onSubmit={handleReportIncident} className="space-y-3 pt-3 border-t border-red-500/10">
+                              <form onSubmit={handleReportIncident} className="space-y-3 pt-3 border-t border-ink-500/10">
                                 {incidentReported ? (
-                                  <div className="p-3 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-xl text-center text-xs font-bold">
-                                    ✓ Safety incident reported to dispatch control! Log updated.
+                                  <div className="p-3 bg-jade-500/10 text-jade-600 dark:text-jade-400 rounded-xl text-center text-xs font-bold">
+                                    Safety incident reported to dispatch control. Log updated.
                                   </div>
                                 ) : (
                                   <>
                                     <div className="space-y-1">
-                                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider font-mono">Incident Type</label>
+                                      <label className="text-xs font-bold text-ink-400 uppercase tracking-wider font-mono">Incident Type</label>
                                       <select
                                         value={incidentType}
                                         onChange={(e) => setIncidentType(e.target.value)}
-                                        className="w-full text-xs px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 focus:outline-none"
+                                        className="w-full text-xs px-2 py-1.5 rounded-lg bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 focus:outline-none"
                                       >
                                         <option value="VEHICLE_BREAKDOWN">Vehicle Breakdown / Mechanical Failure</option>
                                         <option value="TYRE_PUNCTURE">Tyre Puncture</option>
@@ -1171,19 +1173,19 @@ export default function DispatchDashboardView() {
                                     </div>
 
                                     <div className="space-y-1">
-                                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider font-mono">Incident Details</label>
+                                      <label className="text-xs font-bold text-ink-400 uppercase tracking-wider font-mono">Incident Details</label>
                                       <textarea
                                         value={incidentNote}
                                         onChange={(e) => setIncidentNote(e.target.value)}
                                         placeholder="Describe the incident (e.g. flat tyre on Third Mainland Bridge, ETA delay of 10 mins)"
                                         rows={2}
-                                        className="w-full text-xs p-2 rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 focus:outline-none text-slate-850 dark:text-white"
+                                        className="w-full text-xs p-2 rounded-lg bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 focus:outline-none text-ink-850 dark:text-white"
                                       />
                                     </div>
 
                                     <button
                                       type="submit"
-                                      className="w-full py-2 bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer"
+                                      className="w-full py-2 bg-ink-800 hover:bg-ink-900 dark:bg-ink-700 dark:hover:bg-ink-600 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer"
                                     >
                                       Submit Incident Log
                                     </button>
@@ -1194,20 +1196,20 @@ export default function DispatchDashboardView() {
                           </div>
 
                           {/* Tracking Log History */}
-                          <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-gray-100 dark:border-slate-800 space-y-3">
-                            <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-500">Journey Log</h4>
-                            <div className="space-y-3 text-[11px]">
+                          <div className="bg-ink-50 dark:bg-ink-950 p-4 rounded-2xl border border-ink-100 dark:border-ink-800 space-y-3">
+                            <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-ink-500">Journey Log</h4>
+                            <div className="space-y-3 text-xs">
                               {simulatedJob.trackingHistory?.map((log, idx) => (
                                 <div key={idx} className="flex gap-2.5 items-start">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1 flex-shrink-0" />
+                                  <span className="w-1.5 h-1.5 rounded-full bg-jade-500 mt-1 flex-shrink-0" />
                                   <div>
-                                    <span className="font-extrabold text-slate-800 dark:text-slate-200 block">
+                                    <span className="font-extrabold text-ink-800 dark:text-ink-200 block">
                                       {log.status}
                                     </span>
-                                    <span className="text-[10px] text-slate-400 block font-mono">
+                                    <span className="text-xs text-ink-400 block font-mono">
                                       {new Date(log.time).toLocaleTimeString()}
                                     </span>
-                                    <p className="text-slate-500 dark:text-slate-400 mt-0.5 leading-tight">
+                                    <p className="text-ink-500 dark:text-ink-400 mt-0.5 leading-tight">
                                       {log.note || 'No description provided'}
                                     </p>
                                   </div>
@@ -1223,9 +1225,9 @@ export default function DispatchDashboardView() {
                     </div>
                   ) : (
                     <div className="text-center py-16">
-                      <Compass className="w-14 h-14 text-slate-300 mx-auto mb-4" />
-                      <h4 className="text-base font-bold text-slate-800 dark:text-white">No Active Deliveries</h4>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto mt-1">
+                      <Compass className="w-14 h-14 text-ink-300 mx-auto mb-4" />
+                      <h4 className="text-base font-bold text-ink-800 dark:text-white">No Active Deliveries</h4>
+                      <p className="text-xs text-ink-500 dark:text-ink-400 max-w-sm mx-auto mt-1">
                         Go to the Delivery Marketplace tab to claim and accept new package courier requests!
                       </p>
                     </div>
@@ -1239,25 +1241,25 @@ export default function DispatchDashboardView() {
                   
                   {/* Earnings Overview stats cards */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="bg-slate-50 dark:bg-slate-950 rounded-2xl p-5 border border-gray-100 dark:border-slate-800 space-y-1">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Total Courier Earnings</span>
-                      <p className="text-2xl font-black text-emerald-500 font-mono">
+                    <div className="bg-ink-50 dark:bg-ink-950 rounded-2xl p-5 border border-ink-100 dark:border-ink-800 space-y-1">
+                      <span className="text-xs font-bold text-ink-400 uppercase tracking-wider font-mono">Total Courier Earnings</span>
+                      <p className="text-2xl font-black text-jade-500 font-mono">
                         ₦{courierEarningsSum.toLocaleString()}
                       </p>
                     </div>
 
-                    <div className="bg-slate-50 dark:bg-slate-950 rounded-2xl p-5 border border-gray-100 dark:border-slate-800 space-y-1">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Completed Jobs</span>
-                      <p className="text-2xl font-black text-slate-850 dark:text-white">
+                    <div className="bg-ink-50 dark:bg-ink-950 rounded-2xl p-5 border border-ink-100 dark:border-ink-800 space-y-1">
+                      <span className="text-xs font-bold text-ink-400 uppercase tracking-wider font-mono">Completed Jobs</span>
+                      <p className="text-2xl font-black text-ink-850 dark:text-white">
                         {myCompletedJobs.length} Deliveries
                       </p>
                     </div>
 
-                    <div className="bg-slate-50 dark:bg-slate-950 rounded-2xl p-5 border border-gray-100 dark:border-slate-800 space-y-1">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Rider Trust Rating</span>
+                    <div className="bg-ink-50 dark:bg-ink-950 rounded-2xl p-5 border border-ink-100 dark:border-ink-800 space-y-1">
+                      <span className="text-xs font-bold text-ink-400 uppercase tracking-wider font-mono">Rider Trust Rating</span>
                       <div className="flex items-center gap-1">
-                        <Star className="w-5 h-5 text-amber-400 fill-amber-400" />
-                        <p className="text-xl font-black text-slate-850 dark:text-white">
+                        <Star className="w-5 h-5 text-ink-400 fill-ink-400" />
+                        <p className="text-xl font-black text-ink-850 dark:text-white">
                           {courier?.rating ? courier.rating.toFixed(2) : '5.00'} / 5.0
                         </p>
                       </div>
@@ -1266,9 +1268,9 @@ export default function DispatchDashboardView() {
 
                   {/* History List of Completed deliveries */}
                   <div className="space-y-4">
-                    <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-500">Logistics Earnings Log</h4>
+                    <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-ink-500">Logistics Earnings Log</h4>
                     {myCompletedJobs.length === 0 ? (
-                      <p className="text-xs text-slate-400 italic text-center py-8">
+                      <p className="text-xs text-ink-400 italic text-center py-8">
                         No completed delivery payouts logged on your account yet. Complete your active jobs to credit your wallet instantly.
                       </p>
                     ) : (
@@ -1276,17 +1278,17 @@ export default function DispatchDashboardView() {
                         {myCompletedJobs.map(job => (
                           <div 
                             key={job.id}
-                            className="bg-slate-50 dark:bg-slate-950 rounded-2xl p-4 border border-gray-100 dark:border-slate-800/60 flex items-center justify-between text-xs"
+                            className="bg-ink-50 dark:bg-ink-950 rounded-2xl p-4 border border-ink-100 dark:border-ink-800/60 flex items-center justify-between text-xs"
                           >
                             <div className="space-y-1">
-                              <span className="font-extrabold text-slate-800 dark:text-slate-200">
+                              <span className="font-extrabold text-ink-800 dark:text-ink-200">
                                 Delivery Job #{job.id} (Order #{job.orderId})
                               </span>
-                              <span className="text-[10px] text-slate-400 block font-mono">
+                              <span className="text-xs text-ink-400 block font-mono">
                                 Completed At: {new Date(job.createdAt).toLocaleDateString()}
                               </span>
                             </div>
-                            <span className="font-black font-mono text-emerald-500">
+                            <span className="font-black font-mono text-jade-500">
                               +₦{job.courierEarnings.toLocaleString()}
                             </span>
                           </div>

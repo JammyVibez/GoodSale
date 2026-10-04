@@ -4,7 +4,9 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Header from '../components/Header';
+import MarketingLanding from '../components/MarketingLanding';
 import LandingView from '../components/LandingView';
+import WalletView from '../components/WalletView';
 import ProductDetailView from '../components/ProductDetailView';
 import DashboardView from '../components/DashboardView';
 import AdminDashboard from '../components/AdminDashboard';
@@ -21,11 +23,46 @@ import BuyerProfileView from '../components/BuyerProfileView';
 import AuthModal from '../components/AuthModal';
 import BottomNavigation from '../components/BottomNavigation';
 import SetupBanner from '../components/SetupBanner';
+import FeedbackHost from '../components/ui/FeedbackHost';
+import LottieAnimation from '../components/ui/LottieAnimation';
+import goodsaleLoader from '../lib/lottie/goodsale-loader.json';
 import { getDBState, useDBState } from '../lib/store';
+import { toast } from '../lib/feedback';
+
+function BootSplash() {
+  return (
+    <div className="fixed inset-0 z-[200] grid place-items-center bg-white dark:bg-ink-950 animate-fade-in">
+      <div className="flex flex-col items-center gap-4">
+        <div className="lottie-host h-28 w-28">
+          <span
+            className="lottie-fallback h-16 w-16 rounded-full border-[3px] border-ink-200 dark:border-ink-800 border-t-jade-500 animate-spin"
+            aria-hidden="true"
+          />
+          <div className="lottie-layer h-28 w-28">
+            <LottieAnimation animationData={goodsaleLoader} className="h-28 w-28" />
+          </div>
+        </div>
+        <p className="font-display font-black tracking-tight text-lg text-ink-900 dark:text-white">
+          Good<span className="text-jade-600 dark:text-jade-400">Sale</span>
+        </p>
+        <p className="font-mono text-xs uppercase tracking-[0.3em] text-ink-400">
+          Escrow secured
+        </p>
+      </div>
+    </div>
+  );
+}
 
 export default function Home() {
   const db = useDBState();
   const [currentView, setCurrentView] = useState<string>('landing');
+  // Full-screen transition beat: the goodsale-loader Lottie owns this moment only.
+  const [booted, setBooted] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setBooted(true), 450);
+    return () => clearTimeout(t);
+  }, []);
   const [isAuthModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
   const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
@@ -33,7 +70,6 @@ export default function Home() {
   
   // Shopping Cart client State
   const [cart, setCart] = useState<number[]>([]);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Dynamic payloads
   const [checkoutProductId, setCheckoutProductId] = useState<number | null>(null);
@@ -42,21 +78,22 @@ export default function Home() {
   const [selectedSellerId, setSelectedSellerId] = useState<number | null>(null);
   const [history, setHistory] = useState<string[]>([]);
 
-  const triggerToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
+  const triggerToast = (msg: string, kind: 'success' | 'info' | 'error' = 'success') => {
+    if (kind === 'error') toast.error(msg);
+    else if (kind === 'info') toast.info(msg);
+    else toast.success(msg);
   };
 
   const handleAddToCart = (productId: number) => {
     if (!db.currentUser) {
       setAuthModalMode('register');
       setAuthModalOpen(true);
-      triggerToast('Create an account to add items to your cart.');
+      triggerToast('Create an account to add items to your cart.', 'info');
       return;
     }
     setCart(prev => {
       if (prev.includes(productId)) {
-        triggerToast('Item is already in your shopping cart!');
+        triggerToast('Item is already in your shopping cart!', 'info');
         return prev;
       }
       triggerToast('Item added to shopping cart securely!');
@@ -66,7 +103,7 @@ export default function Home() {
 
   const handleRemoveFromCart = (productId: number) => {
     setCart(prev => prev.filter(id => id !== productId));
-    triggerToast('Item removed from shopping cart.');
+    triggerToast('Item removed from shopping cart.', 'info');
   };
 
   const handleClearCart = () => {
@@ -89,6 +126,7 @@ export default function Home() {
       'admin',
       'dispatch',
       'revenue',
+      'wallet',
       'verification',
       'checkout',
     ];
@@ -98,7 +136,8 @@ export default function Home() {
       triggerToast(
         view === 'cart' || view === 'checkout'
           ? 'Create an account to view your cart and checkout.'
-          : 'Sign in to access your account.'
+          : 'Sign in to access your account.',
+        'info'
       );
       return;
     }
@@ -145,8 +184,10 @@ export default function Home() {
     }
   };
 
+  if (!booted) return <BootSplash />;
+
   return (
-    <div className="bg-gray-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-h-screen transition-colors duration-300">
+    <div className="bg-ink-50 dark:bg-ink-950 text-ink-900 dark:text-ink-100 min-h-screen transition-colors duration-300">
       <SetupBanner />
       
       {/* Header element */}
@@ -162,17 +203,26 @@ export default function Home() {
         }}
       />
 
-      {/* Floating active Toast notification banner */}
-      {toastMessage && (
-        <div className="fixed bottom-5 right-5 z-50 bg-slate-900 text-white dark:bg-white dark:text-slate-950 px-4 py-3 rounded-xl font-sans font-semibold text-xs shadow-2xl flex items-center gap-2 border border-slate-800 dark:border-gray-200 animate-slide-in">
-          <span className="w-2 h-2 bg-emerald-500 rounded-full animate-ping" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
+      {/* Global Aurora Flow feedback: toasts + themed confirm dialog */}
+      <FeedbackHost />
 
       {/* Core Dynamic Content Container */}
       <main className="min-h-[calc(100vh-4rem)] pb-[68px] md:pb-0">
+        {/* Screen-push transition: each view enters from the trailing edge */}
+        <div key={currentView} className="animate-screen-push">
         {currentView === 'landing' && (
+          <MarketingLanding
+            onNavigate={handleNavigate}
+            onSelectProduct={handleSelectProduct}
+            onSearchChange={setSearchQuery}
+            onOpenAuth={(mode?: 'login' | 'register') => {
+              setAuthModalMode(mode || 'login');
+              setAuthModalOpen(true);
+            }}
+          />
+        )}
+
+        {currentView === 'marketplace' && (
           <LandingView
             onSelectProduct={handleSelectProduct}
             searchQuery={searchQuery}
@@ -182,6 +232,13 @@ export default function Home() {
               setAuthModalMode(mode || 'login');
               setAuthModalOpen(true);
             }}
+          />
+        )}
+
+        {currentView === 'wallet' && (
+          <WalletView
+            onNavigate={handleNavigate}
+            onOpenAuth={() => setAuthModalOpen(true)}
           />
         )}
 
@@ -219,6 +276,7 @@ export default function Home() {
           <RevenueCenterView />
         )}
 
+
         {currentView === 'chats' && (
           <ChatView initialRoomId={activeChatRoomId} onNavigate={handleNavigate} onOpenAuth={() => setAuthModalOpen(true)} />
         )}
@@ -254,14 +312,15 @@ export default function Home() {
         {currentView === 'buyer-profile' && (
           <BuyerProfileView onBack={handleGoBack} onNavigate={handleNavigate} onOpenAuth={() => setAuthModalOpen(true)} />
         )}
+        </div>
 
         {/* Visual simple footer */}
-        <footer className="bg-white dark:bg-slate-900 border-t border-gray-100 dark:border-slate-800 py-6 mt-auto">
-          <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-5 text-[11px] text-gray-400 font-mono tracking-wide">
+        <footer className="bg-white dark:bg-ink-950 border-t border-ink-100 dark:border-ink-900 py-6 mt-auto">
+          <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-5 text-xs text-ink-400 font-mono tracking-wide">
             <span>© {new Date().getFullYear()} GoodSale Inc. Premium Escrow Nigerian Commerce.</span>
             <span className="flex items-center gap-4">
-              <Link href="/terms" className="hover:text-emerald-500 transition-colors">Terms of Service</Link>
-              <Link href="/privacy" className="hover:text-emerald-500 transition-colors">Privacy Policy</Link>
+              <Link href="/terms" className="hover:text-jade-600 dark:hover:text-jade-400 transition-colors">Terms of Service</Link>
+              <Link href="/privacy" className="hover:text-jade-600 dark:hover:text-jade-400 transition-colors">Privacy Policy</Link>
             </span>
           </div>
         </footer>

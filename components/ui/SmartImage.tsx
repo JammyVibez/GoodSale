@@ -16,12 +16,12 @@ function getInitials(name?: string | null): string {
  * the same placeholder — no external placeholder service involved.
  */
 const GRADIENTS = [
-  'from-emerald-500 via-teal-500 to-cyan-500',
-  'from-orange-500 via-amber-500 to-yellow-500',
-  'from-violet-500 via-purple-500 to-fuchsia-500',
-  'from-rose-500 via-pink-500 to-orange-400',
-  'from-sky-500 via-blue-500 to-indigo-500',
-  'from-emerald-600 via-green-500 to-lime-500',
+  'from-jade-500 via-jade-500 to-jade-500',
+  'from-ink-500 via-ink-500 to-ink-500',
+  'from-jade-500 via-jade-500 to-jade-500',
+  'from-jade-500 via-jade-500 to-ink-400',
+  'from-jade-500 via-jade-500 to-jade-500',
+  'from-jade-600 via-jade-500 to-jade-500',
 ];
 
 function gradientFor(seed?: string | null): string {

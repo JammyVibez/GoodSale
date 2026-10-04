@@ -65,7 +65,7 @@ export default function LiveDispatchMap({
         position: pickup,
         label: 'P',
         title: 'Pickup / seller',
-        color: '#10b981',
+        color: '#0A854B',
       });
     }
     if (isValidLatLng(rider)) {
@@ -74,7 +74,7 @@ export default function LiveDispatchMap({
         position: rider,
         label: 'R',
         title: 'Dispatch rider',
-        color: '#6366f1',
+        color: '#1fb377',
         pulse: true,
       });
     }
@@ -84,7 +84,7 @@ export default function LiveDispatchMap({
         position: destination,
         label: 'B',
         title: 'Buyer destination',
-        color: '#f43f5e',
+        color: '#ffffff',
       });
     }
     return list;
@@ -99,29 +99,29 @@ export default function LiveDispatchMap({
   }, [pickup, rider, destination]);
 
   return (
-    <div className={`w-full space-y-3 rounded-3xl border border-slate-800 bg-slate-900 p-4 shadow-xl ${className}`}>
-      <div className="grid grid-cols-3 gap-3 rounded-2xl border border-slate-800 bg-slate-950 p-3 text-xs">
+    <div className={`w-full space-y-3 rounded-3xl border border-ink-800 bg-ink-900 p-4 shadow-xl ${className}`}>
+      <div className="grid grid-cols-3 gap-3 rounded-2xl border border-ink-800 bg-ink-950 p-3 text-xs">
         <div className="space-y-0.5">
-          <span className="block font-mono text-[9px] uppercase tracking-wider text-slate-500">
+          <span className="block font-mono text-xs uppercase tracking-wider text-ink-500">
             Distance
           </span>
-          <p className="font-mono text-sm font-extrabold text-emerald-400">
+          <p className="font-mono text-sm font-extrabold text-jade-400">
             {distanceKm != null ? formatDistanceKm(distanceKm) : '—'}
           </p>
         </div>
-        <div className="space-y-0.5 border-l border-slate-800 pl-3">
-          <span className="block font-mono text-[9px] uppercase tracking-wider text-slate-500">
+        <div className="space-y-0.5 border-l border-ink-800 pl-3">
+          <span className="block font-mono text-xs uppercase tracking-wider text-ink-500">
             ETA
           </span>
-          <p className="font-mono text-sm font-extrabold text-indigo-400">
+          <p className="font-mono text-sm font-extrabold text-jade-400">
             {eta != null ? `${eta} mins` : '—'}
           </p>
         </div>
-        <div className="space-y-0.5 border-l border-slate-800 pl-3">
-          <span className="block font-mono text-[9px] uppercase tracking-wider text-slate-500">
+        <div className="space-y-0.5 border-l border-ink-800 pl-3">
+          <span className="block font-mono text-xs uppercase tracking-wider text-ink-500">
             Speed
           </span>
-          <p className="font-mono text-sm font-extrabold text-amber-400">
+          <p className="font-mono text-sm font-extrabold text-ink-400">
             {speedKmh != null ? `${Math.round(speedKmh)} km/h` : '—'}
           </p>
         </div>
@@ -130,42 +130,42 @@ export default function LiveDispatchMap({
       <div className="relative">
         <GoogleMapCanvas center={center} zoom={13} markers={markers} path={path} height={height} />
 
-        <div className="absolute left-2.5 top-2.5 z-10 flex items-center gap-1.5 rounded-lg border border-slate-800/80 bg-slate-950/80 px-2 py-1 text-[9px] font-bold text-slate-300 shadow-md backdrop-blur-md">
-          <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+        <div className="absolute left-2.5 top-2.5 z-10 flex items-center gap-1.5 rounded-lg border border-ink-800/80 bg-ink-950/80 px-2 py-1 text-xs font-bold text-ink-300 shadow-md backdrop-blur-md">
+          <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-jade-500" />
           <span>{statusLabel}</span>
         </div>
 
-        <div className="absolute bottom-2 left-2 right-2 z-10 flex items-center justify-between rounded-xl border border-slate-800/80 bg-slate-950/90 p-2 font-mono text-[8px] text-slate-400 backdrop-blur-md">
+        <div className="absolute bottom-2 left-2 right-2 z-10 flex items-center justify-between rounded-xl border border-ink-800/80 bg-ink-950/90 p-2 font-mono text-[10px] text-ink-400 backdrop-blur-md">
           <span className="flex items-center gap-1">
-            <Compass className="h-3.5 w-3.5 text-indigo-400" />
+            <Compass className="h-3.5 w-3.5 text-jade-400" />
             GoodDispatch™ GPS
           </span>
           {geoError || !gpsLocked ? (
-            <span className="flex items-center gap-0.5 text-amber-500">
+            <span className="flex items-center gap-0.5 text-ink-500">
               <AlertTriangle className="h-3 w-3" /> Approximate
             </span>
           ) : (
-            <span className="flex items-center gap-0.5 text-emerald-500">
+            <span className="flex items-center gap-0.5 text-jade-500">
               <CheckCircle2 className="h-3 w-3" /> GPS Locked
             </span>
           )}
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 text-[10px] text-slate-400">
+      <div className="flex flex-wrap gap-2 text-xs text-ink-400">
         {isValidLatLng(pickup) && (
-          <span className="inline-flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-950 px-2 py-1">
-            <MapPin className="h-3 w-3 text-emerald-400" /> Pickup
+          <span className="inline-flex items-center gap-1 rounded-lg border border-ink-800 bg-ink-950 px-2 py-1">
+            <MapPin className="h-3 w-3 text-jade-400" /> Pickup
           </span>
         )}
         {isValidLatLng(rider) && (
-          <span className="inline-flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-950 px-2 py-1">
-            <Bike className="h-3 w-3 text-indigo-400" /> Rider live
+          <span className="inline-flex items-center gap-1 rounded-lg border border-ink-800 bg-ink-950 px-2 py-1">
+            <Bike className="h-3 w-3 text-jade-400" /> Rider live
           </span>
         )}
         {isValidLatLng(destination) && (
-          <span className="inline-flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-950 px-2 py-1">
-            <Navigation className="h-3 w-3 text-rose-400" /> Destination
+          <span className="inline-flex items-center gap-1 rounded-lg border border-ink-800 bg-ink-950 px-2 py-1">
+            <Navigation className="h-3 w-3 text-jade-400" /> Destination
           </span>
         )}
       </div>

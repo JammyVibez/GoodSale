@@ -67,11 +67,11 @@ export default function GoogleMapCanvas({
           streetViewControl: false,
           fullscreenControl: false,
           styles: [
-            { elementType: 'geometry', stylers: [{ color: '#0f172a' }] },
-            { elementType: 'labels.text.stroke', stylers: [{ color: '#0f172a' }] },
-            { elementType: 'labels.text.fill', stylers: [{ color: '#94a3b8' }] },
-            { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#1e293b' }] },
-            { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#020617' }] },
+            { elementType: 'geometry', stylers: [{ color: '#0b0f0d' }] },
+            { elementType: 'labels.text.stroke', stylers: [{ color: '#0b0f0d' }] },
+            { elementType: 'labels.text.fill', stylers: [{ color: '#717D78' }] },
+            { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#29302d' }] },
+            { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0b0f0d' }] },
             {
               featureType: 'poi',
               stylers: [{ visibility: 'off' }],
@@ -122,7 +122,7 @@ export default function GoogleMapCanvas({
               scale: m.pulse ? 10 : 8,
               fillColor: m.color,
               fillOpacity: 1,
-              strokeColor: '#0f172a',
+              strokeColor: '#0b0f0d',
               strokeWeight: 2,
             }
           : undefined,
@@ -140,7 +140,7 @@ export default function GoogleMapCanvas({
         map: mapRef.current,
         path: pathPts,
         geodesic: true,
-        strokeColor: '#10b981',
+        strokeColor: '#1fb377',
         strokeOpacity: 0.85,
         strokeWeight: 3,
       });
@@ -161,7 +161,7 @@ export default function GoogleMapCanvas({
     : `https://maps.google.com/maps?q=${center.lat},${center.lng}&z=${zoom}&output=embed`;
 
   return (
-    <div className={`relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 ${className}`} style={{ height }}>
+    <div className={`relative overflow-hidden rounded-2xl border border-ink-800 bg-ink-950 ${className}`} style={{ height }}>
       <div ref={containerRef} className={`absolute inset-0 ${mode === 'js' ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} />
       {mode !== 'js' && (
         <iframe

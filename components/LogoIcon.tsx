@@ -57,41 +57,41 @@ export function LogoIcon({ className = '', size = 24, variant = 'solid' }: LogoI
       id="goodsale-premium-logo"
     >
       <defs>
-        {/* Vibrant Green Shield-Bag Gradient */}
+        {/* Aurora jade Shield-Bag Gradient — the one GoodSale green */}
         <linearGradient id="logoGreenBagGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="#00E676" />
-          <stop offset="100%" stopColor="#007E33" />
+          <stop offset="0%" stopColor="#1FB377" />
+          <stop offset="100%" stopColor="#085C34" />
         </linearGradient>
 
-        {/* Premium Full Gold Bag Gradient (Gold variant) */}
+        {/* Soft Mint Bag Gradient (light variant) */}
         <linearGradient id="logoGoldBagGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="#FFD600" />
-          <stop offset="100%" stopColor="#FF6D00" />
+          <stop offset="0%" stopColor="#5CD89F" />
+          <stop offset="100%" stopColor="#0A854B" />
         </linearGradient>
 
-        {/* Dark Tech-Brutalist Bag Gradient (Dark variant) */}
+        {/* Deep Ink Bag Gradient (Dark variant) */}
         <linearGradient id="logoDarkBagGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="#334155" />
-          <stop offset="100%" stopColor="#0F172A" />
+          <stop offset="0%" stopColor="#3D4642" />
+          <stop offset="100%" stopColor="#0B0F0D" />
         </linearGradient>
 
-        {/* Thick Sweeping Golden Checkmark Gradient */}
+        {/* Sweeping White Checkmark Gradient */}
         <linearGradient id="logoCheckGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#FFD600" />
-          <stop offset="100%" stopColor="#FF8F00" />
+          <stop offset="0%" stopColor="#FFFFFF" />
+          <stop offset="100%" stopColor="#D2F7E2" />
         </linearGradient>
 
-        {/* Rounded Metallic Handle Gold Gradient */}
+        {/* Rounded Handle Gradient */}
         <linearGradient id="logoHandleGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#FFD600" />
-          <stop offset="50%" stopColor="#FFE082" />
-          <stop offset="100%" stopColor="#FF8F00" />
+          <stop offset="0%" stopColor="#FFFFFF" />
+          <stop offset="50%" stopColor="#EDFCF3" />
+          <stop offset="100%" stopColor="#FFFFFF" />
         </linearGradient>
 
-        {/* Rivets Gold Gradient */}
+        {/* Rivets Gradient */}
         <linearGradient id="logoRivetGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#FFE082" />
-          <stop offset="100%" stopColor="#FF8F00" />
+          <stop offset="0%" stopColor="#FFFFFF" />
+          <stop offset="100%" stopColor="#EDFCF3" />
         </linearGradient>
       </defs>
 
@@ -142,19 +142,19 @@ interface LogoProps {
 export default function Logo({
   className = '',
   iconSize = 32,
-  textColorClass = 'text-slate-950 dark:text-white',
-  subtitleColorClass = 'text-slate-400 dark:text-slate-500',
+  textColorClass = 'text-ink-950 dark:text-white',
+  subtitleColorClass = 'text-ink-400 dark:text-ink-500',
   variant = 'solid',
 }: LogoProps) {
   return (
     <div className={`flex items-center gap-2.5 ${className}`} id="goodsale-branded-logo">
       <LogoIcon size={iconSize} variant={variant} />
       <div className="flex flex-col justify-center">
-        {/* Geometric sans-serif with beautiful green-to-gold gradient text matching your checkmark bag */}
+        {/* Geometric sans-serif with the single Aurora jade gradient wordmark */}
         <h1 className={`font-sans font-extrabold tracking-tight leading-none text-lg sm:text-xl ${textColorClass}`}>
-          Good<span className="bg-gradient-to-r from-[#00E676] to-[#FFD600] bg-clip-text text-transparent font-black">Sale</span>
+          Good<span className="bg-gradient-to-r from-[#1FB377] to-[#0A854B] dark:from-[#5CD89F] dark:to-[#1FB377] bg-clip-text text-transparent font-black">Sale</span>
         </h1>
-        <p className={`font-mono text-[8.5px] tracking-[0.25em] uppercase leading-none mt-1 font-extrabold ${subtitleColorClass}`}>
+        <p className={`font-mono text-[10px] tracking-[0.25em] uppercase leading-none mt-1 font-extrabold ${subtitleColorClass}`}>
           Buy. Sell. Trust.
         </p>
       </div>

@@ -1,15 +1,23 @@
 // components/ChatView.tsx
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  MessageSquare, Send, Shield, ShoppingBag, 
-  User as UserIcon, Check, CheckCheck, RefreshCw, ArrowLeft,
-  FileText, Image as ImageIcon, Video as VideoIcon, Package, X,
-  ExternalLink, Calendar, Landmark, HelpCircle, Play, AlertCircle
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import EmptyState from './ui/EmptyState';
+import Button from './ui/Button';
+import Card from './ui/Card';
+import Chip from './ui/Chip';
+import Sheet from './ui/Sheet';
+import { SmartAvatar } from './ui/SmartImage';
+import LottieAnimation from './ui/LottieAnimation';
+import escrowShield from '../lib/lottie/escrow-shield.json';
+import {
+  MessageSquare, Send, Shield, Search,
+  CheckCheck, ArrowLeft, MoreVertical,
+  FileText, Image as ImageIcon, Video as VideoIcon, Package,
+  ExternalLink, Play, Handshake, Sparkles, Store, ShieldCheck, Receipt,
 } from 'lucide-react';
-import { 
-  getDBState, saveDBState, dbOperations, ChatRoom, Message 
+import {
+  getDBState, dbOperations, ChatRoom, Message,
 } from '../lib/store';
 
 interface ChatViewProps {
@@ -18,46 +26,37 @@ interface ChatViewProps {
   onOpenAuth?: () => void;
 }
 
+const CAPTION_PHOTO = 'Photo attached for inspection';
+const CAPTION_VIDEO = 'Video attached for inspection';
+
 export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth }: ChatViewProps) {
   const [db, setDb] = useState(getDBState());
   const [activeRoomId, setActiveRoomId] = useState<number | null>(initialRoomId);
   const [typedMessage, setTypedMessage] = useState('');
-  const [isAiReplying, setIsAiReplying] = useState(false);
-  
-  // Interactive Overlays
-  const [showReceiptPicker, setShowReceiptPicker] = useState(false);
-  const [showImagePicker, setShowImagePicker] = useState(false);
-  const [showVideoPicker, setShowVideoPicker] = useState(false);
-  const [showProductPicker, setShowProductPicker] = useState(false);
+  const [roomQuery, setRoomQuery] = useState('');
 
-  // Real Upload attachments state
+  // Attachment / trade sheets
+  const [openSheet, setOpenSheet] = useState<null | 'receipt' | 'photo' | 'video' | 'product' | 'offer'>(null);
+
   const [chatImageFile, setChatImageFile] = useState<string | null>(null);
-  const [chatImageCaption, setChatImageCaption] = useState('📷 Physical Inspection: Photo attached');
+  const [chatImageCaption, setChatImageCaption] = useState(CAPTION_PHOTO);
   const [chatVideoFile, setChatVideoFile] = useState<string | null>(null);
-  const [chatVideoCaption, setChatVideoCaption] = useState('🎥 Video Inspection: Video attached');
+  const [chatVideoCaption, setChatVideoCaption] = useState(CAPTION_VIDEO);
+  const [offerAmount, setOfferAmount] = useState('');
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Messages stay live via Supabase Realtime (see bootstrapStore in lib/store.ts)
   useEffect(() => {
-    const handleStateChange = () => {
-      setDb(getDBState());
-    };
+    const handleStateChange = () => setDb(getDBState());
     window.addEventListener('goodsale_db_state_change', handleStateChange);
     return () => window.removeEventListener('goodsale_db_state_change', handleStateChange);
   }, []);
 
-  // Set active room to initialRoomId if passed from details view
   useEffect(() => {
-    if (initialRoomId) {
-      const timer = setTimeout(() => {
-        setActiveRoomId(initialRoomId);
-      }, 0);
-      return () => clearTimeout(timer);
-    }
+    if (initialRoomId) setActiveRoomId(initialRoomId);
   }, [initialRoomId]);
 
-  // Auto Scroll Chat list to bottom
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -65,153 +64,226 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
   }, [activeRoomId, db.messages]);
 
   const user = db.currentUser;
+
+  const myRooms = useMemo(() => {
+    if (!user) return [] as ChatRoom[];
+    const rooms = db.chatRooms.filter(
+      (room) => room.buyerId === user.id || room.sellerId === user.id
+    );
+    const needle = roomQuery.trim().toLowerCase();
+    const sorted = [...rooms].sort((a, b) => {
+      const aT = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
+      const bT = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
+      return bT - aT;
+    });
+    if (!needle) return sorted;
+    return sorted.filter((room) => {
+      const other = db.users.find(
+        (u) => u.id === (room.buyerId === user.id ? room.sellerId : room.buyerId)
+      );
+      return (
+        room.productTitle?.toLowerCase().includes(needle) ||
+        (room.lastMessage || '').toLowerCase().includes(needle) ||
+        (other?.fullName || '').toLowerCase().includes(needle)
+      );
+    });
+  }, [db.chatRooms, db.users, roomQuery, user]);
+
+  const activeRoom = db.chatRooms.find((r) => r.id === activeRoomId) || null;
+  const activeRoomMessages = activeRoom
+    ? db.messages
+        .filter((m) => m.roomId === activeRoom.id)
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    : [];
+
+  const chatProduct = activeRoom ? db.products.find((p) => p.id === activeRoom.productId) : null;
+  const partnerId = activeRoom && user
+    ? (activeRoom.buyerId === user.id ? activeRoom.sellerId : activeRoom.buyerId)
+    : null;
+  const partner = partnerId ? db.users.find((u) => u.id === partnerId) || null : null;
+  const partnerName = partner?.fullName || (activeRoom ? (activeRoom.buyerId === user?.id ? activeRoom.sellerName : activeRoom.buyerName) : '') || 'GoodSale member';
+  const myOrders = user
+    ? db.orders.filter((order) => order.buyerId === user.id || order.sellerId === user.id)
+    : [];
+
+  // ---- Guards -------------------------------------------------------------
   if (!user) {
     return (
-      <div className="max-w-md mx-auto px-4 py-16 text-center select-none">
-        <div className="w-16 h-16 bg-emerald-500/10 dark:bg-emerald-500/5 rounded-full flex items-center justify-center mx-auto mb-6 border border-emerald-500/20">
-          <MessageSquare className="w-8 h-8 text-emerald-500" />
+      <div className="mx-auto max-w-md px-4 py-20 text-center">
+        <div className="mx-auto mb-6 grid h-20 w-20 place-items-center rounded-3xl bg-jade-500/10">
+          <MessageSquare className="h-9 w-9 text-jade-600 dark:text-jade-400" />
         </div>
-        <h2 className="font-display font-black text-2xl text-slate-900 dark:text-white mb-2">Secure Merchant Chat</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mb-8 max-w-sm mx-auto leading-relaxed">
-          Connect directly with verified sellers, share visual receipts, send images/videos of item conditions, and trade securely with escrow safety.
+        <h2 className="font-display text-2xl font-black tracking-tight text-ink-900 dark:text-white">
+          Secure merchant chat
+        </h2>
+        <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-ink-500">
+          Talk directly with verified sellers, confirm item condition with photos and video, and
+          settle through escrow — never off-platform.
         </p>
-        <button
-          onClick={onOpenAuth}
-          className="w-full py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-sans font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer shadow-md shadow-emerald-500/10 transition-all"
-        >
-          Sign In / Register Account
-        </button>
+        <Button className="mt-8 w-full" size="lg" onClick={onOpenAuth}>
+          Sign in to open messages
+        </Button>
       </div>
     );
   }
 
-  // Filter chat rooms that current user belongs to (buyer or seller)
-  const myRooms = db.chatRooms.filter(room => 
-    room.buyerId === user.id || room.sellerId === user.id
-  );
-
-  const activeRoom = db.chatRooms.find(r => r.id === activeRoomId);
-  const activeRoomMessages = activeRoom 
-    ? db.messages.filter(m => m.roomId === activeRoom.id).sort((a,b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-    : [];
-
-  const chatProduct = activeRoom ? db.products.find(p => p.id === activeRoom.productId) : null;
-  const partnerId = activeRoom 
-    ? (activeRoom.buyerId === user.id ? activeRoom.sellerId : activeRoom.buyerId)
-    : null;
-  const partner = partnerId ? db.users.find(u => u.id === partnerId) : null;
+  // ---- Actions -----------------------------------------------------------
+  const refresh = () => setDb(getDBState());
 
   const handleSendMessage = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+    e?.preventDefault();
     if (!typedMessage.trim() || !activeRoomId) return;
-
     dbOperations.sendMessage(activeRoomId, typedMessage.trim());
     setTypedMessage('');
-    setDb(getDBState());
+    refresh();
   };
 
-  // Advanced Attachment Sharing Helpers
   const shareReceipt = (order: any) => {
     if (!activeRoomId) return;
-    const receiptObj = {
+    dbOperations.sendMessage(activeRoomId, undefined, undefined, undefined, {
       orderNumber: order.orderNumber,
       productTitle: order.productTitle,
       amount: order.totalAmount,
       paymentMethod: order.paymentMethod || 'PAYSTACK_ESCROW',
       status: order.status || 'PAID_ESCROW',
-      createdAt: order.createdAt || new Date().toISOString()
-    };
-    dbOperations.sendMessage(activeRoomId, undefined, undefined, undefined, receiptObj);
-    setShowReceiptPicker(false);
-    setDb(getDBState());
+      createdAt: order.createdAt || new Date().toISOString(),
+    });
+    setOpenSheet(null);
+    refresh();
   };
 
   const shareImage = (imageUrl: string, captionText: string) => {
     if (!activeRoomId) return;
     dbOperations.sendMessage(activeRoomId, captionText, imageUrl);
-    setShowImagePicker(false);
-    setDb(getDBState());
+    setChatImageFile(null);
+    setChatImageCaption(CAPTION_PHOTO);
+    setOpenSheet(null);
+    refresh();
   };
 
   const shareVideo = (videoUrl: string, captionText: string) => {
     if (!activeRoomId) return;
     dbOperations.sendMessage(activeRoomId, captionText, undefined, videoUrl);
-    setShowVideoPicker(false);
-    setDb(getDBState());
+    setChatVideoFile(null);
+    setChatVideoCaption(CAPTION_VIDEO);
+    setOpenSheet(null);
+    refresh();
   };
 
   const shareProductPreview = (prod: any) => {
     if (!activeRoomId) return;
-    const productObj = {
+    dbOperations.sendMessage(activeRoomId, undefined, undefined, undefined, undefined, {
       id: prod.id,
       title: prod.title,
       price: prod.price,
-      image: prod.images[0] || '',
-      condition: prod.condition
-    };
-    dbOperations.sendMessage(activeRoomId, undefined, undefined, undefined, undefined, productObj);
-    setShowProductPicker(false);
-    setDb(getDBState());
+      image: prod.images?.[0] || '',
+      condition: prod.condition,
+    });
+    setOpenSheet(null);
+    refresh();
   };
 
-  // Real orders only — receipts shared in chat come from the live Supabase ledger.
-  const myOrders = db.orders.filter(order => order.buyerId === user.id || order.sellerId === user.id);
-
-  // Real local uploads used for attachments
-  const photoPresets: any[] = [];
-  const videoPresets: any[] = [];
+  const submitOffer = () => {
+    if (!activeRoomId || !chatProduct) return;
+    const amt = parseInt(offerAmount.replace(/[^0-9]/g, ''), 10);
+    if (!amt || amt <= 0) return;
+    dbOperations.sendNegotiationOffer(activeRoomId, chatProduct.id, amt);
+    setOfferAmount('');
+    setOpenSheet(null);
+    refresh();
+  };
 
   return (
-    <div className="bg-gray-50 dark:bg-slate-950 min-h-[calc(100vh-4rem)] flex transition-colors duration-300">
-      <div className="max-w-7xl mx-auto w-full flex border-x border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm relative">
-        
-        {/* A. Left Side: Active Rooms List */}
-        <div className={`w-full md:w-80 border-r border-gray-200 dark:border-slate-800 ${activeRoomId !== null ? 'hidden md:flex' : 'flex'} flex-col shrink-0`}>
-          <div className="p-4 border-b border-gray-200 dark:border-slate-800 font-sans font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
-            <MessageSquare className="w-5 h-5 text-emerald-500" />
-            Merchant Messages
+    <div className="min-h-[calc(100vh-4rem)] bg-ink-50 transition-colors duration-300 dark:bg-ink-950">
+      <div className="mx-auto flex h-[calc(100vh-4rem)] w-full max-w-7xl border-x border-ink-200 bg-white shadow-sm dark:border-ink-800 dark:bg-ink-900">
+
+        {/* A. Conversation list */}
+        <aside
+          className={`w-full shrink-0 flex-col border-r border-ink-200 dark:border-ink-800 md:flex md:w-[22rem] ${
+            activeRoomId !== null ? 'hidden md:flex' : 'flex'
+          }`}
+        >
+          <div className="border-b border-ink-200 px-5 py-4 dark:border-ink-800">
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-base font-black tracking-tight text-ink-900 dark:text-white">
+                Messages
+              </h2>
+              <Chip tone="jade" icon={<Shield className="h-3.5 w-3.5" />}>
+                Escrow protected
+              </Chip>
+            </div>
+            <div className="relative mt-3">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+              <input
+                type="text"
+                value={roomQuery}
+                onChange={(e) => setRoomQuery(e.target.value)}
+                placeholder="Search conversations"
+                className="focus-ring w-full rounded-full border border-ink-200 bg-ink-50 py-2.5 pl-10 pr-4 text-sm text-ink-800 placeholder:text-ink-400 dark:border-ink-800 dark:bg-ink-800 dark:text-white"
+              />
+            </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto divide-y divide-gray-100 dark:divide-slate-800/60">
+          <div className="list-stagger flex-1 overflow-y-auto">
             {myRooms.length === 0 ? (
-              <div className="p-8 text-center text-xs text-gray-400">
-                No active chat sessions.
-              </div>
+              <EmptyState
+                state="empty-chat"
+                size="sm"
+                icon={<MessageSquare />}
+                title={roomQuery ? 'No matches' : 'No conversations yet'}
+                description={
+                  roomQuery
+                    ? 'Try a different product, seller or keyword.'
+                    : 'Message a seller from any listing to start a protected trade.'
+                }
+              />
             ) : (
               myRooms.map((room) => {
-                const otherUserId = room.buyerId === user.id ? room.sellerId : room.buyerId;
-                const otherUser = db.users.find(u => u.id === otherUserId);
-                const prod = db.products.find(p => p.id === room.productId);
-                const roomMsgs = db.messages.filter(m => m.roomId === room.id);
+                const otherId = room.buyerId === user.id ? room.sellerId : room.buyerId;
+                const other = db.users.find((u) => u.id === otherId);
+                const prod = db.products.find((p) => p.id === room.productId);
+                const roomMsgs = db.messages.filter((m) => m.roomId === room.id);
                 const lastMsg = roomMsgs.length > 0 ? roomMsgs[roomMsgs.length - 1] : null;
+                const isActive = activeRoomId === room.id;
 
                 return (
                   <button
                     key={room.id}
                     onClick={() => setActiveRoomId(room.id)}
-                    className={`w-full text-left p-3.5 hover:bg-gray-50 dark:hover:bg-slate-800/40 flex items-start gap-3 transition-colors ${activeRoomId === room.id ? 'bg-emerald-500/5 border-l-4 border-emerald-500' : ''}`}
+                    aria-current={isActive ? 'true' : undefined}
+                    className={`flex w-full items-start gap-3 border-b border-ink-100 px-4 py-3.5 text-left transition-colors cursor-pointer dark:border-ink-800/70 ${
+                      isActive
+                        ? 'bg-jade-500/[0.07] shadow-[inset_3px_0_0_0_var(--color-jade-500)]'
+                        : 'hover:bg-ink-50 dark:hover:bg-ink-800/40'
+                    }`}
                   >
-                    <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0 border border-emerald-500/10">
-                      <UserIcon className="w-5 h-5 text-emerald-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-baseline mb-0.5">
-                        <h4 className="font-sans font-bold text-xs text-slate-900 dark:text-white truncate">
-                          {otherUser?.fullName || 'GoodSale Merchant'}
+                    <SmartAvatar
+                      src={(other as any)?.avatar}
+                      name={other?.fullName || 'GoodSale member'}
+                      className="h-11 w-11 shrink-0"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <h4 className="truncate text-sm font-bold text-ink-900 dark:text-white">
+                          {other?.fullName || 'GoodSale member'}
                         </h4>
                         {lastMsg && (
-                          <span className="text-[9px] text-gray-400 font-mono">
-                            {new Date(lastMsg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          <span className="shrink-0 font-mono text-xs text-ink-400">
+                            {new Date(lastMsg.createdAt).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
                           </span>
                         )}
                       </div>
-                      
-                      <p className="text-[10px] text-emerald-500 font-bold truncate mb-1">
-                        📦 Product: {prod?.title}
+                      <p className="mt-0.5 flex items-center gap-1 truncate text-xs font-semibold text-jade-700 dark:text-jade-400">
+                        <Package className="h-3.5 w-3.5 shrink-0" />
+                        {prod?.title || room.productTitle || 'Listing'}
                       </p>
-
-                      <p className="text-[11px] text-gray-400 truncate leading-relaxed">
-                        {lastMsg ? lastMsg.messageText || 'Sent an attachment' : 'Chat session established'}
+                      <p className="mt-1 truncate text-xs text-ink-500">
+                        {lastMsg
+                          ? lastMsg.messageText || 'Sent an attachment'
+                          : 'Conversation started'}
                       </p>
                     </div>
                   </button>
@@ -219,672 +291,658 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
               })
             )}
           </div>
-        </div>
+        </aside>
 
-        {/* B. Right Side: Interactive Active chat workspace */}
-        <div className={`flex-1 flex flex-col ${activeRoomId === null ? 'hidden md:flex' : 'flex'}`}>
-          {activeRoom && partner ? (
+        {/* B. Active thread */}
+        <section
+          className={`flex flex-1 flex-col ${activeRoomId === null ? 'hidden md:flex' : 'flex'}`}
+        >
+          {activeRoom ? (
             <>
-              {/* Active Header Row */}
-              <div className="p-4 border-b border-gray-200 dark:border-slate-800 flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2 min-w-0">
+              {/* Thread header */}
+              <header className="flex items-center justify-between gap-3 border-b border-ink-200 px-4 py-3 dark:border-ink-800">
+                <div className="flex min-w-0 items-center gap-3">
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setActiveRoomId(null);
-                    }}
-                    className="md:hidden p-2 bg-gray-50 dark:bg-slate-800 hover:bg-gray-150 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-xl transition-all shrink-0"
-                    title="Back to conversation list"
+                    onClick={() => setActiveRoomId(null)}
+                    className="focus-ring shrink-0 rounded-xl bg-ink-100 p-2 text-ink-500 transition-colors hover:text-ink-900 md:hidden dark:bg-ink-800 dark:hover:text-white"
+                    aria-label="Back to conversations"
                   >
-                    <ArrowLeft className="w-4 h-4" />
+                    <ArrowLeft className="h-4 w-4" />
                   </button>
-                  <div 
-                    onClick={() => onNavigate?.('seller-profile', { sellerId: partner.id })}
-                    className="cursor-pointer hover:opacity-85 transition-all text-left group min-w-0"
-                    title="Click to view profile"
+                  <button
+                    onClick={() => partner && onNavigate?.('seller-profile', { sellerId: partner.id })}
+                    className="group flex min-w-0 items-center gap-3 text-left cursor-pointer"
                   >
-                    <h3 className="font-sans font-bold text-sm text-slate-950 dark:text-white flex items-center gap-1 group-hover:text-emerald-500 transition-colors truncate">
-                      {partner.fullName}
-                      <span className="px-1.5 py-0.5 bg-gray-100 dark:bg-slate-800 text-slate-500 rounded text-[9px] font-bold">@{partner.username}</span>
-                    </h3>
-                    <p className="text-[10px] text-gray-400 font-mono truncate">
-                      Merchant Level: {partner.sellerLevel} • Trust Score: {partner.trustScore}%
-                    </p>
-                  </div>
+                    <SmartAvatar
+                      src={(partner as any)?.avatar}
+                      name={partnerName}
+                      className="h-10 w-10 shrink-0"
+                    />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-bold text-ink-900 transition-colors group-hover:text-jade-600 dark:text-white dark:group-hover:text-jade-400">
+                        {partnerName}
+                      </span>
+                      <span className="flex items-center gap-1.5 font-mono text-xs text-ink-400">
+                        <ShieldCheck className="h-3 w-3 text-jade-500" />
+                        {partner ? `Trust ${partner.trustScore}%` : 'Verified member'}
+                      </span>
+                    </span>
+                  </button>
                 </div>
 
-                {chatProduct && (
-                  <div className="p-2 border border-emerald-500/10 bg-emerald-500/5 rounded-xl hidden sm:flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-slate-800 overflow-hidden shrink-0">
+                <div className="flex items-center gap-2">
+                  {chatProduct && (
+                    <button
+                      onClick={() => onNavigate?.('product', { id: chatProduct.id })}
+                      className="hidden items-center gap-2 rounded-2xl border border-jade-500/20 bg-jade-500/[0.06] p-1.5 pr-3 text-left transition-colors hover:border-jade-500/50 sm:flex cursor-pointer"
+                    >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={chatProduct.images[0]} alt="" className="w-full h-full object-cover" />
+                      <img
+                        src={chatProduct.images?.[0]}
+                        alt=""
+                        className="h-9 w-9 rounded-xl object-cover"
+                      />
+                      <span className="max-w-[10rem]">
+                        <span className="block truncate text-xs font-bold text-ink-900 dark:text-white">
+                          {chatProduct.title}
+                        </span>
+                        <span className="block font-mono text-xs font-bold text-jade-700 dark:text-jade-400">
+                          ₦{Number(chatProduct.price).toLocaleString()}
+                        </span>
+                      </span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setOpenSheet('offer')}
+                    className="focus-ring rounded-xl bg-ink-100 p-2 text-ink-500 transition-colors hover:text-jade-600 dark:bg-ink-800 dark:hover:text-jade-400 cursor-pointer"
+                    aria-label="Negotiation options"
+                    title="Negotiation options"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </button>
+                </div>
+              </header>
+
+              {/* Messages */}
+              <div
+                ref={scrollRef}
+                className="flex-1 space-y-4 overflow-y-auto bg-ink-50/60 p-4 dark:bg-ink-950/30"
+              >
+                <Card
+                  variant="outline"
+                  className="mx-auto flex max-w-lg items-start gap-3 border-jade-500/25 bg-jade-500/[0.05] p-3.5"
+                >
+                  <div className="lottie-host h-10 w-10 shrink-0">
+                    <div className="lottie-fallback text-jade-500">
+                      <Shield className="h-6 w-6" />
                     </div>
-                    <div className="text-left">
-                      <span className="text-[9px] text-gray-400 uppercase tracking-widest block">Linked Catalog SKU</span>
-                      <span className="font-sans font-bold text-[11px] text-slate-900 dark:text-white line-clamp-1">{chatProduct.title}</span>
+                    <div className="lottie-layer h-full w-full">
+                      <LottieAnimation animationData={escrowShield} className="h-full w-full" />
                     </div>
                   </div>
-                )}
-              </div>
-
-              {/* Chat messages body container */}
-              <div 
-                ref={scrollRef}
-                className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50 dark:bg-slate-950/20"
-              >
-                
-                {/* Secure Trust Notice */}
-                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-500/15 rounded-2xl flex items-start gap-2.5 max-w-lg mx-auto">
-                  <Shield className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5 animate-pulse" />
-                  <p className="text-[10px] text-emerald-700 dark:text-emerald-300 leading-relaxed">
-                    <strong>Payment Escrow Alert:</strong> Do not pay sellers via direct wire. Pay only inside the GoodSale checkout window to invoke secure escrow insurance.
+                  <p className="text-xs leading-relaxed text-jade-800 dark:text-jade-300">
+                    <strong className="font-bold">Keep it in escrow.</strong> Never pay a seller by
+                    direct transfer. Paying through GoodSale checkout is the only way your money is
+                    protected until you confirm delivery.
                   </p>
-                </div>
+                </Card>
 
                 {activeRoomMessages.map((msg) => {
                   const isMine = msg.senderId === user.id;
-
                   return (
                     <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-md rounded-2xl p-3 shadow-sm text-xs leading-relaxed ${isMine ? 'bg-emerald-500 text-white rounded-br-none' : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 border border-gray-100 dark:border-slate-800/80 rounded-bl-none'}`}>
-                        
-                        {/* 1. Normal text content */}
-                        {msg.messageText && <p>{msg.messageText}</p>}
+                      <div
+                        className={`max-w-[85%] rounded-3xl px-4 py-3 text-sm leading-relaxed shadow-sm sm:max-w-md ${
+                          isMine
+                            ? 'rounded-br-lg bg-jade-500 text-white'
+                            : 'rounded-bl-lg border border-ink-200 bg-white text-ink-800 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-100'
+                        }`}
+                      >
+                        {msg.messageText && <p className="whitespace-pre-wrap">{msg.messageText}</p>}
 
-                        {/* 2. Photo Attachment Bubble */}
+                        {/* Photo attachment */}
                         {msg.imageUrl && (
-                          <div className="mt-2 rounded-xl overflow-hidden border border-gray-100 dark:border-slate-800 shadow-sm relative group bg-black/5 max-w-sm">
+                          <div className="mt-2.5 max-w-sm overflow-hidden rounded-2xl border border-black/10 bg-black/5">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img 
-                              src={msg.imageUrl} 
-                              alt="Shared Inspection Upload" 
-                              className="w-full h-44 object-cover hover:scale-105 transition-transform duration-300" 
+                            <img
+                              src={msg.imageUrl}
+                              alt="Shared inspection photo"
+                              className="h-44 w-full object-cover"
                             />
-                            <div className="absolute top-2 left-2 px-2 py-1 bg-black/60 rounded text-[9px] text-white font-bold flex items-center gap-1">
-                              <ImageIcon className="w-3 h-3" />
-                              VERIFIED PHOTO
+                            <div className="flex items-center gap-1 bg-black/60 px-2 py-1 text-xs font-bold uppercase tracking-wider text-white">
+                              <ImageIcon className="h-3 w-3" />
+                              Inspection photo
                             </div>
                           </div>
                         )}
 
-                        {/* 3. Playable Video Attachment Bubble */}
+                        {/* Video attachment */}
                         {msg.videoUrl && (
-                          <div className="mt-2 rounded-xl overflow-hidden border border-gray-100 dark:border-slate-800 shadow-md bg-slate-950 max-w-xs p-1">
-                            <div className="relative group">
-                              <video 
-                                src={msg.videoUrl} 
-                                controls 
-                                poster="https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&q=80"
-                                className="w-full h-44 rounded-lg object-cover" 
-                              />
-                              <div className="absolute top-2 left-2 px-2 py-0.5 bg-red-600 rounded text-[9px] text-white font-bold flex items-center gap-1 font-mono tracking-widest uppercase">
-                                <VideoIcon className="w-3 h-3 animate-pulse" />
-                                Live video
-                              </div>
+                          <div className="mt-2.5 max-w-xs overflow-hidden rounded-2xl border border-ink-800 bg-ink-950 p-1">
+                            <video src={msg.videoUrl} controls className="h-44 w-full rounded-xl object-cover" />
+                            <div className="flex items-center gap-1 px-1 py-1 font-mono text-xs font-bold uppercase tracking-widest text-white">
+                              <VideoIcon className="h-3 w-3" />
+                              Inspection video
                             </div>
                           </div>
                         )}
 
-                        {/* 4. Structured Escrow Receipt Bubble */}
+                        {/* Escrow receipt */}
                         {msg.receiptDetails && (
-                          <div className="mt-2 border-2 border-emerald-500/30 bg-emerald-500/5 dark:bg-slate-950 rounded-2xl p-4 shadow-md max-w-xs text-left">
-                            <div className="flex items-center gap-1.5 pb-2 border-b border-emerald-500/10 mb-2.5">
-                              <div className="w-7 h-7 rounded bg-emerald-500/20 text-emerald-500 flex items-center justify-center">
-                                <FileText className="w-4 h-4" />
-                              </div>
-                              <div>
-                                <span className="text-[10px] text-emerald-500 font-extrabold uppercase tracking-wider block font-sans">ESCROW RECEIPT</span>
-                                <span className="text-[9px] text-gray-400 font-mono block leading-none">{msg.receiptDetails.orderNumber}</span>
-                              </div>
-                            </div>
-
-                            <div className="space-y-1.5 text-[10px]">
-                              <div className="flex justify-between items-baseline">
-                                <span className="text-gray-400">Escrow Item:</span>
-                                <span className="font-bold text-slate-800 dark:text-white line-clamp-1 max-w-[120px]">{msg.receiptDetails.productTitle}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-400">Capital Paid:</span>
-                                <span className="font-mono font-black text-emerald-600 dark:text-emerald-400">₦{Number(msg.receiptDetails.amount).toLocaleString()}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-400">Escrow Status:</span>
-                                <span className="px-1.5 py-0.5 bg-emerald-500 text-white rounded text-[8px] font-bold uppercase tracking-widest flex items-center gap-0.5">
-                                  <Shield className="w-2.5 h-2.5" />
-                                  SECURED
+                          <div className="mt-2.5 max-w-xs rounded-2xl border-2 border-jade-500/30 bg-white p-4 text-left text-ink-800 dark:bg-ink-950 dark:text-ink-100">
+                            <div className="mb-3 flex items-center gap-2 border-b border-jade-500/15 pb-2.5">
+                              <span className="grid h-8 w-8 place-items-center rounded-lg bg-jade-500/15 text-jade-600 dark:text-jade-400">
+                                <Receipt className="h-4 w-4" />
+                              </span>
+                              <span>
+                                <span className="block text-xs font-extrabold uppercase tracking-wider text-jade-700 dark:text-jade-400">
+                                  Escrow receipt
                                 </span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-400">Payment Node:</span>
-                                <span className="font-mono text-gray-500 dark:text-slate-400">{msg.receiptDetails.paymentMethod}</span>
-                              </div>
-                            </div>
-
-                            <div className="mt-3 pt-2 border-t border-emerald-500/10 text-center">
-                              <span className="text-[8px] text-gray-400 font-sans block">
-                                Safe-Handshake Protection Activated.
+                                <span className="block font-mono text-xs text-ink-400">
+                                  {msg.receiptDetails.orderNumber}
+                                </span>
                               </span>
                             </div>
+                            <dl className="space-y-1.5 text-xs">
+                              <div className="flex items-baseline justify-between gap-3">
+                                <dt className="text-ink-400">Item</dt>
+                                <dd className="max-w-[9rem] truncate font-bold">{msg.receiptDetails.productTitle}</dd>
+                              </div>
+                              <div className="flex items-baseline justify-between gap-3">
+                                <dt className="text-ink-400">Amount</dt>
+                                <dd className="font-mono font-black text-jade-700 dark:text-jade-400">
+                                  ₦{Number(msg.receiptDetails.amount).toLocaleString()}
+                                </dd>
+                              </div>
+                              <div className="flex items-center justify-between gap-3">
+                                <dt className="text-ink-400">Status</dt>
+                                <dd className="inline-flex items-center gap-1 rounded-md bg-jade-500 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-white">
+                                  <Shield className="h-2.5 w-2.5" />
+                                  Secured
+                                </dd>
+                              </div>
+                              <div className="flex items-baseline justify-between gap-3">
+                                <dt className="text-ink-400">Rail</dt>
+                                <dd className="font-mono text-xs text-ink-500">
+                                  {msg.receiptDetails.paymentMethod}
+                                </dd>
+                              </div>
+                            </dl>
                           </div>
                         )}
 
-                        {/* 5. Product Embed Preview Card Bubble */}
+                        {/* Product embed */}
                         {msg.productDetails && (
-                          <div className="mt-2 border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-2xl overflow-hidden shadow-sm max-w-xs text-left">
-                            <div className="h-28 w-full relative">
+                          <div className="mt-2.5 max-w-xs overflow-hidden rounded-2xl border border-ink-200 bg-white text-left dark:border-ink-800 dark:bg-ink-900">
+                            <div className="relative h-28 w-full">
                               {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={msg.productDetails.image} alt="" className="w-full h-full object-cover" />
-                              <div className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/60 text-white rounded text-[8px] font-bold">
-                                {msg.productDetails.condition.replace('_', ' ')}
-                              </div>
+                              <img
+                                src={msg.productDetails.image}
+                                alt=""
+                                className="h-full w-full object-cover"
+                              />
+                              <span className="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-0.5 text-[10px] font-bold text-white">
+                                {msg.productDetails.condition?.replace(/_/g, ' ')}
+                              </span>
                             </div>
-                            <div className="p-3 space-y-1">
-                              <h5 className="font-sans font-bold text-xs text-slate-900 dark:text-white line-clamp-1">{msg.productDetails.title}</h5>
-                              <p className="font-mono text-xs text-emerald-500 font-extrabold">₦{Number(msg.productDetails.price).toLocaleString()}</p>
-                              
-                              <button 
-                                onClick={() => onNavigate?.('product-details', { productId: msg.productDetails?.id })}
-                                className="w-full py-1.5 bg-gray-50 dark:bg-slate-800 hover:bg-emerald-500 hover:text-white transition-colors text-[9px] font-bold text-slate-700 dark:text-slate-300 rounded-lg flex items-center justify-center gap-1 mt-1"
+                            <div className="space-y-1 p-3">
+                              <h5 className="truncate text-xs font-bold text-ink-900 dark:text-white">
+                                {msg.productDetails.title}
+                              </h5>
+                              <p className="font-mono text-xs font-extrabold text-jade-700 dark:text-jade-400">
+                                ₦{Number(msg.productDetails.price).toLocaleString()}
+                              </p>
+                              <button
+                                onClick={() =>
+                                  onNavigate?.('product', { id: msg.productDetails?.id })
+                                }
+                                className="focus-ring mt-1 flex w-full items-center justify-center gap-1 rounded-xl bg-ink-100 py-1.5 text-xs font-bold text-ink-700 transition-colors hover:bg-jade-500 hover:text-white dark:bg-ink-800 dark:text-ink-200 cursor-pointer"
                               >
-                                Inspect Full Specs
-                                <ExternalLink className="w-2.5 h-2.5" />
+                                View listing
+                                <ExternalLink className="h-3 w-3" />
                               </button>
                             </div>
                           </div>
                         )}
 
-                        {/* 6. Structured Negotiation Contract Offer Bubble */}
+                        {/* Negotiation offer */}
                         {msg.offerDetails && (
-                          <div className="mt-2.5 border border-amber-500/30 bg-amber-500/5 dark:bg-slate-950 rounded-2xl p-4 shadow-sm max-w-xs text-left text-slate-800 dark:text-slate-100">
-                            <div className="flex items-center gap-1.5 pb-2 border-b border-amber-500/15 mb-2.5">
-                              <div className="w-7 h-7 rounded bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0">
-                                <Shield className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                              </div>
-                              <div>
-                                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-extrabold uppercase tracking-wider block font-sans">
-                                  {msg.offerDetails.counterAmount ? 'COUNTER NEGOTIATION' : 'ESCROW NEGOTIATION'}
+                          <div className="mt-2.5 max-w-xs rounded-2xl border border-ink-300 bg-white p-4 text-left dark:bg-ink-950 dark:rounded-2xl dark:border-ink-700">
+                            <div className="mb-3 flex items-center gap-2 border-b border-ink-200 pb-2.5 dark:border-ink-700">
+                              <span className="grid h-8 w-8 place-items-center rounded-lg bg-jade-500/15 text-jade-600 dark:text-jade-400">
+                                <Handshake className="h-4 w-4" />
+                              </span>
+                              <span>
+                                <span className="block text-xs font-extrabold uppercase tracking-wider text-ink-700 dark:text-ink-200">
+                                  {msg.offerDetails.counterAmount ? 'Counter offer' : 'Offer'}
                                 </span>
-                                <span className="text-[8px] text-gray-400 font-mono block uppercase">
-                                  STATUS: {msg.offerDetails.status}
+                                <span className="block font-mono text-xs uppercase text-ink-400">
+                                  {msg.offerDetails.status}
                                 </span>
-                              </div>
+                              </span>
                             </div>
 
-                            <div className="space-y-2 text-[11px]">
+                            <dl className="space-y-1.5 text-xs">
                               {msg.offerDetails.counterAmount ? (
                                 <>
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-400">Original Price:</span>
-                                    <span className="font-mono text-gray-400 line-through">₦{msg.offerDetails.amount.toLocaleString()}</span>
+                                  <div className="flex justify-between gap-3">
+                                    <dt className="text-ink-400">List price</dt>
+                                    <dd className="font-mono text-ink-400 line-through">
+                                      ₦{msg.offerDetails.amount.toLocaleString()}
+                                    </dd>
                                   </div>
-                                  <div className="flex justify-between font-bold text-sm">
-                                    <span className="text-amber-600 dark:text-amber-400">Counter Offer:</span>
-                                    <span className="font-mono text-amber-600 dark:text-amber-400">₦{msg.offerDetails.counterAmount.toLocaleString()}</span>
+                                  <div className="flex justify-between gap-3 text-sm font-bold">
+                                    <dt>Counter</dt>
+                                    <dd className="font-mono">
+                                      ₦{msg.offerDetails.counterAmount.toLocaleString()}
+                                    </dd>
                                   </div>
                                 </>
                               ) : (
-                                <div className="flex justify-between font-bold text-sm">
-                                  <span className="text-amber-600 dark:text-amber-400">Proposed Deal:</span>
-                                  <span className="font-mono text-amber-600 dark:text-amber-400">₦{msg.offerDetails.amount.toLocaleString()}</span>
+                                <div className="flex justify-between gap-3 text-sm font-bold">
+                                  <dt>Proposed</dt>
+                                  <dd className="font-mono">
+                                    ₦{msg.offerDetails.amount.toLocaleString()}
+                                  </dd>
                                 </div>
                               )}
-                              
-                              <div className="flex justify-between text-[10px]">
-                                <span className="text-gray-400">Proposed By:</span>
-                                <span className="font-semibold text-slate-600 dark:text-slate-300">
-                                  {msg.offerDetails.proposedBy === user.id ? 'You' : `@${partner?.username || 'partner'}`}
-                                </span>
+                              <div className="flex justify-between gap-3">
+                                <dt className="text-ink-400">Proposed by</dt>
+                                <dd className="font-semibold">
+                                  {msg.offerDetails.proposedBy === user.id
+                                    ? 'You'
+                                    : partnerName}
+                                </dd>
                               </div>
-                            </div>
+                            </dl>
 
                             {msg.offerDetails.status === 'PENDING' && (
                               <div className="mt-4 space-y-2">
                                 {msg.offerDetails.proposedBy !== user.id ? (
                                   <>
                                     <div className="grid grid-cols-2 gap-2">
-                                      <button
+                                      <Button
+                                        size="sm"
                                         onClick={() => {
                                           dbOperations.updateOfferStatus(msg.id, 'ACCEPTED', undefined, user.id);
-                                          setDb(getDBState());
+                                          refresh();
                                         }}
-                                        className="py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-sans font-bold text-[10px] uppercase tracking-wider rounded-xl cursor-pointer text-center border-0"
                                       >
-                                        Accept Offer
-                                      </button>
-                                      <button
+                                        Accept
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="secondary"
                                         onClick={() => {
                                           const counterStr = prompt('Enter your counter offer amount (₦):');
                                           if (counterStr) {
                                             const amt = parseInt(counterStr.replace(/[^0-9]/g, ''), 10);
                                             if (amt > 0) {
                                               dbOperations.updateOfferStatus(msg.id, 'COUNTERED', amt, user.id);
-                                              setDb(getDBState());
+                                              refresh();
                                             }
                                           }
                                         }}
-                                        className="py-2 bg-amber-500 hover:bg-amber-600 text-white font-sans font-bold text-[10px] uppercase tracking-wider rounded-xl cursor-pointer text-center border-0"
                                       >
-                                        Counter Offer
-                                      </button>
+                                        Counter
+                                      </Button>
                                     </div>
-                                    <button
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="w-full"
                                       onClick={() => {
                                         dbOperations.updateOfferStatus(msg.id, 'DECLINED', undefined, user.id);
-                                        setDb(getDBState());
+                                        refresh();
                                       }}
-                                      className="w-full py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 font-sans font-bold text-[9px] uppercase tracking-wider rounded-lg cursor-pointer text-center border-0"
                                     >
-                                      Decline Offer
-                                    </button>
+                                      Decline
+                                    </Button>
                                   </>
                                 ) : (
-                                  <div className="p-2 bg-slate-100 dark:bg-slate-800 rounded-xl text-center text-gray-500 text-[10px]">
-                                    Awaiting partner&apos;s decision...
-                                  </div>
+                                  <p className="rounded-xl bg-ink-100 p-2 text-center text-xs text-ink-500 dark:bg-ink-800">
+                                    Awaiting {partnerName}&apos;s decision
+                                  </p>
                                 )}
                               </div>
                             )}
 
                             {msg.offerDetails.status === 'ACCEPTED' && (
-                              <div className="mt-3 p-2 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-xl text-center text-[10px] font-bold">
-                                ✓ OFFER ACCEPTED & SECURED
-                              </div>
+                              <p className="mt-3 flex items-center justify-center gap-1.5 rounded-xl bg-jade-500/10 p-2 text-center text-xs font-bold text-jade-700 dark:text-jade-400">
+                                <ShieldCheck className="h-3.5 w-3.5" />
+                                Accepted — escrow order created
+                              </p>
                             )}
-
                             {msg.offerDetails.status === 'DECLINED' && (
-                              <div className="mt-3 p-2 bg-red-500/10 text-red-500 rounded-xl text-center text-[10px] font-bold">
-                                ❌ OFFER DECLINED
-                              </div>
+                              <p className="mt-3 rounded-xl bg-ink-100 p-2 text-center text-xs font-bold text-ink-500 dark:bg-ink-800">
+                                Offer declined
+                              </p>
                             )}
-
                             {msg.offerDetails.status === 'COUNTERED' && (
-                              <div className="mt-3 p-2 bg-amber-500/10 text-amber-500 rounded-xl text-center text-[10px] font-bold">
-                                🔄 COUNTERED
-                              </div>
+                              <p className="mt-3 rounded-xl bg-ink-100 p-2 text-center text-xs font-bold text-ink-500 dark:bg-ink-800">
+                                Countered — awaiting response
+                              </p>
                             )}
                           </div>
                         )}
-                        
-                        <div className="flex justify-end items-center gap-1 text-[9px] mt-1.5 opacity-65 font-mono">
-                          <span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                          {isMine && <CheckCheck className="w-3 h-3 text-white" />}
+
+                        <div
+                          className={`mt-1.5 flex items-center justify-end gap-1 font-mono text-xs ${
+                            isMine ? 'text-white/70' : 'text-ink-400'
+                          }`}
+                        >
+                          <span>
+                            {new Date(msg.createdAt).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                          {isMine && <CheckCheck className="h-4 w-4" />}
                         </div>
                       </div>
                     </div>
                   );
                 })}
-
-                {/* AI Simulating feedback bubble */}
-                {isAiReplying && (
-                  <div className="flex justify-start">
-                    <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800/80 rounded-2xl rounded-bl-none p-3 text-xs text-gray-400 italic flex items-center gap-2">
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-500" />
-                      Seller is writing a reply...
-                    </div>
-                  </div>
-                )}
-
               </div>
 
-              {/* Chat Input form footer with attachments bar */}
-              <div className="border-t border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                
-                {/* Advanced Attachment Options Toolbar */}
-                <div className="px-4 py-2 border-b border-gray-100 dark:border-slate-800/60 bg-gray-50/50 dark:bg-slate-950/20 flex gap-1 overflow-x-auto items-center">
-                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mr-2 select-none shrink-0">Trade Tools:</span>
-                  
-                  <button
-                    onClick={() => setShowReceiptPicker(true)}
-                    className="px-2.5 py-1.5 bg-white dark:bg-slate-800 hover:border-emerald-500 border border-gray-200 dark:border-slate-700 rounded-xl text-[10px] text-slate-700 dark:text-slate-300 font-bold flex items-center gap-1 transition-all shrink-0"
-                    title="Share an Escrow Transaction Receipt"
-                  >
-                    <FileText className="w-3.5 h-3.5 text-blue-500" />
-                    Share Receipt
-                  </button>
-
-                  <button
-                    onClick={() => setShowImagePicker(true)}
-                    className="px-2.5 py-1.5 bg-white dark:bg-slate-800 hover:border-emerald-500 border border-gray-200 dark:border-slate-700 rounded-xl text-[10px] text-slate-700 dark:text-slate-300 font-bold flex items-center gap-1 transition-all shrink-0"
-                    title="Send Simulated Physical Condition Photos"
-                  >
-                    <ImageIcon className="w-3.5 h-3.5 text-emerald-500" />
-                    Send Photo
-                  </button>
-
-                  <button
-                    onClick={() => setShowVideoPicker(true)}
-                    className="px-2.5 py-1.5 bg-white dark:bg-slate-800 hover:border-emerald-500 border border-gray-200 dark:border-slate-700 rounded-xl text-[10px] text-slate-700 dark:text-slate-300 font-bold flex items-center gap-1 transition-all shrink-0"
-                    title="Send Playable Diagnostic/Unboxing Videos"
-                  >
-                    <VideoIcon className="w-3.5 h-3.5 text-red-500" />
-                    Send Video
-                  </button>
-
-                  <button
-                    onClick={() => setShowProductPicker(true)}
-                    className="px-2.5 py-1.5 bg-white dark:bg-slate-800 hover:border-emerald-500 border border-gray-200 dark:border-slate-700 rounded-xl text-[10px] text-slate-700 dark:text-slate-300 font-bold flex items-center gap-1 transition-all shrink-0"
-                    title="Send a Catalog Product Preview Card"
-                  >
-                    <Package className="w-3.5 h-3.5 text-amber-500" />
-                    Share Product
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      if (!activeRoomId) return;
-                      if (!chatProduct) {
-                        alert('This conversation thread does not have a linked product catalog SKU to negotiate.');
-                        return;
-                      }
-                      const offerStr = prompt(`Negotiate purchase for "${chatProduct.title}" via secure Escrow.\nCatalog Price: ₦${chatProduct.price.toLocaleString()}\nEnter your custom offer amount (₦):`);
-                      if (offerStr) {
-                        const amt = parseInt(offerStr.replace(/[^0-9]/g, ''), 10);
-                        if (amt > 0) {
-                          dbOperations.sendNegotiationOffer(activeRoomId, chatProduct.id, amt);
-                          setDb(getDBState());
-                        }
-                      }
-                    }}
-                    className="px-2.5 py-1.5 bg-white dark:bg-slate-800 hover:border-emerald-500 border border-amber-500/30 rounded-xl text-[10px] text-amber-600 dark:text-amber-400 font-bold flex items-center gap-1 transition-all shrink-0"
-                    title="Propose custom price negotiation via secure Escrow"
-                  >
-                    <Shield className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-                    Make Custom Offer
-                  </button>
+              {/* Composer */}
+              <div className="border-t border-ink-200 bg-white dark:border-ink-800 dark:bg-ink-900">
+                <div className="flex items-center gap-1.5 overflow-x-auto border-b border-ink-100 px-3 py-2 dark:border-ink-800/70">
+                  <span className="mr-1 hidden shrink-0 text-xs font-bold uppercase tracking-wider text-ink-400 sm:block">
+                    Trade tools
+                  </span>
+                  <Chip tone="outline" icon={<FileText className="h-3.5 w-3.5 text-jade-500" />} onClick={() => setOpenSheet('receipt')}>
+                    Receipt
+                  </Chip>
+                  <Chip tone="outline" icon={<ImageIcon className="h-3.5 w-3.5 text-jade-500" />} onClick={() => setOpenSheet('photo')}>
+                    Photo
+                  </Chip>
+                  <Chip tone="outline" icon={<VideoIcon className="h-3.5 w-3.5 text-jade-500" />} onClick={() => setOpenSheet('video')}>
+                    Video
+                  </Chip>
+                  <Chip tone="outline" icon={<Store className="h-3.5 w-3.5 text-jade-500" />} onClick={() => setOpenSheet('product')}>
+                    Listing
+                  </Chip>
+                  <Chip tone="jade" icon={<Handshake className="h-3.5 w-3.5" />} onClick={() => setOpenSheet('offer')}>
+                    Make offer
+                  </Chip>
                 </div>
 
-                <form 
-                  onSubmit={handleSendMessage}
-                  className="p-3 flex gap-2"
-                >
+                <form onSubmit={handleSendMessage} className="flex items-end gap-2 p-3">
                   <input
                     type="text"
                     value={typedMessage}
                     onChange={(e) => setTypedMessage(e.target.value)}
-                    placeholder="Enter message for partner..."
-                    className="flex-1 px-3.5 py-2 text-xs bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-full focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800 dark:text-white"
+                    placeholder={`Message ${partnerName}...`}
+                    className="focus-ring flex-1 rounded-full border border-ink-200 bg-ink-50 px-4 py-3 text-sm text-ink-800 placeholder:text-ink-400 dark:border-ink-800 dark:bg-ink-800 dark:text-white"
                   />
-                  
-                  <button
-                    type="submit"
-                    className="p-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full transition-colors flex items-center justify-center cursor-pointer shadow-sm"
-                  >
-                    <Send className="w-4 h-4" />
-                  </button>
+                  <Button type="submit" disabled={!typedMessage.trim()} className="shrink-0 rounded-full px-4" aria-label="Send message">
+                    <Send className="h-4 w-4" />
+                  </Button>
                 </form>
               </div>
             </>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400 dark:text-slate-500">
-              <MessageSquare className="w-12 h-12 text-gray-200 dark:text-slate-800 mb-2 animate-bounce" />
-              <p className="text-sm font-semibold mb-1">Select a Chat Session</p>
-              <p className="text-xs">Click a buyer conversation thread from the left list to begin chatting.</p>
+            <div className="flex flex-1 items-center justify-center">
+              <EmptyState
+                state="empty-chat"
+                size="lg"
+                icon={<MessageSquare />}
+                title="Select a conversation"
+                description="Pick a thread on the left to read messages, share inspection media and negotiate a price inside escrow."
+              />
             </div>
           )}
-        </div>
-
+        </section>
       </div>
 
-      {/* MODAL 1: SHARE RECEIPT SELECTOR */}
-      {showReceiptPicker && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl relative space-y-4">
-            <button 
-              onClick={() => setShowReceiptPicker(false)}
-              className="absolute top-4 right-4 p-1 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full text-gray-400 hover:text-slate-900"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            
-            <div>
-              <h3 className="font-sans font-black text-base text-slate-900 dark:text-white flex items-center gap-1.5">
-                <FileText className="w-5.5 h-5.5 text-blue-500" />
-                Share Escrow Ledger Receipt
-              </h3>
-              <p className="text-xs text-gray-500 mt-1">Select an active transaction invoice to share with your trading partner in this conversation thread.</p>
+      {/* Sheet: share a receipt */}
+      <Sheet open={openSheet === 'receipt'} onClose={() => setOpenSheet(null)} title="Share an escrow receipt">
+        <div className="max-h-72 space-y-2 overflow-y-auto">
+          {myOrders.length === 0 ? (
+            <div className="py-8 text-center">
+              <FileText className="mx-auto mb-2 h-8 w-8 text-ink-300 dark:text-ink-700" />
+              <p className="text-sm font-bold text-ink-700 dark:text-ink-200">No receipts yet</p>
+              <p className="mt-1 text-xs text-ink-500">
+                Completed orders appear here as escrow ledger receipts.
+              </p>
             </div>
-
-            <div className="max-h-60 overflow-y-auto space-y-2 pr-1 text-xs">
-              {myOrders.length === 0 ? (
-                <div className="p-6 text-center">
-                  <FileText className="w-8 h-8 text-gray-300 dark:text-slate-700 mx-auto mb-2" />
-                  <p className="text-slate-500 dark:text-slate-400 font-bold mb-1">No receipts yet</p>
-                  <p className="text-[10px] text-gray-400">Completed orders will appear here as escrow ledger receipts.</p>
-                </div>
-              ) : (
-                myOrders.map((ord) => (
-                  <button
-                    key={ord.id}
-                    onClick={() => shareReceipt(ord)}
-                    className="w-full text-left p-3 border border-gray-100 dark:border-slate-800 rounded-2xl hover:border-emerald-500 hover:bg-emerald-500/5 transition-all flex justify-between items-center"
-                  >
-                    <div>
-                      <span className="font-bold block text-slate-900 dark:text-white truncate max-w-[240px]">{ord.productTitle}</span>
-                      <span className="text-[10px] text-gray-400 font-mono">Invoice: {ord.orderNumber}</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="font-mono font-extrabold text-emerald-500 block">₦{Number(ord.totalAmount).toLocaleString()}</span>
-                      <span className="text-[9px] px-1.5 py-0.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400 rounded uppercase font-bold tracking-widest">{ord.status}</span>
-                    </div>
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 2: SEND IMAGE PICKER */}
-      {showImagePicker && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl relative space-y-4">
-            <button 
-              onClick={() => setShowImagePicker(false)}
-              className="absolute top-4 right-4 p-1 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full text-gray-400 hover:text-slate-900"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            
-            <div>
-              <h3 className="font-sans font-black text-base text-slate-900 dark:text-white flex items-center gap-1.5">
-                <ImageIcon className="w-5.5 h-5.5 text-emerald-500" />
-                Physical Inspection Photos
-              </h3>
-              <p className="text-xs text-gray-500 mt-1 font-sans">Select a real physical verification picture or courier handover shot from your device.</p>
-            </div>
-
-            <div className="space-y-4 text-xs">
-              <div className="border-2 border-dashed border-gray-200 dark:border-slate-800 rounded-2xl p-4 text-center cursor-pointer hover:border-emerald-500 bg-gray-50/50 dark:bg-slate-950/20 relative">
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      const reader = new FileReader();
-                      reader.onloadend = () => {
-                        setChatImageFile(reader.result as string);
-                      };
-                      reader.readAsDataURL(file);
-                    }
-                  }}
-                  className="absolute inset-0 opacity-0 cursor-pointer"
-                />
-                {chatImageFile ? (
-                  <div className="space-y-2">
-                    <img src={chatImageFile} alt="Preview" className="max-h-32 mx-auto rounded-lg object-contain" />
-                    <span className="text-[10px] text-emerald-500 font-bold block">✓ Image Selected Successfully</span>
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    <ImageIcon className="w-8 h-8 text-slate-400 mx-auto" />
-                    <span className="text-xs font-bold block text-slate-700 dark:text-slate-300">Click to Select Device Image</span>
-                    <span className="text-[10px] text-slate-400 block font-sans">JPEG, PNG, WebP</span>
-                  </div>
-                )}
-              </div>
-
-              {chatImageFile && (
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono">Attachment Caption</label>
-                  <input
-                    type="text"
-                    value={chatImageCaption}
-                    onChange={(e) => setChatImageCaption(e.target.value)}
-                    placeholder="Enter image caption..."
-                    className="w-full px-3 py-2 text-xs bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-800 rounded-xl text-slate-800 dark:text-white focus:outline-none"
-                  />
-                </div>
-              )}
-
+          ) : (
+            myOrders.map((ord) => (
               <button
-                disabled={!chatImageFile}
-                onClick={() => {
-                  if (chatImageFile) {
-                    shareImage(chatImageFile, chatImageCaption);
-                    setShowImagePicker(false);
-                    setChatImageFile(null);
-                    setChatImageCaption('📷 Physical Inspection: Photo attached');
-                  }
-                }}
-                className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-1 shadow-md shadow-emerald-500/10 cursor-pointer"
+                key={ord.id}
+                onClick={() => shareReceipt(ord)}
+                className="focus-ring flex w-full items-center justify-between gap-3 rounded-2xl border border-ink-200 p-3 text-left transition-colors hover:border-jade-500 hover:bg-jade-500/5 dark:border-ink-800 cursor-pointer"
               >
-                <ImageIcon className="w-4 h-4" />
-                Attach & Send Photo
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-bold text-ink-900 dark:text-white">
+                    {ord.productTitle}
+                  </span>
+                  <span className="block font-mono text-xs text-ink-400">
+                    {ord.orderNumber}
+                  </span>
+                </span>
+                <span className="shrink-0 text-right">
+                  <span className="block font-mono text-sm font-extrabold text-jade-700 dark:text-jade-400">
+                    ₦{Number(ord.totalAmount).toLocaleString()}
+                  </span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-ink-400">
+                    {ord.status}
+                  </span>
+                </span>
               </button>
-            </div>
-          </div>
+            ))
+          )}
         </div>
-      )}
+      </Sheet>
 
-      {/* MODAL 3: SEND VIDEO PICKER */}
-      {showVideoPicker && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl relative space-y-4">
-            <button 
-              onClick={() => {
-                setShowVideoPicker(false);
-                setChatVideoFile(null);
-              }}
-              className="absolute top-4 right-4 p-1 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full text-gray-400 hover:text-slate-900"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            
-            <div>
-              <h3 className="font-sans font-black text-base text-slate-900 dark:text-white flex items-center gap-1.5">
-                <VideoIcon className="w-5.5 h-5.5 text-red-500" />
-                Physical Unboxing Videos
-              </h3>
-              <p className="text-xs text-gray-500 mt-1 font-sans">Upload a real-time diagnostics or unboxing verification video proof of condition to secure full escrow compliance.</p>
-            </div>
+      {/* Sheet: photo */}
+      <Sheet open={openSheet === 'photo'} onClose={() => setOpenSheet(null)} title="Share an inspection photo">
+        <label className="block cursor-pointer rounded-2xl border-2 border-dashed border-ink-200 p-5 text-center transition-colors hover:border-jade-500 dark:border-ink-800">
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const reader = new FileReader();
+              reader.onloadend = () => setChatImageFile(reader.result as string);
+              reader.readAsDataURL(file);
+            }}
+          />
+          {chatImageFile ? (
+            <span className="block space-y-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={chatImageFile} alt="Preview" className="mx-auto max-h-32 rounded-xl object-contain" />
+              <span className="block text-xs font-bold text-jade-600 dark:text-jade-400">
+                Image ready to send
+              </span>
+            </span>
+          ) : (
+            <span className="block space-y-1">
+              <ImageIcon className="mx-auto h-8 w-8 text-ink-400" />
+              <span className="block text-sm font-bold text-ink-700 dark:text-ink-200">
+                Choose a photo
+              </span>
+              <span className="block text-xs text-ink-400">JPEG, PNG or WebP</span>
+            </span>
+          )}
+        </label>
 
-            <div className="space-y-4 text-xs">
-              <div className="border-2 border-dashed border-gray-200 dark:border-slate-800 rounded-2xl p-4 text-center cursor-pointer hover:border-red-500 bg-gray-50/50 dark:bg-slate-950/20 relative">
-                <input
-                  type="file"
-                  accept="video/*"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      const reader = new FileReader();
-                      reader.onloadend = () => {
-                        setChatVideoFile(reader.result as string);
-                      };
-                      reader.readAsDataURL(file);
-                    }
-                  }}
-                  className="absolute inset-0 opacity-0 cursor-pointer"
-                />
-                {chatVideoFile ? (
-                  <div className="space-y-2">
-                    <video src={chatVideoFile} controls className="max-h-32 mx-auto rounded-lg" />
-                    <span className="text-[10px] text-red-500 font-bold block">✓ Video Selected Successfully</span>
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    <Play className="w-8 h-8 text-slate-400 mx-auto" />
-                    <span className="text-xs font-bold block text-slate-700 dark:text-slate-300">Click to Select Device Video</span>
-                    <span className="text-[10px] text-slate-400 block font-sans">MP4, WebM, AVI</span>
-                  </div>
-                )}
-              </div>
+        {chatImageFile && (
+          <div className="mt-4 space-y-1.5">
+            <label className="font-mono text-xs font-bold uppercase tracking-widest text-ink-400">
+              Caption
+            </label>
+            <input
+              type="text"
+              value={chatImageCaption}
+              onChange={(e) => setChatImageCaption(e.target.value)}
+              className="focus-ring w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 dark:border-ink-800 dark:bg-ink-950 dark:text-white"
+            />
+          </div>
+        )}
 
-              {chatVideoFile && (
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono">Attachment Caption</label>
-                  <input
-                    type="text"
-                    value={chatVideoCaption}
-                    onChange={(e) => setChatVideoCaption(e.target.value)}
-                    placeholder="Enter video caption..."
-                    className="w-full px-3 py-2 text-xs bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-800 rounded-xl text-slate-800 dark:text-white focus:outline-none"
-                  />
-                </div>
-              )}
+        <Button
+          className="mt-4 w-full"
+          disabled={!chatImageFile}
+          onClick={() => chatImageFile && shareImage(chatImageFile, chatImageCaption)}
+        >
+          <ImageIcon className="h-4 w-4" />
+          Send photo
+        </Button>
+      </Sheet>
 
+      {/* Sheet: video */}
+      <Sheet open={openSheet === 'video'} onClose={() => setOpenSheet(null)} title="Share an inspection video">
+        <label className="block cursor-pointer rounded-2xl border-2 border-dashed border-ink-200 p-5 text-center transition-colors hover:border-jade-500 dark:border-ink-800">
+          <input
+            type="file"
+            accept="video/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const reader = new FileReader();
+              reader.onloadend = () => setChatVideoFile(reader.result as string);
+              reader.readAsDataURL(file);
+            }}
+          />
+          {chatVideoFile ? (
+            <span className="block space-y-2">
+              <video src={chatVideoFile} controls className="mx-auto max-h-32 rounded-xl" />
+              <span className="block text-xs font-bold text-jade-600 dark:text-jade-400">
+                Video ready to send
+              </span>
+            </span>
+          ) : (
+            <span className="block space-y-1">
+              <Play className="mx-auto h-8 w-8 text-ink-400" />
+              <span className="block text-sm font-bold text-ink-700 dark:text-ink-200">
+                Choose a video
+              </span>
+              <span className="block text-xs text-ink-400">MP4, WebM or MOV</span>
+            </span>
+          )}
+        </label>
+
+        {chatVideoFile && (
+          <div className="mt-4 space-y-1.5">
+            <label className="font-mono text-xs font-bold uppercase tracking-widest text-ink-400">
+              Caption
+            </label>
+            <input
+              type="text"
+              value={chatVideoCaption}
+              onChange={(e) => setChatVideoCaption(e.target.value)}
+              className="focus-ring w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 dark:border-ink-800 dark:bg-ink-950 dark:text-white"
+            />
+          </div>
+        )}
+
+        <Button
+          className="mt-4 w-full"
+          disabled={!chatVideoFile}
+          onClick={() => chatVideoFile && shareVideo(chatVideoFile, chatVideoCaption)}
+        >
+          <VideoIcon className="h-4 w-4" />
+          Send video
+        </Button>
+      </Sheet>
+
+      {/* Sheet: share a listing */}
+      <Sheet open={openSheet === 'product'} onClose={() => setOpenSheet(null)} title="Share a listing">
+        <div className="max-h-72 space-y-2 overflow-y-auto">
+          {db.products.length === 0 ? (
+            <p className="py-8 text-center text-sm text-ink-500">No listings available yet.</p>
+          ) : (
+            db.products.map((p) => (
               <button
-                disabled={!chatVideoFile}
-                onClick={() => {
-                  if (chatVideoFile) {
-                    shareVideo(chatVideoFile, chatVideoCaption);
-                    setShowVideoPicker(false);
-                    setChatVideoFile(null);
-                    setChatVideoCaption('🎥 Video Inspection: Video attached');
-                  }
-                }}
-                className="w-full py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-1 shadow-md shadow-red-600/10 cursor-pointer"
+                key={p.id}
+                onClick={() => shareProductPreview(p)}
+                className="focus-ring flex w-full items-center gap-3 rounded-2xl border border-ink-200 p-2.5 text-left transition-colors hover:border-jade-500 hover:bg-jade-500/5 dark:border-ink-800 cursor-pointer"
               >
-                <VideoIcon className="w-4 h-4" />
-                Attach & Send Video
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={p.images?.[0]} alt="" className="h-11 w-11 shrink-0 rounded-xl object-cover" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-bold text-ink-900 dark:text-white">
+                    {p.title}
+                  </span>
+                  <span className="block truncate text-xs text-ink-400">
+                    {p.brand || 'No brand'} · {p.condition?.replace('_', ' ')}
+                  </span>
+                </span>
+                <span className="shrink-0 font-mono text-sm font-extrabold text-jade-700 dark:text-jade-400">
+                  ₦{Number(p.price).toLocaleString()}
+                </span>
               </button>
-            </div>
-          </div>
+            ))
+          )}
         </div>
-      )}
+      </Sheet>
 
-      {/* MODAL 4: SHARE PRODUCT SELECTOR */}
-      {showProductPicker && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl relative space-y-4">
-            <button 
-              onClick={() => setShowProductPicker(false)}
-              className="absolute top-4 right-4 p-1 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full text-gray-400 hover:text-slate-900"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            
-            <div>
-              <h3 className="font-sans font-black text-base text-slate-900 dark:text-white flex items-center gap-1.5">
-                <Package className="w-5.5 h-5.5 text-amber-500" />
-                Share Catalog Product Embed
-              </h3>
-              <p className="text-xs text-gray-500 mt-1">Send a clickable embedded listing card so your partner can inspect price, condition, SKU specs, and active warranty terms.</p>
+      {/* Sheet: negotiate */}
+      <Sheet open={openSheet === 'offer'} onClose={() => setOpenSheet(null)} title="Negotiate a price">
+        {chatProduct ? (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 rounded-2xl border border-ink-200 p-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={chatProduct.images?.[0]} alt="" className="h-12 w-12 rounded-xl object-cover" />
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-bold text-ink-900 dark:text-white">
+                  {chatProduct.title}
+                </span>
+                <span className="block font-mono text-xs text-ink-400">
+                  List price ₦{Number(chatProduct.price).toLocaleString()}
+                </span>
+              </span>
             </div>
 
-            <div className="max-h-60 overflow-y-auto space-y-2 pr-1 text-xs">
-              {db.products.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => shareProductPreview(p)}
-                  className="w-full text-left p-3 border border-gray-100 dark:border-slate-800 rounded-2xl hover:border-emerald-500 hover:bg-emerald-500/5 transition-all flex items-center gap-3"
+            <div className="space-y-1.5">
+              <label className="font-mono text-xs font-bold uppercase tracking-widest text-ink-400">
+                Your offer (₦)
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={offerAmount}
+                onChange={(e) => setOfferAmount(e.target.value)}
+                placeholder={String(chatProduct.price)}
+                className="focus-ring w-full rounded-xl border border-ink-200 bg-white px-3 py-3 font-mono text-lg font-bold text-ink-900 dark:border-ink-800 dark:bg-ink-950 dark:text-white"
+              />
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {[0.95, 0.9, 0.8].map((f) => (
+                <Chip
+                  key={f}
+                  tone="outline"
+                  onClick={() => setOfferAmount(String(Math.round(chatProduct.price * f)))}
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.images[0]} alt="" className="w-10 h-10 object-cover rounded-lg shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <span className="font-bold block text-slate-900 dark:text-white truncate">{p.title}</span>
-                    <span className="text-[10px] text-gray-400 font-sans block truncate">{p.brand || 'No brand'} • Condition: {p.condition.replace('_', ' ')}</span>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <span className="font-mono font-extrabold text-emerald-500">₦{Number(p.price).toLocaleString()}</span>
-                  </div>
-                </button>
+                  ₦{Math.round(chatProduct.price * f).toLocaleString()}
+                </Chip>
               ))}
             </div>
-          </div>
-        </div>
-      )}
 
+            <Button className="w-full" disabled={!offerAmount} onClick={submitOffer}>
+              <Sparkles className="h-4 w-4" />
+              Send offer through escrow
+            </Button>
+            <p className="text-center text-xs text-ink-400">
+              Accepting an offer creates an escrow order automatically.
+            </p>
+          </div>
+        ) : (
+          <EmptyState
+            state="error"
+            size="sm"
+            icon={<Handshake />}
+            title="No listing in this thread"
+            description="This conversation isn't linked to a listing, so there's nothing to negotiate yet."
+          />
+        )}
+      </Sheet>
     </div>
   );
 }
