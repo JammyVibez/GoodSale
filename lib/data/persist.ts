@@ -97,6 +97,11 @@ export async function insertSponsoredAd(
     title: string;
     budget: number;
     bannerUrl?: string;
+    mediaUrl?: string;
+    mediaType?: 'image' | 'video';
+    ctaText?: string;
+    clickView?: string;
+    placements?: string[];
   }
 ) {
   const { error } = await client.from('sponsored_ads').insert({
@@ -106,11 +111,76 @@ export async function insertSponsoredAd(
     title: ad.title,
     budget: ad.budget,
     banner_url: ad.bannerUrl || '',
+    media_url: ad.mediaUrl || '',
+    media_type: ad.mediaType || 'image',
+    cta_text: ad.ctaText || '',
+    click_view: ad.clickView || '',
+    placements: ad.placements || ['HOME'],
     status: 'ACTIVE',
     spent: 0,
     clicks: 0,
     impressions: 0,
   });
+  if (error) throw error;
+}
+
+/** Admin writes a new announcement that pops up for users on app entry. */
+export async function insertAnnouncement(
+  client: SupabaseClient,
+  a: {
+    title: string;
+    body: string;
+    kind: string;
+    audience: string;
+    imageUrl?: string;
+    isActive?: boolean;
+  }
+) {
+  const { error } = await client.from('announcements').insert({
+    title: a.title,
+    body: a.body,
+    kind: a.kind,
+    audience: a.audience,
+    image_url: a.imageUrl || '',
+    is_active: a.isActive ?? true,
+  });
+  if (error) throw error;
+}
+
+export async function updateAnnouncement(
+  client: SupabaseClient,
+  id: number,
+  patch: { is_active?: boolean }
+) {
+  const { error } = await client.from('announcements').update(patch).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteAnnouncementById(client: SupabaseClient, id: number) {
+  const { error } = await client.from('announcements').delete().eq('id', id);
+  if (error) throw error;
+}
+
+/** Persist live stats/management changes back to an existing ad row. */
+export async function updateSponsoredAd(
+  client: SupabaseClient,
+  id: number,
+  patch: Partial<{
+    title: string;
+    status: string;
+    budget: number;
+    spent: number;
+    clicks: number;
+    impressions: number;
+    media_url: string;
+    media_type: string;
+    cta_text: string;
+    click_view: string;
+    placements: string[];
+    banner_url: string;
+  }>
+) {
+  const { error } = await client.from('sponsored_ads').update(patch).eq('id', id);
   if (error) throw error;
 }
 

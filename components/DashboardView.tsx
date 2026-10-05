@@ -15,6 +15,7 @@ import LiveSafeMeetMap from './LiveSafeMeetMap';
 import LiveDispatchMap from './LiveDispatchMap';
 import { bestCoords, rankPartnersByProximity, formatDistanceKm } from '@/lib/geo';
 import { toast, confirmDialog } from '@/lib/feedback';
+import AdSlot from './AdSlot';
 
 export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void }) {
   const [db, setDb] = useState(getDBState());
@@ -576,6 +577,9 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
   return (
     <div className="bg-ink-50 dark:bg-ink-950 min-h-screen py-8 px-4 sm:px-6 lg:px-8 transition-colors duration-300">
       <div className="max-w-7xl mx-auto">
+
+        {/* Sponsored: seller-hub placement */}
+        <AdSlot placement="DASHBOARD" className="mb-6" />
         
         {/* Hub Title Row & Merchant Bio */}
         <div className="mb-8 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 border-b border-ink-200 dark:border-ink-800 pb-6">

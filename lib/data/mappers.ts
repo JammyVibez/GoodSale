@@ -33,6 +33,7 @@ import {
   DeliveryJobStatus,
   RevenueSettings,
   SponsoredAd,
+  Announcement,
   FeaturedListing,
   Wallet,
   WalletTransaction,
@@ -526,6 +527,7 @@ export function mapDeliveryJob(row: Record<string, unknown>): DeliveryJob {
 
 export function mapRevenueSettings(row: Record<string, unknown>): RevenueSettings {
   return {
+    platformFeeEnabled: Boolean(row.platform_fee_enabled ?? false),
     escrowPercentageFee: n(row.escrow_percentage_fee, 1.5),
     escrowMinFee: n(row.escrow_min_fee, 100),
     escrowMaxFee: n(row.escrow_max_fee, 15000),
@@ -552,12 +554,32 @@ export function mapSponsoredAd(row: Record<string, unknown>): SponsoredAd {
     type: s(row.type, 'PRODUCT') as SponsoredAd['type'],
     targetId: n(row.target_id),
     bannerUrl: row.banner_url != null ? s(row.banner_url) : undefined,
+    mediaUrl: row.media_url != null ? s(row.media_url) : undefined,
+    mediaType: s(row.media_type, 'image') === 'video' ? 'video' : 'image',
+    ctaText: row.cta_text != null ? s(row.cta_text) : '',
+    clickView: row.click_view != null ? s(row.click_view) : '',
+    placements: Array.isArray(row.placements)
+      ? (row.placements as unknown as SponsoredAd['placements'])
+      : ['HOME'],
     title: s(row.title),
     status: s(row.status, 'ACTIVE') as SponsoredAd['status'],
     budget: n(row.budget),
     spent: n(row.spent),
     clicks: n(row.clicks),
     impressions: n(row.impressions),
+    createdAt: s(row.created_at, new Date().toISOString()),
+  };
+}
+
+export function mapAnnouncement(row: Record<string, unknown>): Announcement {
+  return {
+    id: n(row.id),
+    title: s(row.title),
+    body: s(row.body),
+    kind: s(row.kind, 'ANNOUNCEMENT') as Announcement['kind'],
+    audience: s(row.audience, 'ALL') as Announcement['audience'],
+    imageUrl: row.image_url != null ? s(row.image_url) : undefined,
+    isActive: Boolean(row.is_active ?? true),
     createdAt: s(row.created_at, new Date().toISOString()),
   };
 }

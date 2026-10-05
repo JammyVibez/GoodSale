@@ -13,6 +13,7 @@ import {
 } from '../lib/store';
 import { SmartAvatar } from './ui/SmartImage';
 import { toast } from '@/lib/feedback';
+import AdSlot from './AdSlot';
 
 interface ProductDetailViewProps {
   productId: number;
@@ -404,7 +405,7 @@ export default function ProductDetailView({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
           {/* A. Left side: Image Gallery & Previews (5 Cols) */}
-          <div className="lg:col-span-5 space-y-4">
+          <div className="lg:col-span-5 min-w-0 space-y-4">
             
             <div 
               onMouseEnter={() => setIsZooming(true)}
@@ -461,7 +462,7 @@ export default function ProductDetailView({
           </div>
 
           {/* B. Right side: Dynamic buy & information details (7 Cols) */}
-          <div className="lg:col-span-7 space-y-6">
+          <div className="lg:col-span-7 min-w-0 space-y-6">
             
             <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-6 shadow-sm space-y-4">
               
@@ -686,7 +687,7 @@ export default function ProductDetailView({
                     </button>
                   </>
                 ) : (
-                  <div className="col-span-2 p-3 bg-ink-50 dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-2xl">
+                  <div className="sm:col-span-2 p-3 bg-ink-50 dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-2xl">
                     <span className="text-xs font-extrabold text-ink-400 uppercase tracking-widest block mb-2">Bid History Log ({bids.length})</span>
                     {bids.length === 0 ? (
                       <p className="text-xs text-ink-400 italic">No bids placed yet. Be the first!</p>
@@ -827,6 +828,9 @@ export default function ProductDetailView({
           </div>
 
         </div>
+
+        {/* Sponsored: product-detail placement */}
+        <AdSlot placement="DETAIL" onNavigate={onNavigate} className="mt-8" />
 
         {/* E. Product Reviews, Comments & Vendor QA Section */}
         <div id="product-reviews-section" className="mt-12 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-6 sm:p-8 shadow-sm space-y-8">

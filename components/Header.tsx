@@ -314,7 +314,38 @@ export default function Header({
             </button>
           </div>          {/* Actions & Switching Panel */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            
+
+            {/* Role-aware primary action: Buy / Sell / Business / Admin */}
+            {user && (() => {
+              const role = user.role;
+              const isAdmin = role === UserRole.ADMIN || role === UserRole.SUPER_ADMIN;
+              const isBusiness = role === UserRole.BUSINESS || role === UserRole.VERIFIED_BUSINESS;
+              const isSeller = role === UserRole.SELLER || role === UserRole.VERIFIED_SELLER;
+              const cta = isAdmin
+                ? { label: 'Admin', view: 'admin', Icon: Shield, id: 'admin-panel-btn' }
+                : isBusiness
+                  ? { label: 'Business', view: 'dashboard', Icon: Store, id: 'role-cta-btn' }
+                  : isSeller
+                    ? { label: 'Sell', view: 'dashboard', Icon: Package, id: 'role-cta-btn' }
+                    : { label: 'Buy', view: 'marketplace', Icon: ShoppingCart, id: 'role-cta-btn' };
+              const active = currentView === cta.view;
+              return (
+                <button
+                  id={cta.id}
+                  onClick={() => onNavigate(cta.view)}
+                  aria-current={active ? 'page' : undefined}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-extrabold tracking-wide transition-all cursor-pointer select-none ${
+                    active
+                      ? 'bg-jade-500 text-white shadow-sm shadow-jade-500/30 [&_svg]:text-white'
+                      : 'bg-gradient-to-r from-jade-500 to-jade-600 hover:from-jade-600 hover:to-jade-700 text-white shadow-sm shadow-jade-500/25'
+                  }`}
+                >
+                  <cta.Icon className="w-3.5 h-3.5" />
+                  <span>{cta.label}</span>
+                </button>
+              );
+            })()}
+
             {/* Always Visible Core: Cart Widget */}
             <button
               id="cart-widget"

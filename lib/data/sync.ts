@@ -64,6 +64,7 @@ export async function loadMarketplaceState(
     revenueSettingsRows,
     sponsoredAds,
     featuredListings,
+    announcements,
     wallets,
     walletTransactions,
     auditLogs,
@@ -100,6 +101,7 @@ export async function loadMarketplaceState(
     selectAll(client, 'revenue_settings'),
     selectAll(client, 'sponsored_ads'),
     selectAll(client, 'featured_listings'),
+    selectAll(client, 'announcements'),
     selectAll(client, 'wallets'),
     selectAll(client, 'wallet_transactions'),
     selectAll(client, 'audit_logs'),
@@ -137,6 +139,7 @@ export async function loadMarketplaceState(
   state.deliveryJobs = deliveryJobs.map(M.mapDeliveryJob);
   state.sponsoredAds = sponsoredAds.map(M.mapSponsoredAd);
   state.featuredListings = featuredListings.map(M.mapFeaturedListing);
+  state.announcements = announcements.map(M.mapAnnouncement);
   state.wallets = wallets.map(M.mapWallet);
   state.walletTransactions = walletTransactions.map(M.mapWalletTx);
   state.auditLogs = auditLogs.map(M.mapAuditLog);

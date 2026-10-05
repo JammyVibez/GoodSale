@@ -2,8 +2,8 @@
 'use client';
 
 import React from 'react';
-import { Home, Tag, User, ShoppingCart, MessageSquare } from 'lucide-react';
-import { useDBState } from '../lib/store';
+import { Home, Tag, User, ShoppingCart, MessageSquare, Shield, Store, Package } from 'lucide-react';
+import { useDBState, UserRole } from '../lib/store';
 
 interface BottomNavigationProps {
   currentView: string;
@@ -25,8 +25,10 @@ interface Tab {
 }
 
 /**
- * Mobile shell — five professional tabs: Home (marketplace), Chats, Sell,
- * Cart and You. Active tabs get a jade nav-indicator that pops in on change.
+ * Mobile shell — five professional tabs. The middle tab is role-aware:
+ * buyers get **Buy** (→ marketplace), sellers get **Sell**, businesses get
+ * **Business** (their dashboard) and staff get **Admin**. Active tabs get a
+ * jade nav-indicator that pops in on change.
  */
 export default function BottomNavigation({
   currentView,
@@ -50,6 +52,58 @@ export default function BottomNavigation({
     onNavigate(view);
   };
 
+  // Role-aware middle tab: buyers Buy, sellers Sell, businesses get their
+  // dashboard, staff get the Admin panel. Everyone still keeps Home / Chats /
+  // Cart / You, so a business can do everything a buyer and seller can.
+  const isAdmin = !!user && (user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN);
+  const isBusiness =
+    !!user && (user.role === UserRole.BUSINESS || user.role === UserRole.VERIFIED_BUSINESS);
+  const isSeller =
+    !!user && (user.role === UserRole.SELLER || user.role === UserRole.VERIFIED_SELLER);
+
+  const middle = isAdmin
+    ? {
+        label: 'Admin',
+        Icon: Shield,
+        active: currentView === 'admin',
+        requiresAuth: true,
+        onClick: () => go('admin'),
+      }
+    : isBusiness
+      ? {
+          label: 'Business',
+          Icon: Store,
+          active: currentView === 'dashboard',
+          requiresAuth: true,
+          onClick: () => go('dashboard', 'register'),
+        }
+      : isSeller
+        ? {
+            label: 'Sell',
+            Icon: Tag,
+            active: currentView === 'dashboard',
+            requiresAuth: true,
+            onClick: () => go('dashboard', 'register'),
+          }
+        : user
+          ? {
+              label: 'Buy',
+              Icon: ShoppingCart,
+              active: currentView === 'marketplace',
+              requiresAuth: false,
+              onClick: () => {
+                onSearchChange('');
+                onNavigate('marketplace');
+              },
+            }
+          : {
+              label: 'Sell',
+              Icon: Tag,
+              active: currentView === 'dashboard',
+              requiresAuth: true,
+              onClick: () => go('dashboard', 'register'),
+            };
+
   const tabs: Tab[] = [
     {
       id: 'marketplace',
@@ -70,12 +124,12 @@ export default function BottomNavigation({
       badge: user ? unreadMessages : undefined,
     },
     {
-      id: 'sell',
-      label: 'Sell',
-      icon: Tag,
-      active: currentView === 'dashboard',
-      onClick: () => go('dashboard', 'register'),
-      requiresAuth: true,
+      id: 'role',
+      label: middle.label,
+      icon: middle.Icon,
+      active: middle.active,
+      onClick: middle.onClick,
+      requiresAuth: middle.requiresAuth,
     },
     {
       id: 'cart',

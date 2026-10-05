@@ -4,7 +4,6 @@
 import React, { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const Lottie = dynamic(() => import('lottie-react').then((mod) => mod.Lottie) as any, {
   ssr: false,
 }) as React.ComponentType<any>;

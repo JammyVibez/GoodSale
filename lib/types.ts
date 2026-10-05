@@ -536,6 +536,8 @@ export interface DeliveryJob {
 // ==========================================
 
 export interface RevenueSettings {
+  /** Admin toggle: when false, buyers pay no per-item platform fee. */
+  platformFeeEnabled: boolean;
   escrowPercentageFee: number;
   escrowMinFee: number;
   escrowMaxFee: number;
@@ -554,18 +556,46 @@ export interface RevenueSettings {
   goodSaleProtectFee: number;
 }
 
+/** Where in the app an admin wants an ad to appear. */
+export type AdPlacement = 'HOME' | 'CATEGORY' | 'DETAIL' | 'CHAT' | 'DASHBOARD' | 'SEARCH';
+
+export const AD_PLACEMENTS: AdPlacement[] = ['HOME', 'CATEGORY', 'DETAIL', 'CHAT', 'DASHBOARD', 'SEARCH'];
+
 export interface SponsoredAd {
   id: number;
   sellerId: number;
   type: 'PRODUCT' | 'BUSINESS' | 'BANNER_HOME' | 'BANNER_CATEGORY';
   targetId: number;
   bannerUrl?: string;
+  /** Image or video the admin uploaded from their device. */
+  mediaUrl?: string;
+  mediaType?: 'image' | 'video';
+  /** Supporting line under the title. */
+  ctaText?: string;
+  /** App view to open when the ad is clicked (e.g. 'marketplace'). */
+  clickView?: string;
+  /** Where in the app this ad is shown. */
+  placements?: AdPlacement[];
   title: string;
   status: 'ACTIVE' | 'PAUSED' | 'COMPLETED';
   budget: number;
   spent: number;
   clicks: number;
   impressions: number;
+  createdAt: string;
+}
+
+/** Admin-written popup shown to users when they join / enter the app. */
+export interface Announcement {
+  id: number;
+  title: string;
+  body: string;
+  /** ANNOUNCEMENT | UPDATE | FEATURE — used for the icon/accent. */
+  kind: 'ANNOUNCEMENT' | 'UPDATE' | 'FEATURE';
+  /** ALL | BUYER | SELLER | BUSINESS | ADMIN */
+  audience: 'ALL' | 'BUYER' | 'SELLER' | 'BUSINESS' | 'ADMIN';
+  imageUrl?: string;
+  isActive: boolean;
   createdAt: string;
 }
 
@@ -650,6 +680,7 @@ export interface GoodSaleDBState {
   revenueSettings: RevenueSettings;
   sponsoredAds: SponsoredAd[];
   featuredListings: FeaturedListing[];
+  announcements: Announcement[];
   wallets: Wallet[];
   walletTransactions: WalletTransaction[];
   auditLogs: AuditLog[];

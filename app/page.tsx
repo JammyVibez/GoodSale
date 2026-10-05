@@ -24,6 +24,7 @@ import AuthModal from '../components/AuthModal';
 import BottomNavigation from '../components/BottomNavigation';
 import SetupBanner from '../components/SetupBanner';
 import FeedbackHost from '../components/ui/FeedbackHost';
+import AnnouncementModal from '../components/AnnouncementModal';
 import LottieAnimation from '../components/ui/LottieAnimation';
 import goodsaleLoader from '../lib/lottie/goodsale-loader.json';
 import { getDBState, useDBState } from '../lib/store';
@@ -205,6 +206,9 @@ export default function Home() {
 
       {/* Global Aurora Flow feedback: toasts + themed confirm dialog */}
       <FeedbackHost />
+
+      {/* Admin-written popup shown whenever a user joins or enters the app */}
+      <AnnouncementModal />
 
       {/* Core Dynamic Content Container */}
       <main className="min-h-[calc(100vh-4rem)] pb-[68px] md:pb-0">

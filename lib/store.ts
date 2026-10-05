@@ -22,6 +22,10 @@ import {
   upsertSafeMeetMeetup,
   updateSafeMeetMeetup,
   insertSponsoredAd,
+  updateSponsoredAd,
+  insertAnnouncement,
+  updateAnnouncement,
+  deleteAnnouncementById,
   insertBundle,
   upsertRevenueSettings,
   upsertPaymentSettings,
@@ -29,6 +33,7 @@ import {
   insertFeaturedListing,
 } from '@/lib/data/persist';
 import { resolveCityCoords, bestCoords } from '@/lib/geo';
+import { computePlatformFee } from '@/lib/fees';
 import { isDemoMode, isOwnerAdminEmail } from '@/lib/demo';
 import type { GoodSaleDBState, User, Product, Order, Message } from '@/lib/types';
 import {
@@ -50,6 +55,7 @@ import {
   DeliveryPartner,
   SponsoredAd,
   AuditLog,
+  Announcement,
   RevenueSettings,
   PaymentSettings,
   ProductBundle,
@@ -594,7 +600,8 @@ export const dbOperations = {
       deliveryFee = 0;
     }
 
-    const taxAmount = Math.round(product.price * 0.015); // 1.5% commission/VAT
+    // Per-item platform fee — admin-controlled, OFF by default at launch.
+    const taxAmount = computePlatformFee(state.revenueSettings, product.price).amount;
     const protectFee = hasGoodSaleProtect ? (state.revenueSettings?.goodSaleProtectFee || 1500) : 0;
 
     let pointsDiscount = 0;
@@ -1915,7 +1922,7 @@ export const dbOperations = {
     const orderNumber = `GS-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
     const deliveryPin = Math.floor(100000 + Math.random() * 900000).toString();
     const deliveryFee = 5000; // standard delivery
-    const taxAmount = Math.round(winningBid.amount * 0.015);
+    const taxAmount = computePlatformFee(state.revenueSettings, winningBid.amount).amount;
     const totalAmount = winningBid.amount + deliveryFee + taxAmount;
 
     const newOrder: Order = {
@@ -2110,7 +2117,7 @@ export const dbOperations = {
         const orderNumber = `GS-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
         const deliveryPin = Math.floor(100000 + Math.random() * 900000).toString();
         const deliveryFee = 5000; // standard delivery
-        const taxAmount = Math.round(activeAmount * 0.015);
+        const taxAmount = computePlatformFee(state.revenueSettings, activeAmount).amount;
         const totalAmount = activeAmount + deliveryFee + taxAmount;
 
         const buyerId = message.senderId === product.sellerId ? (state.chatRooms.find(r => r.id === message.roomId)?.buyerId || 0) : message.senderId;
@@ -2829,30 +2836,194 @@ export const dbOperations = {
       ad.impressions += 1;
     } else {
       ad.clicks += 1;
-      const cpc = state.revenueSettings.adCpcPrice;
-      if (ad.spent + cpc <= ad.budget) {
-        ad.spent += cpc;
-        if (ad.spent + cpc > ad.budget) {
+      // A budget of 0 means "unlimited" (the default for admin house ads), so
+      // the ad never self-completes from spend.
+      if (ad.budget > 0) {
+        const cpc = state.revenueSettings.adCpcPrice;
+        if (ad.spent + cpc <= ad.budget) {
+          ad.spent += cpc;
+          if (ad.spent + cpc > ad.budget) {
+            ad.status = 'COMPLETED';
+          }
+        } else {
           ad.status = 'COMPLETED';
         }
-      } else {
-        ad.status = 'COMPLETED';
       }
     }
 
     saveDBState(state);
     withClient(async (client) => {
-      await insertSponsoredAd(client, {
-        sellerId: ad.sellerId,
-        type: ad.type,
-        targetId: ad.targetId,
-        title: ad.title,
-        budget: ad.budget,
-        bannerUrl: ad.bannerUrl,
+      await updateSponsoredAd(client, ad.id, {
+        impressions: ad.impressions,
+        clicks: ad.clicks,
+        spent: ad.spent,
+        status: ad.status,
       });
       await reloadFromSupabase();
     });
     return ad;
+  },
+
+  /** Admin-only: create a house ad with an uploaded image/video and placements. */
+  createAdminAd(input: {
+    title: string;
+    mediaUrl?: string;
+    mediaType?: 'image' | 'video';
+    ctaText?: string;
+    clickView?: string;
+    placements?: string[];
+    budget?: number;
+  }) {
+    const state = getDBState();
+    if (!state.currentUser) return { success: false, message: 'Not signed in' };
+    const isStaff =
+      state.currentUser.role === UserRole.ADMIN || state.currentUser.role === UserRole.SUPER_ADMIN;
+    if (!isStaff) return { success: false, message: 'Admins only' };
+    if (!input.title.trim()) return { success: false, message: 'Ad title is required' };
+    if (!input.mediaUrl) return { success: false, message: 'Upload an image or video first' };
+
+    const newAd: SponsoredAd = {
+      id: Math.max(...state.sponsoredAds.map((a) => a.id), 0) + 1,
+      sellerId: state.currentUser.id,
+      type: 'BANNER_HOME',
+      targetId: 0,
+      title: input.title.trim(),
+      bannerUrl: input.mediaUrl,
+      mediaUrl: input.mediaUrl,
+      mediaType: input.mediaType || 'image',
+      ctaText: input.ctaText || '',
+      clickView: input.clickView || '',
+      placements: (input.placements?.length ? input.placements : ['HOME']) as SponsoredAd['placements'],
+      status: 'ACTIVE',
+      budget: input.budget ?? 0,
+      spent: 0,
+      clicks: 0,
+      impressions: 0,
+      createdAt: new Date().toISOString(),
+    };
+
+    state.sponsoredAds.push(newAd);
+    saveDBState(state);
+    this.addAuditLog(
+      state.currentUser.id,
+      'CREATE_AD',
+      'SPONSORED_AD',
+      newAd.id,
+      `Created ad "${newAd.title}" for ${newAd.placements?.join(', ')}`
+    );
+
+    withClient(async (client) => {
+      await insertSponsoredAd(client, {
+        sellerId: newAd.sellerId,
+        type: newAd.type,
+        targetId: newAd.targetId,
+        title: newAd.title,
+        budget: newAd.budget,
+        bannerUrl: newAd.bannerUrl,
+        mediaUrl: newAd.mediaUrl,
+        mediaType: newAd.mediaType,
+        ctaText: newAd.ctaText,
+        clickView: newAd.clickView,
+        placements: (newAd.placements || ['HOME']) as string[],
+      });
+      await reloadFromSupabase();
+    });
+
+    return { success: true, ad: newAd };
+  },
+
+  /** Admin-only: pause / resume an ad. */
+  setAdStatus(adId: number, status: 'ACTIVE' | 'PAUSED' | 'COMPLETED') {
+    const state = getDBState();
+    const ad = state.sponsoredAds.find((a) => a.id === adId);
+    if (!ad) return { success: false, message: 'Ad not found' };
+    ad.status = status;
+    saveDBState(state);
+    withClient(async (client) => {
+      await updateSponsoredAd(client, adId, { status });
+      await reloadFromSupabase();
+    });
+    return { success: true };
+  },
+
+  /** Admin-only: publish an announcement that pops up for users on entry. */
+  createAnnouncement(input: {
+    title: string;
+    body: string;
+    kind?: Announcement['kind'];
+    audience?: Announcement['audience'];
+    imageUrl?: string;
+  }) {
+    const state = getDBState();
+    if (!state.currentUser) return { success: false, message: 'Not signed in' };
+    const isStaff =
+      state.currentUser.role === UserRole.ADMIN || state.currentUser.role === UserRole.SUPER_ADMIN;
+    if (!isStaff) return { success: false, message: 'Admins only' };
+    if (!input.title.trim()) return { success: false, message: 'Add a headline' };
+    if (!input.body.trim()) return { success: false, message: 'Add the message' };
+
+    const item: Announcement = {
+      id: Math.max(...state.announcements.map((a) => a.id), 0) + 1,
+      title: input.title.trim(),
+      body: input.body.trim(),
+      kind: input.kind || 'ANNOUNCEMENT',
+      audience: input.audience || 'ALL',
+      imageUrl: input.imageUrl || '',
+      isActive: true,
+      createdAt: new Date().toISOString(),
+    };
+
+    state.announcements.unshift(item);
+    saveDBState(state);
+    withClient(async (client) => {
+      await insertAnnouncement(client, {
+        title: item.title,
+        body: item.body,
+        kind: item.kind,
+        audience: item.audience,
+        imageUrl: item.imageUrl,
+        isActive: true,
+      });
+      await reloadFromSupabase();
+    });
+    return { success: true, announcement: item };
+  },
+
+  setAnnouncementActive(id: number, isActive: boolean) {
+    const state = getDBState();
+    const item = state.announcements.find((a) => a.id === id);
+    if (!item) return { success: false };
+    item.isActive = isActive;
+    saveDBState(state);
+    withClient(async (client) => {
+      await updateAnnouncement(client, id, { is_active: isActive });
+      await reloadFromSupabase();
+    });
+    return { success: true };
+  },
+
+  deleteAnnouncement(id: number) {
+    const state = getDBState();
+    state.announcements = state.announcements.filter((a) => a.id !== id);
+    saveDBState(state);
+    withClient(async (client) => {
+      await deleteAnnouncementById(client, id);
+      await reloadFromSupabase();
+    });
+    return { success: true };
+  },
+
+  /** Admin-only: remove an ad everywhere it renders. */
+  deleteAd(adId: number) {
+    const state = getDBState();
+    state.sponsoredAds = state.sponsoredAds.filter((a) => a.id !== adId);
+    saveDBState(state);
+    withClient(async (client) => {
+      const { error } = await client.from('sponsored_ads').delete().eq('id', adId);
+      if (error) return;
+      await reloadFromSupabase();
+    });
+    return { success: true };
   },
 
   depositToWallet(userId: number, amount: number) {
@@ -2921,6 +3092,7 @@ export const dbOperations = {
 
     withClient(async (client) => {
       await upsertRevenueSettings(client, {
+        platform_fee_enabled: state.revenueSettings.platformFeeEnabled,
         escrow_percentage_fee: state.revenueSettings.escrowPercentageFee,
         escrow_min_fee: state.revenueSettings.escrowMinFee,
         escrow_max_fee: state.revenueSettings.escrowMaxFee,

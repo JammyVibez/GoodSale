@@ -1,18 +1,47 @@
 // components/SettingsView.tsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Settings, User, Shield, Bell, HelpCircle, Save, Database, Key, 
   MapPin, CheckCircle, RefreshCw, Smartphone, Mail, Sparkles, ArrowLeft,
   Sun, Moon, Monitor, Eye, EyeOff, Lock, Users, CreditCard, ShoppingBag, Gift,
   Share2, Phone, Building, Info, FileText, Download, Trash2, ShieldAlert,
-  Grid, Copy, Check, Menu, AlertTriangle, Play, HelpCircle as HelpIcon, Calendar, Clock, Wallet, ChevronRight
+  Grid, Copy, Check, Menu, AlertTriangle, Play, HelpCircle as HelpIcon, Calendar, Clock, Wallet, ChevronRight,
+  LogOut
 } from 'lucide-react';
-import { useDBState, dbOperations, getDBState, saveDBState, UserRole } from '../lib/store';
+import { useDBState, dbOperations, getDBState, saveDBState, reloadFromSupabase, UserRole } from '../lib/store';
 import { SmartImage } from './ui/SmartImage';
 import Card from './ui/Card';
 import { toast, confirmDialog } from '@/lib/feedback';
+import { useUserSettings, type SavedAddress, type StaffMember } from '@/lib/userSettings';
+
+/** Human-readable description of the current browser/OS for the session list. */
+function describeDevice(): string {
+  if (typeof navigator === 'undefined') return 'This device';
+  const ua = navigator.userAgent;
+  const browser = ua.includes('Edg/')
+    ? 'Edge'
+    : ua.includes('Chrome/')
+      ? 'Chrome'
+      : ua.includes('Safari/')
+        ? 'Safari'
+        : ua.includes('Firefox/')
+          ? 'Firefox'
+          : 'Browser';
+  const os = ua.includes('Windows')
+    ? 'Windows'
+    : ua.includes('Mac OS X')
+      ? 'macOS'
+      : ua.includes('Android')
+        ? 'Android'
+        : ua.includes('iPhone') || ua.includes('iPad')
+          ? 'iOS'
+          : ua.includes('Linux')
+            ? 'Linux'
+            : 'Unknown OS';
+  return `${browser} (${os})`;
+}
 
 interface SettingsViewProps {
   onBack?: () => void;
@@ -31,6 +60,10 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
   const currentBusiness = currentUser
     ? db.businesses.find(b => b.ownerId === currentUser.id)
     : null;
+
+  // Server-backed preferences (Supabase auth metadata via /api/account/settings)
+  const { settings, ready: settingsReady, update: persistSettings } = useUserSettings();
+  const hydratedRef = useRef(false);
 
   // Active Category Sidebar State
   const [activeTab, setActiveTab] = useState<string>('account');
@@ -70,11 +103,14 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
   const [showTwoFactorModal, setShowTwoFactorModal] = useState(false);
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const [twoFactorVerified, setTwoFactorVerified] = useState(false);
-  const [activeSessions, setActiveSessions] = useState([
-    { id: 1, device: 'Chrome (macOS)', ip: '102.89.43.120', location: 'Lagos, Nigeria', isCurrent: true },
-    { id: 2, device: 'iPhone 15 Pro', ip: '102.89.23.9', location: 'Ikeja, Nigeria', isCurrent: false },
-    { id: 3, device: 'Safari (iPadOS)', ip: '197.210.64.12', location: 'Abuja, Nigeria', isCurrent: false },
-  ]);
+  const [activeSessions, setActiveSessions] = useState<
+    { id: number; device: string; ip: string; location: string; isCurrent: boolean }[]
+  >([]);
+  const [signingOutOthers, setSigningOutOthers] = useState(false);
+  const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
+  const [mfaQrCode, setMfaQrCode] = useState<string | null>(null);
+  const [mfaSecret, setMfaSecret] = useState<string | null>(null);
+  const [mfaBusy, setMfaBusy] = useState(false);
 
   // 3. Notifications Matrix
   const [notifPreferences, setNotifPreferences] = useState({
@@ -101,18 +137,18 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
   const [onlineStatus, setOnlineStatus] = useState(true);
   const [readReceipts, setReadReceipts] = useState(true);
   const [whoCanMessage, setWhoCanMessage] = useState<'all' | 'verified' | 'none'>('all');
-  const [blockedUsers, setBlockedUsers] = useState(['user_scammer99', 'fake_buyer_lagos']);
-  const [mutedUsers, setMutedUsers] = useState(['spam_deals_ng']);
+  const [blockedUsers, setBlockedUsers] = useState<string[]>([]);
+  const [mutedUsers, setMutedUsers] = useState<string[]>([]);
+  const [newBlockedUser, setNewBlockedUser] = useState('');
+  const [newMutedUser, setNewMutedUser] = useState('');
 
   // 6. Buying Preferences
-  const [savedAddresses, setSavedAddresses] = useState([
-    { id: 1, label: 'Home', address: 'No 14 Gbagada Phase 2, Lagos', isDefault: true },
-    { id: 2, label: 'Office', address: 'Adetokunbo Ademola Crescent, Wuse II, Abuja', isDefault: false },
-  ]);
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [newAddressLabel, setNewAddressLabel] = useState('');
   const [newAddressText, setNewAddressText] = useState('');
   const [defaultPayment, setDefaultPayment] = useState('CARD');
-  const [savedSearches, setSavedSearches] = useState(['iPhone 15 Pro Max', 'UK Used MacBooks', 'Aso Oke Agbada']);
+  const [savedSearches, setSavedSearches] = useState<string[]>([]);
+  const [newSavedSearch, setNewSavedSearch] = useState('');
 
   // 7. Selling Preferences
   const [vacationMode, setVacationMode] = useState(false);
@@ -126,32 +162,35 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
   const [businessDesc, setBusinessDesc] = useState(currentBusiness?.description || '');
   const [businessLogo, setBusinessLogo] = useState(currentBusiness?.logoUrl || '');
   const [businessBanner, setBusinessBanner] = useState(currentBusiness?.bannerUrl || '');
-  const [businessHours, setBusinessHours] = useState('Monday - Saturday (08:00 AM - 07:00 PM)');
-  const [staffList, setStaffList] = useState([
-    { id: 1, name: 'Tunde Bakare', role: 'Store Manager', status: 'Active' },
-    { id: 2, name: 'Chioma Obi', role: 'Support Agent', status: 'Active' }
-  ]);
+  const [businessHours, setBusinessHours] = useState('');
+  const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [newStaffName, setNewStaffName] = useState('');
   const [newStaffRole, setNewStaffRole] = useState('Support Agent');
 
   // 9. GoodPoints Catalog Interaction
   const [redeemedVoucher, setRedeemedVoucher] = useState<string | null>(null);
+  const [redeeming, setRedeeming] = useState(false);
 
   // 10. Referral Share Link Copy
   const [referralLinkCopied, setReferralLinkCopied] = useState(false);
 
   // 11. Delivery Preferences
   const [preferredCourier, setPreferredCourier] = useState('GIG Logistics');
-  const [safeMeetPreSel, setSafeMeetPreSel] = useState(1); // default meetup location id
-  const [pickupAddress, setPickupAddress] = useState('Plot 8, Providence Street, Lekki Phase 1, Lagos');
+  const [safeMeetPreSel, setSafeMeetPreSel] = useState<number | null>(null); // default meetup location id
+  const [pickupAddress, setPickupAddress] = useState('');
 
   // 12. Support Form
   const [supportType, setSupportType] = useState('BUG');
   const [supportMessage, setSupportMessage] = useState('');
+  const [supportTickets, setSupportTickets] = useState<
+    { id: string; type: string; message: string; status: string; createdAt: string }[]
+  >([]);
   const [supportSuccess, setSupportSuccess] = useState(false);
+  const [redeemedVouchers, setRedeemedVouchers] = useState<string[]>([]);
 
   // 15. Account Management
   const [deactivated, setDeactivated] = useState(false);
+  const [deactivateBusy, setDeactivateBusy] = useState(false);
 
   // Switched user helper
   const [selectedUserId, setSelectedUserId] = useState<number>(currentUser?.id || 1);
@@ -205,6 +244,69 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
     }
   }, []);
 
+  // Hydrate server-backed preferences once they arrive from Supabase
+  useEffect(() => {
+    if (!settingsReady || hydratedRef.current) return;
+    hydratedRef.current = true;
+    setTwoFactorEnabled(settings.twoFactorEnabled);
+    setBiometricsEnabled(settings.biometricsEnabled);
+    setProfileVisibility(settings.profileVisibility);
+    setHidePhone(settings.hidePhone);
+    setHideEmail(settings.hideEmail);
+    setOnlineStatus(settings.onlineStatus);
+    setReadReceipts(settings.readReceipts);
+    setWhoCanMessage(settings.whoCanMessage);
+    setBlockedUsers(settings.blockedUsers);
+    setMutedUsers(settings.mutedUsers);
+    setSavedAddresses(settings.savedAddresses);
+    setDefaultPayment(settings.defaultPayment);
+    setSavedSearches(settings.savedSearches);
+    setVacationMode(settings.vacationMode);
+    if (settings.vacationAutoReply) setVacationAutoReply(settings.vacationAutoReply);
+    setInventoryAlertThreshold(settings.inventoryAlertThreshold);
+    setDefaultCategory(settings.defaultCategory);
+    setDefaultDeliveryMethod(settings.defaultDeliveryMethod);
+    if (settings.businessHours) setBusinessHours(settings.businessHours);
+    setStaffList(settings.staffList);
+    setPreferredCourier(settings.preferredCourier);
+    setSafeMeetPreSel(settings.safeMeetPreSel);
+    if (settings.pickupAddress) setPickupAddress(settings.pickupAddress);
+    setSupportTickets(settings.supportTickets);
+    setRedeemedVouchers(settings.redeemedVouchers);
+  }, [settingsReady, settings]);
+
+  // Reflect the real TOTP factors enrolled on the Supabase account
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { createClient } = await import('@/lib/supabase/client');
+        const client = createClient();
+        if (!client) return;
+        const { data } = await client.auth.mfa.listFactors();
+        if (cancelled || !data) return;
+        const totp = data.totp?.find((f) => f.status === 'verified');
+        if (totp) {
+          setMfaFactorId(totp.id);
+          setTwoFactorEnabled(true);
+          setTwoFactorVerified(true);
+        }
+      } catch {
+        // MFA may be unavailable on this project — the toggle simply stays off
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Surface the real current session instead of fabricated device rows
+  useEffect(() => {
+    setActiveSessions([
+      { id: 1, device: describeDevice(), ip: '—', location: 'This device', isCurrent: true },
+    ]);
+  }, []);
+
   // Apply font scaling + density live to the document root
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -255,6 +357,47 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
     saveDBState(state);
 
+    // Persist to Supabase (profiles row + auth email/metadata + business)
+    void (async () => {
+      try {
+        const res = await fetch('/api/account/profile', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            profile: {
+              fullName,
+              email,
+              phoneNumber,
+              bio,
+              address,
+              city,
+              state: stateName,
+              photoUrl: profilePic,
+              coverUrl: coverPic,
+            },
+            business: currentBusiness
+              ? {
+                  name: businessName,
+                  description: businessDesc,
+                  logoUrl: businessLogo,
+                  bannerUrl: businessBanner,
+                  openingHours: businessHours,
+                }
+              : undefined,
+          }),
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok || !payload.success) {
+          toast.error(payload.error || 'Could not save profile changes.');
+          return;
+        }
+        if (businessHours) void persistSettings({ businessHours });
+        toast.success('Profile specifications saved.');
+      } catch {
+        toast.error('Could not reach the server. Try again.');
+      }
+    })();
+
     setTimeout(() => {
       setSaving(false);
       setSaveSuccess(true);
@@ -303,35 +446,298 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
     setTimeout(() => setReferralLinkCopied(false), 2000);
   };
 
-  const handleRedeemPoints = (cost: number, voucherVal: string) => {
+  const handleRedeemPoints = async (cost: number, voucherVal: string) => {
     if (!currentUser) return;
     if (currentUser.goodPoints < cost) {
       toast.error(`Insufficient GoodPoints balance. You need ${cost} GP to redeem this voucher.`);
       return;
     }
-    dbOperations.subtractUserPoints(cost);
-    setRedeemedVoucher(`SUCCESS-VOUCH-${Math.floor(100000 + Math.random() * 900000)}`);
+    setRedeeming(true);
+    try {
+      const res = await fetch('/api/account/goodpoints', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cost, reason: `Redeemed voucher ${voucherVal}` }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !payload.success) {
+        toast.error(payload.error || 'Could not redeem this reward.');
+        return;
+      }
+      const code = `SUCCESS-${voucherVal.slice(0, 8)}-${Math.floor(100000 + Math.random() * 900000)}`;
+      setRedeemedVoucher(code);
+      const next = [...redeemedVouchers, code];
+      setRedeemedVouchers(next);
+      void persistSettings({ redeemedVouchers: next });
+      await reloadFromSupabase();
+      toast.success('Reward redeemed. Your voucher code is ready below.');
+    } catch {
+      toast.error('Could not reach the server. Try again.');
+    } finally {
+      setRedeeming(false);
+    }
   };
 
   const handleAddAddress = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAddressLabel || !newAddressText) return;
-    setSavedAddresses([
+    if (!newAddressLabel.trim() || !newAddressText.trim()) return;
+    const next = [
       ...savedAddresses,
-      { id: Date.now(), label: newAddressLabel, address: newAddressText, isDefault: false }
-    ]);
+      { id: Date.now(), label: newAddressLabel.trim(), address: newAddressText.trim(), isDefault: savedAddresses.length === 0 },
+    ];
+    setSavedAddresses(next);
+    void persistSettings({ savedAddresses: next });
     setNewAddressLabel('');
     setNewAddressText('');
   };
 
+  const handleSetDefaultAddress = (id: number) => {
+    const next = savedAddresses.map((a) => ({ ...a, isDefault: a.id === id }));
+    setSavedAddresses(next);
+    void persistSettings({ savedAddresses: next });
+  };
+
+  const handleDeleteAddress = (id: number) => {
+    const next = savedAddresses.filter((a) => a.id !== id);
+    setSavedAddresses(next);
+    void persistSettings({ savedAddresses: next });
+  };
+
   const handleAddStaff = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newStaffName) return;
-    setStaffList([
+    if (!newStaffName.trim()) return;
+    const next = [
       ...staffList,
-      { id: Date.now(), name: newStaffName, role: newStaffRole, status: 'Active' }
-    ]);
+      { id: Date.now(), name: newStaffName.trim(), role: newStaffRole, status: 'Active' },
+    ];
+    setStaffList(next);
+    void persistSettings({ staffList: next });
     setNewStaffName('');
+  };
+
+  const handleRemoveStaff = (id: number) => {
+    const next = staffList.filter((s) => s.id !== id);
+    setStaffList(next);
+    void persistSettings({ staffList: next });
+  };
+
+  // --- Server-backed preference helpers ---------------------------------
+
+  const setPrivacyToggle = (
+    key: 'hidePhone' | 'hideEmail' | 'onlineStatus' | 'readReceipts',
+    value: boolean
+  ) => {
+    if (key === 'hidePhone') setHidePhone(value);
+    else if (key === 'hideEmail') setHideEmail(value);
+    else if (key === 'onlineStatus') setOnlineStatus(value);
+    else setReadReceipts(value);
+    void persistSettings({ [key]: value });
+  };
+
+  const handleAddBlocked = (e: React.FormEvent) => {
+    e.preventDefault();
+    const handle = newBlockedUser.trim().replace(/^@/, '');
+    if (!handle || blockedUsers.includes(handle)) return;
+    const next = [...blockedUsers, handle];
+    setBlockedUsers(next);
+    void persistSettings({ blockedUsers: next });
+    setNewBlockedUser('');
+    toast.success(`Blocked @${handle}.`);
+  };
+
+  const handleUnblock = (handle: string) => {
+    const next = blockedUsers.filter((b) => b !== handle);
+    setBlockedUsers(next);
+    void persistSettings({ blockedUsers: next });
+    toast.success(`Unblocked @${handle}.`);
+  };
+
+  const handleAddMuted = (e: React.FormEvent) => {
+    e.preventDefault();
+    const handle = newMutedUser.trim().replace(/^@/, '');
+    if (!handle || mutedUsers.includes(handle)) return;
+    const next = [...mutedUsers, handle];
+    setMutedUsers(next);
+    void persistSettings({ mutedUsers: next });
+    setNewMutedUser('');
+    toast.success(`Muted @${handle}.`);
+  };
+
+  const handleUnmute = (handle: string) => {
+    const next = mutedUsers.filter((m) => m !== handle);
+    setMutedUsers(next);
+    void persistSettings({ mutedUsers: next });
+    toast.success(`Unmuted @${handle}.`);
+  };
+
+  const handleAddSavedSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    const term = newSavedSearch.trim();
+    if (!term) return;
+    if (savedSearches.includes(term)) {
+      toast.info('That search is already saved.');
+      return;
+    }
+    const next = [...savedSearches, term];
+    setSavedSearches(next);
+    void persistSettings({ savedSearches: next });
+    setNewSavedSearch('');
+  };
+
+  const handleRemoveSavedSearch = (term: string) => {
+    const next = savedSearches.filter((s) => s !== term);
+    setSavedSearches(next);
+    void persistSettings({ savedSearches: next });
+  };
+
+  const handleSubmitTicket = () => {
+    if (!supportMessage.trim()) {
+      toast.error('Please describe your inquiry first.');
+      return;
+    }
+    const ticket = {
+      id: `GS-TK-${Math.floor(10000 + Math.random() * 90000)}`,
+      type: supportType,
+      message: supportMessage.trim(),
+      status: 'OPEN',
+      createdAt: new Date().toISOString(),
+    };
+    const next = [ticket, ...supportTickets].slice(0, 25);
+    setSupportTickets(next);
+    void persistSettings({ supportTickets: next });
+    setSupportSuccess(true);
+    setTimeout(() => {
+      setSupportSuccess(false);
+      setSupportMessage('');
+    }, 4000);
+  };
+
+  // --- Real TOTP multi-factor authentication ----------------------------
+
+  const startTwoFactorEnrollment = async () => {
+    setMfaBusy(true);
+    try {
+      const { createClient } = await import('@/lib/supabase/client');
+      const client = createClient();
+      if (!client) throw new Error('Supabase is not configured');
+      const { data, error } = await client.auth.mfa.enroll({
+        factorType: 'totp',
+        friendlyName: `GoodSale ${Date.now()}`,
+      });
+      if (error || !data) throw error ?? new Error('Could not start two-factor setup.');
+      setMfaFactorId(data.id);
+      setMfaQrCode(data.totp.qr_code);
+      setMfaSecret(data.totp.secret);
+      setTwoFactorCode('');
+      setShowTwoFactorModal(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not start two-factor setup.');
+    } finally {
+      setMfaBusy(false);
+    }
+  };
+
+  const verifyTwoFactorCode = async () => {
+    if (!mfaFactorId) return;
+    if (twoFactorCode.length !== 6) {
+      toast.error('Please enter a valid 6-digit verification code.');
+      return;
+    }
+    setMfaBusy(true);
+    try {
+      const { createClient } = await import('@/lib/supabase/client');
+      const client = createClient();
+      if (!client) throw new Error('Supabase is not configured');
+      const { data: challenge, error: challengeError } = await client.auth.mfa.challenge({
+        factorId: mfaFactorId,
+      });
+      if (challengeError || !challenge) throw challengeError ?? new Error('Could not create a challenge');
+      const { error: verifyError } = await client.auth.mfa.verify({
+        factorId: mfaFactorId,
+        challengeId: challenge.id,
+        code: twoFactorCode,
+      });
+      if (verifyError) throw verifyError;
+      setTwoFactorEnabled(true);
+      setTwoFactorVerified(true);
+      setShowTwoFactorModal(false);
+      setMfaQrCode(null);
+      setMfaSecret(null);
+      setTwoFactorCode('');
+      void persistSettings({ twoFactorEnabled: true });
+      toast.success('Two-factor authentication activated.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not verify the code.');
+    } finally {
+      setMfaBusy(false);
+    }
+  };
+
+  const disableTwoFactor = async () => {
+    setMfaBusy(true);
+    try {
+      if (mfaFactorId) {
+        const { createClient } = await import('@/lib/supabase/client');
+        const client = createClient();
+        if (!client) throw new Error('Supabase is not configured');
+        const { error } = await client.auth.mfa.unenroll({ factorId: mfaFactorId });
+        if (error) throw error;
+      }
+      setMfaFactorId(null);
+      setTwoFactorEnabled(false);
+      setTwoFactorVerified(false);
+      void persistSettings({ twoFactorEnabled: false });
+      toast.success('Two-factor authentication disabled.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not disable two-factor auth.');
+    } finally {
+      setMfaBusy(false);
+    }
+  };
+
+  const handleSignOutOthers = async () => {
+    setSigningOutOthers(true);
+    try {
+      const { createClient } = await import('@/lib/supabase/client');
+      const client = createClient();
+      if (!client) throw new Error('Supabase is not configured');
+      const { error } = await client.auth.signOut({ scope: 'others' });
+      if (error) throw error;
+      setActiveSessions([
+        { id: 1, device: describeDevice(), ip: '—', location: 'This device', isCurrent: true },
+      ]);
+      toast.success('All other devices have been signed out.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not sign out other devices.');
+    } finally {
+      setSigningOutOthers(false);
+    }
+  };
+
+  const handleToggleDeactivate = async () => {
+    setDeactivateBusy(true);
+    try {
+      const res = await fetch('/api/account/deactivate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ suspended: !deactivated }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !payload.success) {
+        toast.error(payload.error || 'Could not update account status.');
+        return;
+      }
+      setDeactivated(Boolean(payload.suspended));
+      toast.success(
+        payload.suspended
+          ? 'Profile deactivated. Reactivate any time from this panel.'
+          : 'Profile reactivated.'
+      );
+    } catch {
+      toast.error('Could not reach the server. Try again.');
+    } finally {
+      setDeactivateBusy(false);
+    }
   };
 
   const handleExportData = () => {
@@ -512,12 +918,32 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
           {activeTab === 'account' && (
             <form onSubmit={handleSave} className="space-y-6 animate-fade-in">
               <div className="bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 p-6 sm:p-8 rounded-[32px] shadow-sm space-y-6">
-                <div>
-                  <h2 className="font-display font-black text-lg text-ink-900 dark:text-white flex items-center gap-2">
-                    <User className="w-5 h-5 text-ink-500" />
-                    Account Specifications
-                  </h2>
-                  <p className="text-xs text-ink-400 mt-1">Manage profile branding, bio information, and default delivery coordinates.</p>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="font-display font-black text-lg text-ink-900 dark:text-white flex items-center gap-2">
+                      <User className="w-5 h-5 text-ink-500" />
+                      Account Specifications
+                    </h2>
+                    <p className="text-xs text-ink-400 mt-1">Manage profile branding, bio information, and default delivery coordinates.</p>
+                  </div>
+                  <button
+                    type="button"
+                    id="settings-logout-btn"
+                    onClick={async () => {
+                      const ok = await confirmDialog({
+                        title: 'Log out',
+                        message: 'Sign out of GoodSale on this device?',
+                        confirmText: 'Log out',
+                      });
+                      if (!ok) return;
+                      await dbOperations.logout();
+                      onNavigate?.('landing');
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-white hover:bg-ink-50 text-ink-700 border border-ink-200 dark:bg-ink-900 dark:hover:bg-ink-800 dark:text-ink-300 dark:border-ink-800 rounded-xl text-xs font-bold cursor-pointer transition-all shrink-0"
+                  >
+                    <LogOut className="w-4 h-4 text-jade-500" />
+                    Log out
+                  </button>
                 </div>
 
                 {/* Profile Media Settings */}
@@ -782,13 +1208,10 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                       <input 
                         type="checkbox" 
                         checked={twoFactorEnabled} 
+                        disabled={mfaBusy}
                         onChange={(e) => {
-                          if (e.target.checked) {
-                            setShowTwoFactorModal(true);
-                          } else {
-                            setTwoFactorEnabled(false);
-                            setTwoFactorVerified(false);
-                          }
+                          if (e.target.checked) void startTwoFactorEnrollment();
+                          else void disableTwoFactor();
                         }}
                         className="sr-only peer" 
                       />
@@ -808,7 +1231,12 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                         checked={biometricsEnabled} 
                         onChange={(e) => {
                           setBiometricsEnabled(e.target.checked);
-                          if (e.target.checked) toast.success('Passkey registration completed.');
+                          void persistSettings({ biometricsEnabled: e.target.checked });
+                          toast.success(
+                            e.target.checked
+                              ? 'Biometric unlock enabled for this device.'
+                              : 'Biometric unlock disabled.'
+                          );
                         }}
                         className="sr-only peer" 
                       />
@@ -822,13 +1250,11 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                   <div className="flex items-center justify-between">
                     <h3 className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Active Secure Sessions</h3>
                     <button 
-                      onClick={() => {
-                        setActiveSessions([{ id: 1, device: 'Chrome (macOS)', ip: '102.89.43.120', location: 'Lagos, Nigeria', isCurrent: true }]);
-                        toast.success('All other active sessions were terminated.');
-                      }}
-                      className="text-xs text-ink-500 hover:underline font-bold cursor-pointer"
+                      onClick={() => void handleSignOutOthers()}
+                      disabled={signingOutOthers}
+                      className="text-xs text-ink-500 hover:underline font-bold cursor-pointer disabled:opacity-50"
                     >
-                      Log Out Other Devices
+                      {signingOutOthers ? 'Signing out…' : 'Log Out Other Devices'}
                     </button>
                   </div>
 
@@ -870,12 +1296,24 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                     </div>
 
                     <div className="flex flex-col items-center py-4 bg-ink-50 dark:bg-ink-800 rounded-2xl">
-                      {/* Simulated QR Code */}
-                      <div className="w-32 h-32 bg-ink-200 dark:bg-ink-700 flex items-center justify-center border-4 border-white mb-2 relative">
-                        <Database className="w-16 h-16 text-ink-400 dark:text-ink-500" />
-                        <span className="absolute bottom-1 right-1 bg-jade-500 text-white text-[10px] px-1 rounded font-mono font-bold">SECURE</span>
-                      </div>
-                      <span className="text-xs font-mono text-ink-500">Manual Key: <strong className="text-ink-700 dark:text-ink-300">GDSX 8912 ALQP</strong></span>
+                      {mfaQrCode ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={mfaQrCode}
+                          alt="Two-factor authentication QR code"
+                          className="mb-2 h-40 w-40 rounded-lg bg-white p-2"
+                        />
+                      ) : (
+                        <div className="mb-2 grid h-32 w-32 place-items-center rounded-lg border-4 border-white bg-ink-200 dark:bg-ink-700">
+                          <Database className="h-16 w-16 text-ink-400 dark:text-ink-500" />
+                        </div>
+                      )}
+                      {mfaSecret && (
+                        <span className="px-3 text-center text-xs font-mono text-ink-500">
+                          Manual key:{' '}
+                          <strong className="break-all text-ink-700 dark:text-ink-300">{mfaSecret}</strong>
+                        </span>
+                      )}
                     </div>
 
                     <div className="space-y-1">
@@ -895,25 +1333,31 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                         onClick={() => {
                           setShowTwoFactorModal(false);
                           setTwoFactorCode('');
+                          if (mfaFactorId && !twoFactorVerified) {
+                            const pending = mfaFactorId;
+                            void (async () => {
+                              try {
+                                const { createClient } = await import('@/lib/supabase/client');
+                                await createClient()?.auth.mfa.unenroll({ factorId: pending });
+                              } catch {
+                                // best-effort cleanup of the abandoned factor
+                              }
+                              setMfaFactorId(null);
+                              setMfaQrCode(null);
+                              setMfaSecret(null);
+                            })();
+                          }
                         }}
                         className="flex-1 py-2 bg-ink-100 text-ink-700 text-xs font-bold rounded-xl"
                       >
                         Cancel
                       </button>
                       <button
-                        onClick={() => {
-                          if (twoFactorCode.length === 6) {
-                            setTwoFactorEnabled(true);
-                            setTwoFactorVerified(true);
-                            setShowTwoFactorModal(false);
-                            toast.success('Two-factor authentication activated.');
-                          } else {
-                            toast.error('Please enter a valid 6-digit verification code.');
-                          }
-                        }}
-                        className="flex-1 py-2 bg-jade-600 text-white text-xs font-bold rounded-xl"
+                        onClick={() => void verifyTwoFactorCode()}
+                        disabled={mfaBusy}
+                        className="flex-1 py-2 bg-jade-600 text-white text-xs font-bold rounded-xl disabled:opacity-60"
                       >
-                        Verify & Enable
+                        {mfaBusy ? 'Verifying…' : 'Verify & Enable'}
                       </button>
                     </div>
                   </div>
@@ -1148,7 +1592,14 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                     <input 
                       type="checkbox" 
                       checked={reduceMotion} 
-                      onChange={(e) => setReduceMotion(e.target.checked)}
+                      onChange={(e) => {
+                        setReduceMotion(e.target.checked);
+                        try {
+                          localStorage.setItem('goodsale_reduce_motion', String(e.target.checked));
+                        } catch {
+                          // ignore storage failures
+                        }
+                      }}
                       className="sr-only peer" 
                     />
                     <div className="w-11 h-6 bg-ink-250 peer-focus:outline-none rounded-full peer dark:bg-ink-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-ink-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-ink-600 peer-checked:bg-jade-600" />
@@ -1175,7 +1626,11 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                   <label className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider block">Global Profile Visibility</label>
                   <select
                     value={profileVisibility}
-                    onChange={(e) => setProfileVisibility(e.target.value as any)}
+                    onChange={(e) => {
+                      const value = e.target.value as 'public' | 'followers' | 'private';
+                      setProfileVisibility(value);
+                      void persistSettings({ profileVisibility: value });
+                    }}
                     className="w-full px-4 py-2.5 bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl text-xs font-bold"
                   >
                     <option value="public">Public (Show listing feedback, rating and trust score to all traders)</option>
@@ -1184,15 +1639,33 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                   </select>
                 </div>
 
+                {/* Direct message permission */}
+                <div className="space-y-3">
+                  <label className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider block">Who Can Message You</label>
+                  <select
+                    value={whoCanMessage}
+                    onChange={(e) => {
+                      const value = e.target.value as 'all' | 'verified' | 'none';
+                      setWhoCanMessage(value);
+                      void persistSettings({ whoCanMessage: value });
+                    }}
+                    className="w-full px-4 py-2.5 bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl text-xs font-bold"
+                  >
+                    <option value="all">Anyone on GoodSale</option>
+                    <option value="verified">Only verified traders</option>
+                    <option value="none">Nobody (chat requests off)</option>
+                  </select>
+                </div>
+
                 {/* Individual Toggles */}
                 <div className="space-y-3 pt-2">
-                  {[
-                    { label: 'Hide Cellular Telephone Coordinates', desc: 'Hide phone number on listing cards. Buyers must communicate via built-in chat.', state: hidePhone, setter: setHidePhone },
-                    { label: 'Hide Email Credentials', desc: 'Conceal email details from all users across the marketplace.', state: hideEmail, setter: setHideEmail },
-                    { label: 'Online Dispatch State indicator', desc: 'Show a pulsing green dot when you are active on the application.', state: onlineStatus, setter: setOnlineStatus },
-                    { label: 'Secure Read Receipts handshake', desc: 'Show blue checked status when reading customer chat messages.', state: readReceipts, setter: setReadReceipts },
-                  ].map((priv, idx) => (
-                    <label key={idx} className="flex items-center justify-between p-3.5 bg-ink-50 dark:bg-ink-800/20 border border-ink-100 dark:border-ink-800 rounded-2xl cursor-pointer">
+                  {([
+                    { key: 'hidePhone' as const, label: 'Hide Cellular Telephone Coordinates', desc: 'Hide phone number on listing cards. Buyers must communicate via built-in chat.', state: hidePhone },
+                    { key: 'hideEmail' as const, label: 'Hide Email Credentials', desc: 'Conceal email details from all users across the marketplace.', state: hideEmail },
+                    { key: 'onlineStatus' as const, label: 'Online Dispatch State indicator', desc: 'Show a pulsing green dot when you are active on the application.', state: onlineStatus },
+                    { key: 'readReceipts' as const, label: 'Secure Read Receipts handshake', desc: 'Show blue checked status when reading customer chat messages.', state: readReceipts },
+                  ]).map((priv) => (
+                    <label key={priv.key} className="flex items-center justify-between p-3.5 bg-ink-50 dark:bg-ink-800/20 border border-ink-100 dark:border-ink-800 rounded-2xl cursor-pointer">
                       <div>
                         <span className="text-xs font-black text-ink-800 dark:text-white block">{priv.label}</span>
                         <span className="text-xs text-ink-400 font-normal">{priv.desc}</span>
@@ -1200,7 +1673,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                       <input 
                         type="checkbox" 
                         checked={priv.state}
-                        onChange={(e) => priv.setter(e.target.checked)}
+                        onChange={(e) => setPrivacyToggle(priv.key, e.target.checked)}
                         className="w-5 h-5 accent-ink-500 cursor-pointer"
                       />
                     </label>
@@ -1220,10 +1693,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                             <div key={usr} className="flex justify-between items-center text-xs">
                               <span className="font-mono text-ink-600 dark:text-ink-300">@{usr}</span>
                               <button 
-                                onClick={() => {
-                                  setBlockedUsers(blockedUsers.filter(b => b !== usr));
-                                  toast.success(`Unblocked @${usr}.`);
-                                }}
+                                onClick={() => handleUnblock(usr)}
                                 className="text-xs font-bold text-jade-500 hover:underline cursor-pointer"
                               >
                                 Unblock
@@ -1233,6 +1703,18 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                         </div>
                       )}
                     </div>
+                    <form onSubmit={handleAddBlocked} className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="@username to block"
+                        value={newBlockedUser}
+                        onChange={(e) => setNewBlockedUser(e.target.value)}
+                        className="min-w-0 flex-1 px-3 py-2 bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl text-xs"
+                      />
+                      <button type="submit" className="px-3 py-2 bg-ink-900 dark:bg-ink-800 text-white rounded-xl text-xs font-bold cursor-pointer">
+                        Block
+                      </button>
+                    </form>
                   </div>
 
                   <div className="space-y-2">
@@ -1246,10 +1728,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                             <div key={usr} className="flex justify-between items-center text-xs">
                               <span className="font-mono text-ink-600 dark:text-ink-300">@{usr}</span>
                               <button 
-                                onClick={() => {
-                                  setMutedUsers(mutedUsers.filter(m => m !== usr));
-                                  toast.success(`Unmuted @${usr}.`);
-                                }}
+                                onClick={() => handleUnmute(usr)}
                                 className="text-xs font-bold text-jade-500 hover:underline cursor-pointer"
                               >
                                 Unmute
@@ -1259,6 +1738,18 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                         </div>
                       )}
                     </div>
+                    <form onSubmit={handleAddMuted} className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="@username to mute"
+                        value={newMutedUser}
+                        onChange={(e) => setNewMutedUser(e.target.value)}
+                        className="min-w-0 flex-1 px-3 py-2 bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl text-xs"
+                      />
+                      <button type="submit" className="px-3 py-2 bg-ink-900 dark:bg-ink-800 text-white rounded-xl text-xs font-bold cursor-pointer">
+                        Mute
+                      </button>
+                    </form>
                   </div>
                 </div>
               </div>
@@ -1293,19 +1784,15 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                         <div className="flex gap-2">
                           {!adr.isDefault && (
                             <button
-                              onClick={() => {
-                                setSavedAddresses(savedAddresses.map(a => ({ ...a, isDefault: a.id === adr.id })));
-                              }}
-                              className="text-xs text-jade-500 hover:underline font-bold"
+                              onClick={() => handleSetDefaultAddress(adr.id)}
+                              className="text-xs text-jade-500 hover:underline font-bold cursor-pointer"
                             >
                               Set Default
                             </button>
                           )}
                           <button
-                            onClick={() => {
-                              setSavedAddresses(savedAddresses.filter(a => a.id !== adr.id));
-                            }}
-                            className="text-xs text-ink-500 hover:underline font-bold"
+                            onClick={() => handleDeleteAddress(adr.id)}
+                            className="text-xs text-ink-500 hover:underline font-bold cursor-pointer"
                           >
                             Delete
                           </button>
@@ -1353,7 +1840,10 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                     ].map((pm) => (
                       <button
                         key={pm.id}
-                        onClick={() => setDefaultPayment(pm.id)}
+                        onClick={() => {
+                          setDefaultPayment(pm.id);
+                          void persistSettings({ defaultPayment: pm.id });
+                        }}
                         className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
                           defaultPayment === pm.id 
                             ? 'bg-ink-500/10 border-ink-500 text-ink-600'
@@ -1370,19 +1860,35 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 {/* Saved Searches */}
                 <div className="border-t border-ink-100 dark:border-ink-850 pt-5 space-y-3">
                   <h3 className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Saved Searches (Push Alerts Active)</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {savedSearches.map((search) => (
-                      <div key={search} className="flex items-center gap-2 bg-ink-100 dark:bg-ink-800 px-3 py-1.5 rounded-full text-xs font-bold text-ink-700 dark:text-ink-300">
-                        <span>&ldquo;{search}&rdquo;</span>
-                        <button 
-                          onClick={() => setSavedSearches(savedSearches.filter(s => s !== search))}
-                          className="text-xs text-ink-500 font-extrabold hover:underline"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                  {savedSearches.length === 0 ? (
+                    <p className="text-xs text-ink-400">No saved searches yet. Save a term to get notified about matching listings.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {savedSearches.map((search) => (
+                        <div key={search} className="flex items-center gap-2 bg-ink-100 dark:bg-ink-800 px-3 py-1.5 rounded-full text-xs font-bold text-ink-700 dark:text-ink-300">
+                          <span>&ldquo;{search}&rdquo;</span>
+                          <button 
+                            onClick={() => handleRemoveSavedSearch(search)}
+                            className="text-xs text-ink-500 font-extrabold hover:underline cursor-pointer"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <form onSubmit={handleAddSavedSearch} className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="E.g. iPhone 15 Pro Max"
+                      value={newSavedSearch}
+                      onChange={(e) => setNewSavedSearch(e.target.value)}
+                      className="min-w-0 flex-1 px-3 py-2 bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl text-xs"
+                    />
+                    <button type="submit" className="px-3 py-2 bg-ink-900 dark:bg-ink-800 text-white rounded-xl text-xs font-bold cursor-pointer">
+                      Save search
+                    </button>
+                  </form>
                 </div>
               </div>
             </div>
@@ -1411,7 +1917,10 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                       <input 
                         type="checkbox" 
                         checked={vacationMode} 
-                        onChange={(e) => setVacationMode(e.target.checked)}
+                        onChange={(e) => {
+                          setVacationMode(e.target.checked);
+                          void persistSettings({ vacationMode: e.target.checked });
+                        }}
                         className="sr-only peer" 
                       />
                       <div className="w-11 h-6 bg-ink-250 peer-focus:outline-none rounded-full peer dark:bg-ink-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-ink-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-ink-600 peer-checked:bg-jade-500" />
@@ -1424,6 +1933,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                       <textarea
                         value={vacationAutoReply}
                         onChange={(e) => setVacationAutoReply(e.target.value)}
+                        onBlur={() => void persistSettings({ vacationAutoReply })}
                         rows={2}
                         className="w-full p-3 bg-ink-50 dark:bg-ink-800 border border-ink-200 rounded-xl text-xs font-bold"
                       />
@@ -1446,6 +1956,8 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                     max={10} 
                     value={inventoryAlertThreshold}
                     onChange={(e) => setInventoryAlertThreshold(parseInt(e.target.value))}
+                    onPointerUp={() => void persistSettings({ inventoryAlertThreshold })}
+                    onKeyUp={() => void persistSettings({ inventoryAlertThreshold })}
                     className="w-full accent-jade-600 cursor-pointer"
                   />
                 </div>
@@ -1456,7 +1968,10 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                     <label className="text-xs font-sans font-black text-ink-400 uppercase tracking-wider block">Default Listing Category</label>
                     <select
                       value={defaultCategory}
-                      onChange={(e) => setDefaultCategory(e.target.value)}
+                      onChange={(e) => {
+                        setDefaultCategory(e.target.value);
+                        void persistSettings({ defaultCategory: e.target.value });
+                      }}
                       className="w-full px-4 py-2.5 bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl text-xs font-bold focus:outline-none focus:border-jade-500"
                     >
                       <option value="ELECTRONICS">UK Used Electronics / Gadgets</option>
@@ -1470,7 +1985,10 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                     <label className="text-xs font-sans font-black text-ink-400 uppercase tracking-wider block">Default Dispatch Method</label>
                     <select
                       value={defaultDeliveryMethod}
-                      onChange={(e) => setDefaultDeliveryMethod(e.target.value)}
+                      onChange={(e) => {
+                        setDefaultDeliveryMethod(e.target.value);
+                        void persistSettings({ defaultDeliveryMethod: e.target.value });
+                      }}
                       className="w-full px-4 py-2.5 bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl text-xs font-bold focus:outline-none focus:border-jade-500"
                     >
                       <option value="GOODSALE_PARTNER">GoodSale Branded Safe-Lock Courier</option>
@@ -1571,8 +2089,8 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                           <span className="px-1.5 py-0.5 bg-jade-100 text-jade-800 text-[10px] font-black uppercase rounded">{st.status}</span>
                           <button
                             type="button"
-                            onClick={() => setStaffList(staffList.filter(s => s.id !== st.id))}
-                            className="text-xs text-ink-500 hover:underline font-bold"
+                            onClick={() => handleRemoveStaff(st.id)}
+                            className="text-xs text-ink-500 hover:underline font-bold cursor-pointer"
                           >
                             Revoke Access
                           </button>
@@ -1669,10 +2187,11 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                           <p className="text-xs text-ink-400 mt-1 leading-relaxed">{reward.desc}</p>
                         </div>
                         <button
-                          onClick={() => handleRedeemPoints(reward.cost, reward.code)}
-                          className="mt-4 w-full py-2 bg-ink-900 hover:bg-ink-500 hover:text-ink-950 text-white rounded-xl text-xs uppercase font-black transition-all cursor-pointer"
+                          onClick={() => void handleRedeemPoints(reward.cost, reward.code)}
+                          disabled={redeeming}
+                          className="mt-4 w-full py-2 bg-ink-900 hover:bg-ink-500 hover:text-ink-950 text-white rounded-xl text-xs uppercase font-black transition-all cursor-pointer disabled:opacity-50"
                         >
-                          Redeem reward
+                          {redeeming ? 'Redeeming…' : 'Redeem reward'}
                         </button>
                       </div>
                     ))}
@@ -1790,7 +2309,10 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                   <label className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider block">Preferred Logistics Courier</label>
                   <select
                     value={preferredCourier}
-                    onChange={(e) => setPreferredCourier(e.target.value)}
+                    onChange={(e) => {
+                      setPreferredCourier(e.target.value);
+                      void persistSettings({ preferredCourier: e.target.value });
+                    }}
                     className="w-full px-4 py-2.5 bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl text-xs font-bold focus:outline-none focus:border-ink-500"
                   >
                     <option value="GIG Logistics">GIG Logistics (Premium Partner)</option>
@@ -1810,6 +2332,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                         type="button"
                         onClick={() => {
                           setSafeMeetPreSel(loc.id);
+                          void persistSettings({ safeMeetPreSel: loc.id });
                           toast.success(`Set "${loc.name}" as your default SafeMeet™ coordinate.`);
                         }}
                         className={`p-4 rounded-2xl border text-left cursor-pointer transition-all ${
@@ -1835,6 +2358,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                     type="text" 
                     value={pickupAddress}
                     onChange={(e) => setPickupAddress(e.target.value)}
+                    onBlur={() => void persistSettings({ pickupAddress })}
                     className="w-full px-4 py-2.5 bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl text-xs font-bold focus:outline-none focus:border-ink-500"
                   />
                 </div>
@@ -1872,6 +2396,29 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                   ))}
                 </div>
 
+                {/* Support ticket history */}
+                {supportTickets.length > 0 && (
+                  <div className="border-t border-ink-100 dark:border-ink-850 pt-5 space-y-3">
+                    <h3 className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Your Support Tickets</h3>
+                    <div className="space-y-2">
+                      {supportTickets.map((ticket) => (
+                        <div key={ticket.id} className="flex items-start justify-between gap-3 rounded-xl border border-ink-150 bg-ink-50 p-3 text-xs dark:border-ink-850 dark:bg-ink-800/40">
+                          <div className="min-w-0">
+                            <p className="font-mono font-black text-ink-700 dark:text-ink-200">#{ticket.id}</p>
+                            <p className="mt-1 break-words text-ink-500">{ticket.message}</p>
+                            <p className="mt-1 text-ink-400">
+                              {new Date(ticket.createdAt).toLocaleString()} · {ticket.type.replace('_', ' ')}
+                            </p>
+                          </div>
+                          <span className="shrink-0 rounded bg-jade-100 px-2 py-0.5 text-[10px] font-black uppercase text-jade-800">
+                            {ticket.status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Support ticket submission */}
                 <div className="border-t border-ink-100 dark:border-ink-850 pt-5 space-y-3">
                   <h3 className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Submit Support Inquiry Ticket</h3>
@@ -1902,14 +2449,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                         className="w-full p-3 bg-ink-50 dark:bg-ink-800 border border-ink-200 rounded-xl text-xs"
                       />
                       <button
-                        onClick={() => {
-                          if (!supportMessage) return;
-                          setSupportSuccess(true);
-                          setTimeout(() => {
-                            setSupportSuccess(false);
-                            setSupportMessage('');
-                          }, 4000);
-                        }}
+                        onClick={handleSubmitTicket}
                         className="px-4 py-2 bg-ink-900 text-white rounded-xl text-xs font-bold cursor-pointer"
                       >
                         Submit Ticket
@@ -2083,13 +2623,11 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                     <p className="text-xs text-ink-400 mt-0.5">Temporarily hide your profile details and active bids. Deactivation can be reverted by logging in again.</p>
                   </div>
                   <button
-                    onClick={() => {
-                      setDeactivated(true);
-                      toast.success('Profile deactivated. Sign in again to reactivate it.');
-                    }}
-                    className="px-4 py-2 bg-ink-500/10 hover:bg-ink-500 text-ink-600 hover:text-ink-950 rounded-xl text-xs font-bold cursor-pointer"
+                    onClick={() => void handleToggleDeactivate()}
+                    disabled={deactivateBusy}
+                    className="px-4 py-2 bg-ink-500/10 hover:bg-ink-500 text-ink-600 hover:text-ink-950 rounded-xl text-xs font-bold cursor-pointer disabled:opacity-50"
                   >
-                    {deactivated ? 'Account Deactivated' : 'Deactivate profile'}
+                    {deactivateBusy ? 'Updating…' : deactivated ? 'Reactivate profile' : 'Deactivate profile'}
                   </button>
                 </div>
 

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useDBState } from '../lib/store';
 import LottieAnimation from './ui/LottieAnimation';
+import AdSlot from './AdSlot';
 import escrowLottie from '../lib/lottie/escrow-shield.json';
 
 interface MarketingLandingProps {
@@ -221,6 +222,9 @@ export default function MarketingLanding({
             </div>
           </div>
         </section>
+
+        {/* Sponsored: home placement on the public landing page */}
+        <AdSlot placement="HOME" onNavigate={onNavigate} />
 
         {/* ── HOW ESCROW WORKS ──────────────────────────────────── */}
         <section className="list-stagger grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

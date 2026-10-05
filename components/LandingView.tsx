@@ -11,6 +11,7 @@ import {
 import { Product, getDBState, UserRole, useDBState, dbOperations } from '../lib/store';
 import { SmartAvatar } from './ui/SmartImage';
 import EmptyState from './ui/EmptyState';
+import AdSlot from './AdSlot';
 
 interface LandingViewProps {
   onSelectProduct: (productId: number) => void;
@@ -217,6 +218,9 @@ export default function LandingView({
           </div>
         </section>
 
+        {/* Sponsored: top-of-home placement */}
+        <AdSlot placement="HOME" onNavigate={onNavigate} className="mb-6" />
+
         {/* PREMIUM MAIN VIEW TABS (MARKETPLACE, FLASH SALE, AUCTION) */}
         <div className="w-full bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800/85 rounded-3xl p-1.5 sm:p-2 mb-6 sm:mb-8 flex gap-1 sm:gap-2 shadow-sm sticky top-[106px] md:top-16 z-20 backdrop-blur-md bg-white/95 dark:bg-ink-900/95 transition-all">
           <button
@@ -335,6 +339,9 @@ export default function LandingView({
               );
             })}
           </div>
+
+          {/* Sponsored: category placement */}
+          <AdSlot placement="CATEGORY" onNavigate={onNavigate} />
         </section>
       </>
     )}
@@ -625,6 +632,10 @@ export default function LandingView({
         </section>
 
         {/* 6. Marketplace Product Catalog (AliExpress/Temu/Jumia style dense cards grid) */}
+        {searchQuery.trim() && (
+          <AdSlot placement="SEARCH" onNavigate={onNavigate} className="mb-6" />
+        )}
+
         <section id="catalog-section" className="mb-12">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
@@ -754,10 +765,10 @@ export default function LandingView({
                       </button>
                     </div>
 
-                    {/* B. Dense Details Text Block */}
-                    <div className="p-3 flex-1 flex flex-col justify-between gap-2.5 text-xs">
+                    {/* B. Details text block — roomy spacing so lines don't collapse */}
+                    <div className="p-4 flex-1 flex flex-col justify-between gap-3.5 text-xs">
                       
-                      <div className="space-y-1.5">
+                      <div className="space-y-2.5">
                         
                         {/* 1. Vendor Username & Link with Store icon */}
                         <div className="flex items-center justify-between text-xs bg-ink-50 dark:bg-ink-800/40 p-1.5 rounded-xl border border-ink-100 dark:border-ink-800/60 font-sans">
@@ -788,12 +799,12 @@ export default function LandingView({
                         </div>
 
                         {/* 3. Headline with 2-line clamp */}
-                        <h4 className="font-sans font-bold text-xs text-ink-800 dark:text-ink-200 line-clamp-2 leading-tight group-hover:text-jade-500 dark:group-hover:text-jade-400 transition-colors h-8">
+                        <h4 className="font-sans font-bold text-xs text-ink-800 dark:text-ink-200 line-clamp-2 leading-snug tracking-tight group-hover:text-jade-500 dark:group-hover:text-jade-400 transition-colors min-h-[2.25rem]">
                           {product.title}
                         </h4>
 
                         {/* 4. Rating & sold metrics from real reviews/orders */}
-                        <div className="space-y-1">
+                        <div className="space-y-2">
                           <div className="flex items-center gap-1 text-xs text-ink-500 dark:text-ink-400 font-sans">
                             {avgRating ? (
                               <>

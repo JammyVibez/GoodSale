@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { logger, publicErrorMessage } from '@/lib/logger';
 import { rateLimit, clientIpFromRequest } from '@/lib/rate-limit';
 
-const BUCKETS = new Set(['product-images', 'chat-media', 'government-ids', 'avatars']);
+const BUCKETS = new Set(['product-images', 'chat-media', 'government-ids', 'avatars', 'ad-media']);
 const IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 const VIDEO_MAX_BYTES = 25 * 1024 * 1024;
 

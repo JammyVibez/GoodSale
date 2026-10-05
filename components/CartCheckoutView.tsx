@@ -22,6 +22,7 @@ import {
   bestCoords,
   formatDistanceKm,
 } from '@/lib/geo';
+import { computePlatformFee } from '@/lib/fees';
 
 interface CartCheckoutViewProps {
   onBack: () => void;
@@ -210,7 +211,12 @@ export default function CartCheckoutView({
   }
 
   const subtotal = cartItems.reduce((acc, p) => acc + p.price, 0);
-  const escrowFee = subtotal * 0.015; // 1.5% neutral escrow fee
+  // Per-item platform fee — mirrors Order.taxAmount (admin-toggleable, OFF at launch).
+  const platformFeeMeta = computePlatformFee(db.revenueSettings, subtotal);
+  const escrowFee = cartItems.reduce(
+    (acc, p) => acc + computePlatformFee(db.revenueSettings, p.price).amount,
+    0
+  );
   
   const protectFee = hasGoodSaleProtect ? (db.revenueSettings?.goodSaleProtectFee || 1500) : 0;
   
@@ -429,7 +435,11 @@ export default function CartCheckoutView({
                   <span className="font-bold text-ink-800 dark:text-ink-200">₦{subtotal.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-ink-400">GoodSale Escrow Fee (1.5%)</span>
+                  <span className="text-ink-400">
+                    {platformFeeMeta.enabled && platformFeeMeta.percentage > 0
+                      ? `GoodSale Platform Fee (${platformFeeMeta.percentage}%)`
+                      : 'GoodSale Platform Fee — Free'}
+                  </span>
                   <span className="font-bold text-ink-800 dark:text-ink-200">₦{escrowFee.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
@@ -1111,7 +1121,11 @@ export default function CartCheckoutView({
                   <span className="font-bold text-ink-800 dark:text-ink-200">₦{subtotal.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-ink-400">Escrow neutral Fee</span>
+                  <span className="text-ink-400">
+                    {platformFeeMeta.enabled && platformFeeMeta.percentage > 0
+                      ? `Platform fee (${platformFeeMeta.percentage}%)`
+                      : 'Platform fee — Free'}
+                  </span>
                   <span className="font-bold text-ink-800 dark:text-ink-200">₦{escrowFee.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">

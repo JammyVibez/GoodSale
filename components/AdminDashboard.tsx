@@ -13,6 +13,8 @@ import {
 } from '../lib/store';
 import { createClient } from '@/lib/supabase/client';
 import { confirmDialog } from '@/lib/feedback';
+import AdStudio from './AdStudio';
+import AnnouncementStudio from './AnnouncementStudio';
 
 type Tab = 'verifications' | 'users' | 'products' | 'orders_escrow' | 'disputes' | 'dispatch' | 'settings';
 
@@ -67,12 +69,14 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
     auctionSuccessFeePercentage: '2.5', adCpcPrice: '150', goodSaleProtectFee: '1500',
   });
   const [enabledMethods, setEnabledMethods] = useState<string[]>(['escrow', 'cod', 'card', 'bank', 'invoice', 'partial']);
+  const [platformFeeEnabled, setPlatformFeeEnabled] = useState(false);
 
   // Admin access is decided by the database role (granted by another admin),
   // never auto-elevated from the browser.
 
   useEffect(() => {
     if (!rs) return;
+    setPlatformFeeEnabled(Boolean(rs.platformFeeEnabled));
     setFees({
       escrowPercentageFee: String(rs.escrowPercentageFee ?? 1.5),
       escrowMinFee: String(rs.escrowMinFee ?? 100),
@@ -573,6 +577,10 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
               </p>
             </div>
 
+            {currentUser && <AnnouncementStudio />}
+
+            {currentUser && <AdStudio currentUser={currentUser} />}
+
             <div className={`${card} p-5 flex flex-col md:flex-row md:items-center justify-between gap-3`}>
               <div>
                 <h3 className="font-sans font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
@@ -591,6 +599,7 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
                 void run(() => {
                   const num = (k: keyof typeof fees) => parseFloat(fees[k]) || 0;
                   const res = dbOperations.updateRevenueSettings(currentUser.id, {
+                    platformFeeEnabled,
                     escrowPercentageFee: num('escrowPercentageFee'),
                     escrowMinFee: num('escrowMinFee'),
                     escrowMaxFee: num('escrowMaxFee'),
@@ -613,10 +622,32 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className={`${card} p-5 space-y-3`}>
                   <div className="flex items-center gap-2 border-b border-ink-100 dark:border-ink-800 pb-2">
-                    <Scale className="w-4 h-4 text-jade-500" /><h4 className="font-bold text-sm text-ink-900 dark:text-white">Escrow Fees</h4>
+                    <Scale className="w-4 h-4 text-jade-500" /><h4 className="font-bold text-sm text-ink-900 dark:text-white">Platform Fee (per item)</h4>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setPlatformFeeEnabled((v) => !v)}
+                    className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl border text-left transition-all cursor-pointer ${platformFeeEnabled ? 'border-jade-500/40 bg-jade-500/[0.04]' : 'border-ink-200 dark:border-ink-800'}`}
+                  >
+                    <div>
+                      <div className="font-bold text-xs text-ink-800 dark:text-ink-200">
+                        {platformFeeEnabled ? 'Charging platform fee' : 'Fees off — buyers pay 0%'}
+                      </div>
+                      <div className="text-xs text-ink-400 mt-0.5">
+                        {platformFeeEnabled
+                          ? `Buyers pay ${fees.escrowPercentageFee || 0}% per item (clamped to min/max below).`
+                          : 'Launch mode: everything is free except delivery. Turn on to start charging.'}
+                      </div>
+                    </div>
+                    <span
+                      className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors ${platformFeeEnabled ? 'bg-jade-500' : 'bg-ink-300 dark:bg-ink-700'}`}
+                      aria-hidden="true"
+                    >
+                      <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${platformFeeEnabled ? 'left-[22px]' : 'left-0.5'}`} />
+                    </span>
+                  </button>
                   <div className="grid grid-cols-3 gap-3">
-                    <Field label="Fee %"><input type="number" step="0.05" value={fees.escrowPercentageFee} onChange={(e) => setFee('escrowPercentageFee', e.target.value)} className={inp} required /></Field>
+                    <Field label="Fee % per item"><input type="number" step="0.05" min="0" value={fees.escrowPercentageFee} onChange={(e) => setFee('escrowPercentageFee', e.target.value)} className={inp} required /></Field>
                     <Field label="Min ₦"><input type="number" value={fees.escrowMinFee} onChange={(e) => setFee('escrowMinFee', e.target.value)} className={inp} required /></Field>
                     <Field label="Max ₦"><input type="number" value={fees.escrowMaxFee} onChange={(e) => setFee('escrowMaxFee', e.target.value)} className={inp} required /></Field>
                   </div>

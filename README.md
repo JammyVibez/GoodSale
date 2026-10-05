@@ -62,6 +62,30 @@ See **[PRODUCTION.md](./PRODUCTION.md)** for the full go-live checklist (credent
 4. `supabase/migrations/004_realtime_dispatch_geo.sql`
 5. `supabase/migrations/005_security_payments.sql` (RLS lockdown, disputes, refunds, withdrawals)
 6. `supabase/migrations/006_payouts_and_suspend.sql` (Paystack transfer columns + suspend)
+7. `supabase/migrations/007_avatars_bucket.sql` (avatars storage bucket)
+8. `supabase/migrations/008_platform_fee_toggle.sql` (admin-controlled platform fee — OFF at launch)
+9. `supabase/migrations/009_admin_ads.sql` (ads: image/video media, placements, `ad-media` bucket)
+10. `supabase/migrations/010_announcements.sql` (admin popup shown on app entry)
+
+### Apply them from the terminal
+
+Paste-and-run in the Supabase **SQL Editor** always works. To automate it instead, either:
+
+- add a direct Postgres connection string as `DATABASE_URL` (Supabase → Project Settings →
+  Database → Connection string, “Session pooler”), **or**
+- add a Supabase **Personal Access Token** as `SUPABASE_ACCESS_TOKEN`
+  (create one at https://supabase.com/dashboard/account/tokens)
+
+then run:
+
+```bash
+npm run migrate            # applies every file in order
+npm run migrate -- --from=002   # skip schema.sql, replay migrations from 002
+npm run migrate -- --verify     # check RPCs, tables, the fee toggle, and admin accounts
+npm run migrate -- --only=008_platform_fee_toggle.sql
+```
+
+The command is idempotent and verifies that every escrow/payout RPC is present when it finishes.
 
 Paystack step-by-step: **[docs/PAYSTACK.md](./docs/PAYSTACK.md)**. Full env list: **`.env.example`**.
 
@@ -74,6 +98,20 @@ Paystack step-by-step: **[docs/PAYSTACK.md](./docs/PAYSTACK.md)**. Full env list
 - **Payments**: Order created first as `PENDING` → Paystack Inline with `GS_<orderId>_…` → `/api/payments/verify` + webhook mark `PAID_ESCROW`
 - **Escrow**: Buyer PIN `/api/orders/release-escrow`; courier `/api/orders/complete-delivery-job`; admin force `/api/admin/escrow`
 - **Disputes / payouts**: `/api/disputes/*`, `/api/wallet/withdraw`, `/api/admin/withdrawals`
+- **Admin panel**: sign in as an `ADMIN` / `SUPER_ADMIN` account, open the account menu (top-right),
+  and choose **Admin panel** → **Revenue & Payment Settings** to toggle the per-item platform fee
+  and set its percentage. It is **OFF at launch** — buyers pay only the item price plus delivery.
+- **Ads**: **Admin panel** → **Create an ad** — upload an image or video from your device, choose
+  where it shows (home feed, category, product detail, chat, seller hub, search), then publish,
+  pause or delete it. Ads render across the app through `components/AdSlot.tsx`.
+- **Admin entry**: signed in as `ADMIN`/`SUPER_ADMIN` you get an **Admin** button in the header and
+  as the middle tab of the mobile bottom nav — one tap to the admin panel.
+- **Role-aware navigation**: registering as a **Buyer** shows a **Buy** button that jumps to the
+  marketplace; **Sellers** get **Sell** and **Businesses** get **Business** (their dashboard, which
+  can do everything a buyer and seller can). The profile shows your matching role badge.
+- **Sign out**: avatar menu → **Log out**, or **Settings → Account Profile → Log out**.
+- **Announcements**: **Admin panel → Announcements** → publish a headline/message; it pops up for
+  users the next time they join or enter the app, and remembers that they dismissed it.
 - **Setup banner**: shown until Supabase URL/anon key are present
 - **Notifications / follows / onboarding**: written to Supabase and reloaded live — they are
   real records, not local-only state
@@ -86,6 +124,7 @@ npm run lint
 npm run typecheck
 npm test
 npm run build
+npm run migrate        # apply Supabase SQL (needs SUPABASE_ACCESS_TOKEN)
 ```
 ```bash
 npm run dev

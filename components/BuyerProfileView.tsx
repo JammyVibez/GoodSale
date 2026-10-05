@@ -7,7 +7,7 @@ import {
   ChevronRight, Calendar, Star, ArrowLeft, Key, CreditCard, Lock,
   Download, Check, Compass, Sliders, Truck, Store
 } from 'lucide-react';
-import { useDBState, dbOperations, OrderStatus, Order } from '../lib/store';
+import { useDBState, dbOperations, OrderStatus, Order, UserRole } from '../lib/store';
 import LiveSafeMeetMap from './LiveSafeMeetMap';
 import LiveDispatchMap from './LiveDispatchMap';
 import { SmartAvatar } from './ui/SmartImage';
@@ -274,8 +274,25 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
               <div className="pb-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="font-display text-2xl font-black leading-none tracking-tight text-ink-900 dark:text-white">{currentUser.fullName}</h1>
-                  <Chip tone="solid" className="uppercase tracking-wider">
-                    Buyer
+                  <Chip tone="solid" className="uppercase tracking-wider" title={currentUser.role}>
+                    {(() => {
+                      switch (currentUser.role) {
+                        case UserRole.VERIFIED_BUSINESS:
+                          return 'Verified Business';
+                        case UserRole.BUSINESS:
+                          return 'Business';
+                        case UserRole.VERIFIED_SELLER:
+                          return 'Verified Seller';
+                        case UserRole.SELLER:
+                          return 'Seller';
+                        case UserRole.SUPER_ADMIN:
+                          return 'Super Admin';
+                        case UserRole.ADMIN:
+                          return 'Admin';
+                        default:
+                          return 'Buyer';
+                      }
+                    })()}
                   </Chip>
                 </div>
                 <p className="mt-1.5 font-mono text-xs text-ink-500">@{currentUser.username} · {currentUser.email}</p>

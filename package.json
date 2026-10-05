@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "healthcheck": "curl -fsS http://localhost:3000/api/health"
+    "healthcheck": "curl -fsS http://localhost:3000/api/health",
+    "migrate": "node scripts/apply-migrations.mjs"
   },
   "engines": {
     "node": ">=20"
@@ -25,6 +26,7 @@
     "lucide-react": "^0.469.0",
     "motion": "^11.11.17",
     "next": "15.5.20",
+    "pg": "^8.23.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

@@ -9,6 +9,7 @@ import Chip from './ui/Chip';
 import Sheet from './ui/Sheet';
 import { SmartAvatar } from './ui/SmartImage';
 import LottieAnimation from './ui/LottieAnimation';
+import AdSlot from './AdSlot';
 import escrowShield from '../lib/lottie/escrow-shield.json';
 import {
   MessageSquare, Send, Shield, Search,
@@ -195,7 +196,7 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-ink-50 transition-colors duration-300 dark:bg-ink-950">
-      <div className="mx-auto flex h-[calc(100vh-4rem)] w-full max-w-7xl border-x border-ink-200 bg-white shadow-sm dark:border-ink-800 dark:bg-ink-900">
+      <div className="mx-auto flex h-[calc(100vh-4rem-72px)] w-full max-w-7xl border-x border-ink-200 bg-white shadow-sm dark:border-ink-800 dark:bg-ink-900 md:h-[calc(100vh-4rem)]">
 
         {/* A. Conversation list */}
         <aside
@@ -291,11 +292,16 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
               })
             )}
           </div>
+
+          {/* Sponsored: chat rail placement */}
+          <div className="border-t border-ink-100 px-4 py-4 dark:border-ink-800">
+            <AdSlot placement="CHAT" onNavigate={onNavigate} variant="rail" />
+          </div>
         </aside>
 
         {/* B. Active thread */}
         <section
-          className={`flex flex-1 flex-col ${activeRoomId === null ? 'hidden md:flex' : 'flex'}`}
+          className={`flex min-w-0 flex-1 flex-col ${activeRoomId === null ? 'hidden md:flex' : 'flex'}`}
         >
           {activeRoom ? (
             <>

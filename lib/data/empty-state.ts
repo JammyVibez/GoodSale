@@ -1,6 +1,8 @@
 import type { GoodSaleDBState, RevenueSettings, PaymentSettings } from '@/lib/types';
 
 export const DEFAULT_REVENUE_SETTINGS: RevenueSettings = {
+  // Launch default: platform fees are OFF (everything free except delivery).
+  platformFeeEnabled: false,
   escrowPercentageFee: 1.5,
   escrowMinFee: 100,
   escrowMaxFee: 15000,
@@ -54,6 +56,7 @@ export function createEmptyState(): GoodSaleDBState {
     revenueSettings: { ...DEFAULT_REVENUE_SETTINGS },
     sponsoredAds: [],
     featuredListings: [],
+    announcements: [],
     wallets: [],
     walletTransactions: [],
     auditLogs: [],
