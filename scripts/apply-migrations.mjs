@@ -57,6 +57,7 @@ const VERIFY_TABLES = [
   'bids',
   'business_subscriptions',
   'businesses',
+  'calls',
   'chat_rooms',
   'delivery_jobs',
   'delivery_partners',
@@ -67,6 +68,7 @@ const VERIFY_TABLES = [
   'good_points_transactions',
   'identity_verifications',
   'invoices',
+  'message_reactions',
   'messages',
   'notifications',
   'orders',
@@ -80,9 +82,11 @@ const VERIFY_TABLES = [
   'refunds',
   'revenue_settings',
   'review_replies',
+  'reports',
   'reviews',
   'safe_meet_locations',
   'safe_meet_meetups',
+  'service_areas',
   'sponsored_ads',
   'verified_plus_subscriptions',
   'wallet_transactions',
@@ -190,6 +194,34 @@ async function verifyWithPg(client) {
     console.log('  ad-media bucket: OK');
   } catch {
     console.log('  ads columns / ad-media bucket: MISSING');
+    extraSchemaOk = false;
+  }
+
+  // Community / trust / service areas (migration 012)
+  try {
+    const { rows } = await client.query(
+      `select
+         (select count(*)::int from information_schema.columns
+           where table_schema = 'public' and table_name = 'identity_verifications'
+             and column_name in ('application_kind','documents','reviewed_by','reviewed_at','rejection_reason')) as ver_cols,
+         (select count(*)::int from information_schema.columns
+           where table_schema = 'public' and table_name = 'delivery_partners'
+             and column_name in ('documents','rejection_reason','reviewed_by','reviewed_at')) as partner_cols,
+         (select count(*)::int from information_schema.columns
+           where table_schema = 'public' and table_name = 'messages'
+             and column_name = 'reply_to_id') as reply_cols,
+         (select count(*)::int from public.service_areas) as areas`
+    );
+    const r = rows[0] || {};
+    console.log(`  verification detail columns: ${r.ver_cols}/5 present`);
+    console.log(`  rider document columns: ${r.partner_cols}/4 present`);
+    console.log(`  message reply column: ${r.reply_cols}/1 present`);
+    console.log(`  service areas seeded: ${r.areas}`);
+    if (Number(r.ver_cols) < 5 || Number(r.partner_cols) < 4 || Number(r.reply_cols) < 1) {
+      extraSchemaOk = false;
+    }
+  } catch {
+    console.log('  community/trust schema: MISSING');
     extraSchemaOk = false;
   }
 

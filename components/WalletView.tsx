@@ -164,7 +164,7 @@ export default function WalletView({ onNavigate, onOpenAuth }: WalletViewProps) 
           title="Sign in to open your wallet"
           description="Your balance, escrow and payouts live behind your GoodSale account."
           action={
-            <Button onClick={() => onOpenAuth?.()} className="uppercase tracking-wide">
+            <Button onClick={() => onOpenAuth?.()} className="tracking-wide">
               Sign in
             </Button>
           }
@@ -182,7 +182,7 @@ export default function WalletView({ onNavigate, onOpenAuth }: WalletViewProps) 
         {/* Header */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
           <div>
-            <h1 className="font-display font-black text-3xl tracking-tight text-ink-900 dark:text-white animate-title-collapse">
+            <h1 className="font-display font-bold text-3xl tracking-tight text-ink-900 dark:text-white animate-title-collapse">
               Wallet
             </h1>
             <p className="text-sm text-ink-500 mt-1.5">
@@ -211,12 +211,12 @@ export default function WalletView({ onNavigate, onOpenAuth }: WalletViewProps) 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="relative overflow-hidden rounded-3xl aurora-bg bg-ink-950 border border-jade-500/20 p-6 text-white shadow-lg">
             <div className="flex items-center justify-between">
-              <span className="text-xs uppercase tracking-widest font-mono font-bold text-jade-400">
+              <span className="text-xs tracking-widest font-mono font-bold text-jade-400">
                 Available balance
               </span>
               <PiggyBank className="w-5 h-5 text-jade-400" />
             </div>
-            <p className="mt-4 font-mono font-black text-3xl">₦{balance.toLocaleString()}</p>
+            <p className="mt-4 font-mono font-bold text-3xl">₦{balance.toLocaleString()}</p>
             <p className="mt-2 text-xs text-ink-300">
               {mode === 'wallet' ? 'Ready to withdraw any time' : 'Bank-direct settlement is active'}
             </p>
@@ -224,12 +224,12 @@ export default function WalletView({ onNavigate, onOpenAuth }: WalletViewProps) 
 
           <Card className="p-6">
             <div className="flex items-center justify-between">
-              <span className="text-xs uppercase tracking-widest font-mono font-bold text-ink-500">
+              <span className="text-xs tracking-widest font-mono font-bold text-ink-500">
                 Held in escrow
               </span>
               <Lock className="w-5 h-5 text-jade-600 dark:text-jade-400" />
             </div>
-            <p className="mt-4 font-mono font-black text-3xl text-ink-900 dark:text-white">
+            <p className="mt-4 font-mono font-bold text-3xl text-ink-900 dark:text-white">
               ₦{(escrowAsSeller + escrowAsBuyer).toLocaleString()}
             </p>
             <div className="mt-3 space-y-1.5 text-xs text-ink-500">
@@ -253,12 +253,12 @@ export default function WalletView({ onNavigate, onOpenAuth }: WalletViewProps) 
 
           <Card className="p-6">
             <div className="flex items-center justify-between">
-              <span className="text-xs uppercase tracking-widest font-mono font-bold text-ink-500">
+              <span className="text-xs tracking-widest font-mono font-bold text-ink-500">
                 Payouts in progress
               </span>
               <Clock className="w-5 h-5 text-ink-500" />
             </div>
-            <p className="mt-4 font-mono font-black text-3xl text-ink-900 dark:text-white">
+            <p className="mt-4 font-mono font-bold text-3xl text-ink-900 dark:text-white">
               ₦{pendingPayouts.toLocaleString()}
             </p>
             <p className="mt-2 text-xs text-ink-500">
@@ -272,7 +272,7 @@ export default function WalletView({ onNavigate, onOpenAuth }: WalletViewProps) 
           <Card className="lg:col-span-2 p-6">
             <div className="flex items-center gap-2 mb-1">
               <ArrowDownToLine className="w-5 h-5 text-jade-600 dark:text-jade-400" />
-              <h2 className="font-display font-black text-lg text-ink-900 dark:text-white">
+              <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white">
                 Withdraw to bank
               </h2>
             </div>
@@ -282,7 +282,7 @@ export default function WalletView({ onNavigate, onOpenAuth }: WalletViewProps) 
 
             <form onSubmit={handleWithdraw} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-ink-500 mb-1.5">
+                <label className="block text-xs font-bold tracking-wider text-ink-500 mb-1.5">
                   Amount (₦)
                 </label>
                 <input
@@ -312,7 +312,7 @@ export default function WalletView({ onNavigate, onOpenAuth }: WalletViewProps) 
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-ink-500 mb-1.5">
+                <label className="block text-xs font-bold tracking-wider text-ink-500 mb-1.5">
                   Bank
                 </label>
                 <div className="relative">
@@ -327,7 +327,7 @@ export default function WalletView({ onNavigate, onOpenAuth }: WalletViewProps) 
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-ink-500 mb-1.5">
+                <label className="block text-xs font-bold tracking-wider text-ink-500 mb-1.5">
                   Account name
                 </label>
                 <div className="relative">
@@ -342,7 +342,7 @@ export default function WalletView({ onNavigate, onOpenAuth }: WalletViewProps) 
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-ink-500 mb-1.5">
+                <label className="block text-xs font-bold tracking-wider text-ink-500 mb-1.5">
                   Account number
                 </label>
                 <div className="relative">
@@ -375,7 +375,7 @@ export default function WalletView({ onNavigate, onOpenAuth }: WalletViewProps) 
               <div className="flex items-center justify-between gap-4 mb-4">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="w-5 h-5 text-jade-600 dark:text-jade-400" />
-                  <h2 className="font-display font-black text-lg text-ink-900 dark:text-white">
+                  <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white">
                     Escrow breakdown
                   </h2>
                 </div>
@@ -402,7 +402,7 @@ export default function WalletView({ onNavigate, onOpenAuth }: WalletViewProps) 
                         </p>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className="font-mono font-black text-ink-900 dark:text-white">
+                        <p className="font-mono font-bold text-ink-900 dark:text-white">
                           ₦{row.amount.toLocaleString()}
                         </p>
                         <span className="inline-flex items-center gap-1 text-xs font-bold text-ink-500">
@@ -417,7 +417,7 @@ export default function WalletView({ onNavigate, onOpenAuth }: WalletViewProps) 
 
             <Card className="p-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-                <h2 className="font-display font-black text-lg text-ink-900 dark:text-white">
+                <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white">
                   Transactions
                 </h2>
                 <SegmentedControl
@@ -465,7 +465,7 @@ export default function WalletView({ onNavigate, onOpenAuth }: WalletViewProps) 
                         </div>
                         <div className="text-right shrink-0">
                           <p
-                            className={`font-mono font-black ${
+                            className={`font-mono font-bold ${
                               isCredit ? 'text-jade-600 dark:text-jade-400' : 'text-ink-900 dark:text-white'
                             }`}
                           >

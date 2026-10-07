@@ -50,6 +50,84 @@ export enum VerificationStatus {
   REJECTED = 'REJECTED',
 }
 
+/** What a verification application is asking GoodSale to verify. */
+export enum VerificationKind {
+  /** A buyer completing personal identity verification. */
+  IDENTITY = 'IDENTITY',
+  /** A seller asking for the verified-seller badge. */
+  SELLER = 'SELLER',
+  /** A business asking for the verified-business badge. */
+  BUSINESS = 'BUSINESS',
+}
+
+/** A single uploaded file an admin must review before approving. */
+export interface VerificationDocument {
+  label: string;
+  url: string;
+  kind?: 'IDENTITY' | 'SELFIE' | 'ADDRESS' | 'LICENSE' | 'VEHICLE' | 'CAC' | 'PROOF' | 'OTHER';
+  /** Free-text detail an admin needs (document number, expiry, issuer…). */
+  note?: string;
+}
+
+/** Where GoodSale is commercially active — admin-managed. */
+export interface ServiceArea {
+  id: number;
+  state: string;
+  city: string;
+  /** Sellers may list & buyers may order in this city. */
+  salesEnabled: boolean;
+  /** GoodDispatch couriers / partners accept deliveries here. */
+  deliveryEnabled: boolean;
+  createdAt: string;
+}
+
+export type ReportTargetType = 'USER' | 'PRODUCT' | 'MESSAGE' | 'BUSINESS' | 'ORDER';
+export type ReportStatus = 'OPEN' | 'REVIEWING' | 'RESOLVED' | 'DISMISSED';
+
+/** A user-submitted report an admin triages. */
+export interface Report {
+  id: number;
+  reporterId?: number;
+  targetType: ReportTargetType;
+  targetId: number;
+  targetLabel: string;
+  reason: string;
+  details: string;
+  evidenceUrl: string;
+  status: ReportStatus;
+  adminNotes?: string;
+  resolvedBy?: number;
+  resolvedAt?: string;
+  createdAt: string;
+}
+
+export type CallKind = 'AUDIO' | 'VIDEO';
+export type CallStatus = 'RINGING' | 'ONGOING' | 'COMPLETED' | 'MISSED' | 'DECLINED' | 'FAILED';
+
+/** Audio / video call record shown in the chat's call history. */
+export interface Call {
+  id: number;
+  roomId: number;
+  callerId: number;
+  calleeId: number;
+  kind: CallKind;
+  status: CallStatus;
+  startedAt: string;
+  answeredAt?: string;
+  endedAt?: string;
+  durationSeconds: number;
+  createdAt: string;
+}
+
+/** An emoji reaction a participant left on a chat message. */
+export interface MessageReaction {
+  id: number;
+  messageId: number;
+  userId: number;
+  emoji: string;
+  createdAt: string;
+}
+
 // Interfaces corresponding to our database relational schema
 export interface User {
   id: number;
@@ -232,6 +310,8 @@ export interface Message {
   id: number;
   roomId: number;
   senderId: number;
+  /** Set when this message quotes an earlier message in the same thread. */
+  replyToId?: number;
   messageText?: string;
   imageUrl?: string;
   videoUrl?: string;
@@ -291,14 +371,23 @@ export interface Review {
 export interface IdentityVerification {
   id: number;
   userId: number;
+  /** IDENTITY (personal) or SELLER / BUSINESS (badge application). */
+  applicationKind: VerificationKind;
   fullName: string;
   documentType: DocumentType;
   documentNumber: string;
   documentImageUrl: string;
   selfieImageUrl: string;
   proofOfAddressUrl: string;
+  /** Extra uploads beyond the three standard slots above. */
+  documents: VerificationDocument[];
+  businessName: string;
+  businessAddress: string;
   status: VerificationStatus;
   adminNotes?: string;
+  rejectionReason?: string;
+  reviewedBy?: number;
+  reviewedAt?: string;
   createdAt: string;
 }
 
@@ -507,6 +596,11 @@ export interface DeliveryPartner {
   nin: string;
   selfieUrl: string;
   licenseUrl?: string;
+  /** Every document the rider uploaded for review. */
+  documents: VerificationDocument[];
+  rejectionReason?: string;
+  reviewedBy?: number;
+  reviewedAt?: string;
   createdAt: string;
 }
 
@@ -666,6 +760,10 @@ export interface GoodSaleDBState {
   disputes: Dispute[];
   chatRooms: ChatRoom[];
   messages: Message[];
+  messageReactions: MessageReaction[];
+  calls: Call[];
+  reports: Report[];
+  serviceAreas: ServiceArea[];
   reviews: Review[];
   verifications: IdentityVerification[];
   goodPoints: GoodPointsTransaction[];

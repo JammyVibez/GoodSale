@@ -2,35 +2,96 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  ShieldCheck, CheckCircle, ChevronRight, Upload, AlertCircle, 
-  Loader2, FileText, Sparkles, Award, MapPin, Eye, Info
+import {
+  ShieldCheck, CheckCircle, ChevronRight, Upload, Loader2, FileText,
+  Sparkles, Award, Info, Building2, Camera, MapPin, IdCard,
 } from 'lucide-react';
-import { getDBState, saveDBState, dbOperations, UserRole, DocumentType } from '../lib/store';
+import { getDBState, dbOperations, UserRole, DocumentType, VerificationKind } from '../lib/store';
 import { isDemoMode } from '@/lib/demo';
+import { toast } from '@/lib/feedback';
+import { salesStates, salesCitiesFor } from '@/lib/serviceAreas';
+
+type SlotKey = 'id' | 'selfie' | 'address' | 'registration';
+
+interface SlotDef {
+  key: SlotKey;
+  label: string;
+  hint: string;
+  Icon: React.ComponentType<{ className?: string }>;
+}
+
+const SLOTS: SlotDef[] = [
+  { key: 'id', label: 'Government photo ID', hint: 'NIN slip, passport, voter or driver’s licence', Icon: FileText },
+  { key: 'selfie', label: 'Selfie holding your ID', hint: 'Face and document clearly visible', Icon: Camera },
+  { key: 'address', label: 'Proof of address', hint: 'Utility bill or bank statement (last 3 months)', Icon: MapPin },
+  { key: 'registration', label: 'Business registration (CAC)', hint: 'Required for enterprise stores only', Icon: Building2 },
+];
+
+/** One upload tile: click or drop a file, preview it, and replace it again. */
+function UploadSlot({
+  slot,
+  value,
+  uploading,
+  onPick,
+}: {
+  slot: SlotDef;
+  value?: { url: string; name: string };
+  uploading: boolean;
+  onPick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      className={`flex items-start gap-3 rounded-2xl border p-3 text-left transition-all cursor-pointer ${
+        value
+          ? 'border-jade-500/40 bg-jade-500/[0.06]'
+          : 'border-dashed border-ink-200 bg-ink-50/50 hover:border-jade-500/50 dark:border-ink-800 dark:bg-ink-950/20'
+      }`}
+    >
+      <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-xl bg-white text-ink-400 dark:bg-ink-900">
+        {uploading ? (
+          <Loader2 className="h-4 w-4 animate-spin text-jade-500" />
+        ) : value && /\.(png|jpe?g|webp)$/i.test(value.url) ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={value.url} alt="" className="h-full w-full object-cover" />
+        ) : value ? (
+          <CheckCircle className="h-5 w-5 text-jade-500" />
+        ) : (
+          <slot.Icon className="h-5 w-5" />
+        )}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-xs font-semibold text-ink-800 dark:text-ink-100">{slot.label}</span>
+        <span className="mt-0.5 block truncate text-xs text-ink-400">
+          {uploading ? 'Uploading securely…' : value ? 'Uploaded — click to replace' : slot.hint}
+        </span>
+      </span>
+    </button>
+  );
+}
 
 export default function VerificationBadgeView() {
   const [db, setDb] = useState(getDBState());
   const [bvn, setBvn] = useState('');
   const [nin, setNin] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [businessName, setBusinessName] = useState('');
+  const [businessAddress, setBusinessAddress] = useState('');
+  const [businessState, setBusinessState] = useState('');
+  const [businessCity, setBusinessCity] = useState('');
   const [userRoleSelection, setUserRoleSelection] = useState<'SELLER' | 'BUSINESS'>('SELLER');
   const [documentType, setDocumentType] = useState<DocumentType>(DocumentType.NIN);
   const [bvnError, setBvnError] = useState<string | null>(null);
-  
-  // File Upload states
-  const [file, setFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
-  const [uploadSource, setUploadSource] = useState<string | null>(null);
-  const [dragActive, setDragActive] = useState(false);
+  const [uploadingSlot, setUploadingSlot] = useState<SlotKey | null>(null);
+  const [docs, setDocs] = useState<Partial<Record<SlotKey, { url: string; name: string }>>>({});
   const [isSubmitted, setIsSubmitted] = useState(false);
-  
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const activeSlotRef = useRef<SlotKey>('id');
 
   useEffect(() => {
-    const handleStateChange = () => {
-      setDb(getDBState());
-    };
+    const handleStateChange = () => setDb(getDBState());
     window.addEventListener('goodsale_db_state_change', handleStateChange);
     return () => window.removeEventListener('goodsale_db_state_change', handleStateChange);
   }, []);
@@ -38,86 +99,56 @@ export default function VerificationBadgeView() {
   const user = db.currentUser;
   const isVerified = user?.role === UserRole.VERIFIED_SELLER || user?.role === UserRole.VERIFIED_BUSINESS;
 
-  // Handle Drag Events
-  const handleDrag = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true);
-    } else if (e.type === "dragleave") {
-      setDragActive(false);
-    }
+  useEffect(() => {
+    if (user && !fullName) setFullName(user.fullName || '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  const pickSlot = (slot: SlotKey) => {
+    activeSlotRef.current = slot;
+    fileInputRef.current?.click();
   };
 
-  // Handle Drop Events
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const droppedFile = e.dataTransfer.files[0];
-      await processAndUploadFile(droppedFile);
-    }
-  };
-
-  // Handle File Input Selection
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const selectedFile = e.target.files[0];
-      await processAndUploadFile(selectedFile);
-    }
-  };
-
-  // Process ID File and Upload via Server-Side route
-  const processAndUploadFile = async (selectedFile: File) => {
-    // Validate file type & size
+  /** Upload one document to secure storage (with a local preview fallback). */
+  const processAndUploadFile = async (selectedFile: File, slot: SlotKey) => {
     const allowedTypes = ['image/jpeg', 'image/png', 'application/pdf'];
     if (!allowedTypes.includes(selectedFile.type)) {
-      setBvnError("Unsupported file format. Please upload JPG, PNG, or PDF.");
+      setBvnError('Unsupported file format. Please upload JPG, PNG, or PDF.');
       return;
     }
     if (selectedFile.size > 5 * 1024 * 1024) {
-      setBvnError("File is too large. Maximum size allowed is 5MB.");
+      setBvnError('File is too large. Maximum size allowed is 5MB.');
       return;
     }
 
-    setFile(selectedFile);
     setBvnError(null);
-    setUploading(true);
+    setUploadingSlot(slot);
 
     try {
       const formData = new FormData();
-      formData.append("file", selectedFile);
-      if (user) {
-        formData.append("userId", user.id.toString());
-      }
+      formData.append('file', selectedFile);
+      if (user) formData.append('userId', user.id.toString());
 
-      const res = await fetch("/api/upload-id", {
-        method: "POST",
-        body: formData,
-      });
-
+      const res = await fetch('/api/upload-id', { method: 'POST', body: formData });
       const data = await res.json();
-      if (data.success && data.url) {
-        setUploadedUrl(data.url);
-        setUploadSource(data.source);
-      } else {
-        throw new Error(data.error || "Upload failed");
-      }
-    } catch (err: any) {
-      console.error("Upload error:", err);
-      setBvnError(`Upload failed: ${err.message}. Standard fallback preview used instead.`);
-      // Mock fallback URL for elegant preview
-      setUploadedUrl(URL.createObjectURL(selectedFile));
-      setUploadSource("client-preview-fallback");
+      if (!data.success || !data.url) throw new Error(data.error || 'Upload failed');
+      setDocs((prev) => ({ ...prev, [slot]: { url: data.url, name: selectedFile.name } }));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Upload failed';
+      setBvnError(`Upload failed: ${message}`);
+      setDocs((prev) => ({
+        ...prev,
+        [slot]: { url: URL.createObjectURL(selectedFile), name: selectedFile.name },
+      }));
     } finally {
-      setUploading(false);
+      setUploadingSlot(null);
     }
   };
 
-  const handleTriggerFileInput = () => {
-    fileInputRef.current?.click();
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile) await processAndUploadFile(selectedFile, activeSlotRef.current);
+    e.target.value = '';
   };
 
   const handleSubmitVerification = (e: React.FormEvent) => {
@@ -125,121 +156,161 @@ export default function VerificationBadgeView() {
     setBvnError(null);
 
     if (!user) {
-      setBvnError("Please sign in or hop in as a guest before verifying.");
+      setBvnError('Please sign in before applying for verification.');
       return;
     }
-
-    if (bvn.length !== 11 || isNaN(Number(bvn))) {
-      setBvnError('Nigerian Bank Verification Number (BVN) must be exactly 11 digits');
+    if (!fullName.trim()) {
+      setBvnError('Enter your full legal name exactly as it appears on your ID.');
       return;
     }
-
     if (nin.length !== 11 || isNaN(Number(nin))) {
       setBvnError('Nigerian National Identification Number (NIN) must be exactly 11 digits');
       return;
     }
-
-    if (!uploadedUrl) {
-      setBvnError("Please upload a valid government photo ID document first.");
+    if (bvn && (bvn.length !== 11 || isNaN(Number(bvn)))) {
+      setBvnError('Bank Verification Number (BVN) must be exactly 11 digits');
       return;
     }
-
-    // Submit verification to state
-    dbOperations.submitVerification(documentType, nin, uploadedUrl);
-
-    // Instant verify is demo-only; production waits for admin review
-    if (isDemoMode()) {
-      const targetRole = userRoleSelection === 'SELLER' ? UserRole.VERIFIED_SELLER : UserRole.VERIFIED_BUSINESS;
-      dbOperations.verifyUserImmediately(user.id, targetRole);
+    if (!docs.id?.url) {
+      setBvnError('Upload your government photo ID first.');
+      return;
     }
-    setIsSubmitted(true);
+    if (userRoleSelection === 'BUSINESS') {
+      if (!businessName.trim() || !businessAddress.trim()) {
+        setBvnError('Enter your registered business name and address.');
+        return;
+      }
+      if (!docs.registration?.url) {
+        setBvnError('Upload your CAC business registration document.');
+        return;
+      }
+    }
+
+    const documents = Object.entries(docs)
+      .filter(([, value]) => Boolean(value?.url))
+      .map(([key, value]) => ({
+        label: SLOTS.find((s) => s.key === key)?.label || key,
+        url: value!.url,
+        kind: key === 'selfie' ? ('SELFIE' as const)
+          : key === 'address' ? ('ADDRESS' as const)
+          : key === 'registration' ? ('CAC' as const)
+          : ('IDENTITY' as const),
+        note: key === 'id' ? `${documentType} · ${nin}` : undefined,
+      }));
+
+    void (async () => {
+      const res = await dbOperations.submitVerificationApplication({
+        kind: userRoleSelection === 'BUSINESS' ? VerificationKind.BUSINESS : VerificationKind.SELLER,
+        fullName: fullName.trim(),
+        documentType,
+        documentNumber: nin,
+        documentImageUrl: docs.id?.url || '',
+        selfieImageUrl: docs.selfie?.url || '',
+        proofOfAddressUrl: docs.address?.url || '',
+        documents,
+        businessName: businessName.trim(),
+        businessAddress: [businessAddress.trim(), businessCity, businessState].filter(Boolean).join(', '),
+      });
+
+      if (res && 'error' in res && res.error) {
+        setBvnError(res.error);
+        return;
+      }
+
+      // Instant verify is demo-only; production always waits for admin review.
+      if (isDemoMode()) {
+        const targetRole =
+          userRoleSelection === 'SELLER' ? UserRole.VERIFIED_SELLER : UserRole.VERIFIED_BUSINESS;
+        dbOperations.verifyUserImmediately(user.id, targetRole);
+      }
+      toast.success('Application submitted. Our team reviews every document before approving.', 'Under review');
+      setIsSubmitted(true);
+    })();
   };
 
+  const requiredSlots = userRoleSelection === 'BUSINESS' ? SLOTS : SLOTS.filter((s) => s.key !== 'registration');
+
   return (
-    <div className="bg-ink-50 dark:bg-ink-950 min-h-screen py-10 px-4 sm:px-6 lg:px-8 transition-colors duration-300">
-      <div className="max-w-2xl mx-auto">
-        
-        {/* Main Badge Card */}
-        <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
-          
+    <div className="min-h-screen bg-ink-50 px-4 py-10 transition-colors duration-300 dark:bg-ink-950 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-2xl">
+        <div className="space-y-6 rounded-3xl border border-ink-200 bg-white p-6 shadow-sm dark:border-ink-800 dark:bg-ink-900 sm:p-8">
           <div className="text-center">
-            <div className="w-16 h-16 rounded-2xl bg-ink-500/10 flex items-center justify-center text-ink-500 mx-auto mb-4">
-              <ShieldCheck className="w-8 h-8 fill-ink-500/10 animate-pulse" />
+            <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-jade-500/10 text-jade-500">
+              <ShieldCheck className="h-8 w-8" />
             </div>
-            <h1 className="font-sans font-extrabold text-xl sm:text-2xl tracking-tight text-ink-950 dark:text-white">
-              GoodSale Gold Trust Badge Verification
+            <h1 className="font-display text-xl font-bold tracking-tight text-ink-950 dark:text-white sm:text-2xl">
+              GoodSale Seller &amp; Business Verification
             </h1>
-            <p className="text-xs text-ink-500 dark:text-ink-400 max-w-md mx-auto mt-1.5 leading-relaxed">
-              Verify your credentials using secure server-side storage and Nigeria&apos;s national ID registers (BVN/NIN). Certified merchants receive gold trust badges and immediate search rankings.
+            <p className="mx-auto mt-1.5 max-w-md text-sm leading-relaxed text-ink-500 dark:text-ink-400">
+              Verified sellers earn the gold trust badge, rank higher in search and convert more
+              buyers. Upload every document once — our review team checks each file before approval.
             </p>
           </div>
 
-          {isVerified ? (
-            <div className="p-8 bg-jade-500/5 border border-jade-500/20 rounded-3xl text-center space-y-3 relative overflow-hidden">
-              <div className="absolute -top-10 -right-10 w-32 h-32 bg-jade-500/5 rounded-full blur-xl" />
-              <CheckCircle className="w-12 h-12 text-jade-500 mx-auto" />
-              <h3 className="font-sans font-extrabold text-base text-ink-900 dark:text-white flex items-center justify-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-ink-500 fill-ink-500" />
-                Profile Status: Verified Merchant
+          {isVerified || isSubmitted ? (
+            <div className="relative space-y-3 overflow-hidden rounded-3xl border border-jade-500/20 bg-jade-500/5 p-8 text-center">
+              <CheckCircle className="mx-auto h-12 w-12 text-jade-500" />
+              <h3 className="flex items-center justify-center gap-1.5 font-display text-base font-bold text-ink-900 dark:text-white">
+                <Sparkles className="h-4 w-4 text-jade-500" />
+                {isVerified ? 'Profile status: verified merchant' : 'Application received'}
               </h3>
-              <p className="text-xs text-ink-500 dark:text-ink-400 max-w-md mx-auto leading-relaxed">
-                Your profile has received the prestigious **Gold Trust Badge**. All your product listings are now boosted with priority ranking, and customers see your verification badge on the catalog grid.
+              <p className="mx-auto max-w-md text-sm leading-relaxed text-ink-500 dark:text-ink-400">
+                {isVerified
+                  ? 'Your gold trust badge is live. Listings are boosted in ranking and buyers see your verification badge across the marketplace.'
+                  : 'Thank you. Our trust & safety team is reviewing your documents. You will be notified in-app as soon as a decision is made.'}
               </p>
-              <div className="pt-2 flex flex-wrap gap-2 justify-center">
-                <span className="px-3 py-1 bg-ink-500/10 text-ink-600 dark:text-ink-400 font-bold rounded-lg text-xs flex items-center gap-1">
-                  <Award className="w-3.5 h-3.5" />
-                  Gold Trust Badge
+              <div className="flex flex-wrap justify-center gap-2 pt-2">
+                <span className="flex items-center gap-1 rounded-lg bg-ink-500/10 px-3 py-1 text-xs font-semibold text-ink-600 dark:text-ink-400">
+                  <Award className="h-3.5 w-3.5" /> Gold trust badge
                 </span>
-                <span className="px-3 py-1 bg-jade-500/10 text-jade-600 dark:text-jade-400 font-bold rounded-lg text-xs flex items-center gap-1">
-                  +200 GoodPoints Granted
+                <span className="flex items-center gap-1 rounded-lg bg-jade-500/10 px-3 py-1 text-xs font-semibold text-jade-700 dark:text-jade-400">
+                  +200 GoodPoints granted
                 </span>
               </div>
             </div>
           ) : (
             <form onSubmit={handleSubmitVerification} className="space-y-4 text-xs">
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="text-ink-500 dark:text-ink-400 block mb-1 font-extrabold font-sans">Apply as Merchant Type</label>
+                  <label className="mb-1 block font-semibold text-ink-500 dark:text-ink-400">Apply as</label>
                   <select
                     value={userRoleSelection}
                     onChange={(e) => setUserRoleSelection(e.target.value as 'SELLER' | 'BUSINESS')}
-                    className="w-full px-3 py-2 bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl text-ink-800 dark:text-white font-semibold cursor-pointer outline-none focus:border-jade-500 transition-colors"
+                    className="w-full cursor-pointer rounded-xl border border-ink-200 bg-ink-50 px-3 py-2 font-semibold text-ink-800 outline-none transition-colors focus:border-jade-500 dark:border-ink-700 dark:bg-ink-800 dark:text-white"
                   >
-                    <option value="SELLER">Verified Individual Seller</option>
-                    <option value="BUSINESS">Verified Enterprise Store</option>
+                    <option value="SELLER">Verified individual seller</option>
+                    <option value="BUSINESS">Verified enterprise store</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="text-ink-500 dark:text-ink-400 block mb-1 font-extrabold font-sans">Government ID Type</label>
+                  <label className="mb-1 block font-semibold text-ink-500 dark:text-ink-400">Government ID type</label>
                   <select
                     value={documentType}
                     onChange={(e) => setDocumentType(e.target.value as DocumentType)}
-                    className="w-full px-3 py-2 bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl text-ink-800 dark:text-white font-semibold cursor-pointer outline-none focus:border-jade-500 transition-colors"
+                    className="w-full cursor-pointer rounded-xl border border-ink-200 bg-ink-50 px-3 py-2 font-semibold text-ink-800 outline-none transition-colors focus:border-jade-500 dark:border-ink-700 dark:bg-ink-800 dark:text-white"
                   >
-                    <option value={DocumentType.NIN}>National ID Card (NIN Slip)</option>
-                    <option value={DocumentType.PASSPORT}>Nigerian International Passport</option>
-                    <option value={DocumentType.VOTERS_CARD}>Voters Card (INEC)</option>
-                    <option value={DocumentType.DRIVERS_LICENSE}>Drivers License (FRSC)</option>
+                    <option value={DocumentType.NIN}>National ID card (NIN slip)</option>
+                    <option value={DocumentType.PASSPORT}>Nigerian international passport</option>
+                    <option value={DocumentType.VOTERS_CARD}>Voter&apos;s card (INEC)</option>
+                    <option value={DocumentType.DRIVERS_LICENSE}>Driver&apos;s licence (FRSC)</option>
                   </select>
                 </div>
 
-                <div>
-                  <label className="text-ink-500 dark:text-ink-400 block mb-1 font-extrabold font-sans">Bank Verification Number (11-digit BVN)</label>
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block font-semibold text-ink-500 dark:text-ink-400">Full legal name</label>
                   <input
-                    type="password"
-                    maxLength={11}
+                    type="text"
                     required
-                    value={bvn}
-                    onChange={(e) => setBvn(e.target.value.replace(/\D/g, ''))}
-                    placeholder="e.g. 22233344455"
-                    className="w-full px-3 py-2 bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl text-ink-800 dark:text-white font-mono tracking-widest outline-none focus:border-jade-500 transition-colors"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Exactly as printed on your ID"
+                    className="w-full rounded-xl border border-ink-200 bg-ink-50 px-3 py-2 font-semibold text-ink-800 outline-none transition-colors focus:border-jade-500 dark:border-ink-700 dark:bg-ink-800 dark:text-white"
                   />
                 </div>
 
                 <div>
-                  <label className="text-ink-500 dark:text-ink-400 block mb-1 font-extrabold font-sans">National ID Number (11-digit NIN)</label>
+                  <label className="mb-1 block font-semibold text-ink-500 dark:text-ink-400">National ID number (11-digit NIN)</label>
                   <input
                     type="text"
                     maxLength={11}
@@ -247,17 +318,87 @@ export default function VerificationBadgeView() {
                     value={nin}
                     onChange={(e) => setNin(e.target.value.replace(/\D/g, ''))}
                     placeholder="e.g. 99988877766"
-                    className="w-full px-3 py-2 bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl text-ink-800 dark:text-white font-mono tracking-widest outline-none focus:border-jade-500 transition-colors"
+                    className="w-full rounded-xl border border-ink-200 bg-ink-50 px-3 py-2 font-mono text-ink-800 tracking-widest outline-none transition-colors focus:border-jade-500 dark:border-ink-700 dark:bg-ink-800 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block font-semibold text-ink-500 dark:text-ink-400">
+                    Bank verification number (optional)
+                  </label>
+                  <input
+                    type="password"
+                    maxLength={11}
+                    value={bvn}
+                    onChange={(e) => setBvn(e.target.value.replace(/\D/g, ''))}
+                    placeholder="11-digit BVN"
+                    className="w-full rounded-xl border border-ink-200 bg-ink-50 px-3 py-2 font-mono text-ink-800 tracking-widest outline-none transition-colors focus:border-jade-500 dark:border-ink-700 dark:bg-ink-800 dark:text-white"
                   />
                 </div>
               </div>
 
-              {/* Upload Document Slot with Supabase and Drag-and-Drop */}
-              <div>
-                <label className="text-ink-500 dark:text-ink-400 block mb-1 font-extrabold font-sans">
-                  Upload Government Photo ID (NIN Slip, Voter Card, or Passport)
+              {userRoleSelection === 'BUSINESS' && (
+                <div className="space-y-4 rounded-2xl border border-jade-500/20 bg-jade-500/[0.04] p-4">
+                  <p className="flex items-center gap-1.5 font-semibold text-jade-700 dark:text-jade-300">
+                    <Building2 className="h-4 w-4" /> Business details
+                  </p>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="sm:col-span-2">
+                      <label className="mb-1 block font-semibold text-ink-500 dark:text-ink-400">Registered business name</label>
+                      <input
+                        type="text"
+                        value={businessName}
+                        onChange={(e) => setBusinessName(e.target.value)}
+                        placeholder="e.g. Bright Electronics Ltd"
+                        className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 font-semibold text-ink-800 outline-none transition-colors focus:border-jade-500 dark:border-ink-700 dark:bg-ink-900 dark:text-white"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="mb-1 block font-semibold text-ink-500 dark:text-ink-400">Business address</label>
+                      <input
+                        type="text"
+                        value={businessAddress}
+                        onChange={(e) => setBusinessAddress(e.target.value)}
+                        placeholder="Street address"
+                        className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 font-semibold text-ink-800 outline-none transition-colors focus:border-jade-500 dark:border-ink-700 dark:bg-ink-900 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block font-semibold text-ink-500 dark:text-ink-400">State</label>
+                      <select
+                        value={businessState}
+                        onChange={(e) => {
+                          setBusinessState(e.target.value);
+                          const cities = salesCitiesFor(e.target.value);
+                          setBusinessCity(cities[0] || '');
+                        }}
+                        className="w-full cursor-pointer rounded-xl border border-ink-200 bg-white px-3 py-2 font-semibold text-ink-800 outline-none transition-colors focus:border-jade-500 dark:border-ink-700 dark:bg-ink-900 dark:text-white"
+                      >
+                        <option value="">Select state</option>
+                        {salesStates().map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block font-semibold text-ink-500 dark:text-ink-400">City</label>
+                      <input
+                        type="text"
+                        value={businessCity}
+                        onChange={(e) => setBusinessCity(e.target.value)}
+                        placeholder="City / area"
+                        className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 font-semibold text-ink-800 outline-none transition-colors focus:border-jade-500 dark:border-ink-700 dark:bg-ink-900 dark:text-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Document slots — every uploaded file is visible to the reviewer */}
+              <div className="space-y-2">
+                <label className="block font-semibold text-ink-500 dark:text-ink-400">
+                  Documents for review
                 </label>
-                
                 <input
                   type="file"
                   ref={fileInputRef}
@@ -265,96 +406,47 @@ export default function VerificationBadgeView() {
                   accept="image/jpeg,image/png,application/pdf"
                   className="hidden"
                 />
-
-                <div 
-                  onDragEnter={handleDrag}
-                  onDragOver={handleDrag}
-                  onDragLeave={handleDrag}
-                  onDrop={handleDrop}
-                  onClick={handleTriggerFileInput}
-                  className={`p-6 border-2 border-dashed rounded-2xl text-center cursor-pointer transition-all ${
-                    dragActive 
-                      ? 'border-jade-500 bg-jade-500/5' 
-                      : 'border-ink-200 dark:border-ink-800 hover:border-jade-500/50 bg-ink-50/50 dark:bg-ink-950/20'
-                  }`}
-                >
-                  {uploading ? (
-                    <div className="py-4 space-y-2 flex flex-col items-center">
-                      <Loader2 className="w-8 h-8 text-jade-500 animate-spin" />
-                      <p className="font-bold text-ink-700 dark:text-ink-300">Uploading securely to Supabase Storage...</p>
-                      <p className="text-xs text-ink-400">Encrypting file buffer & verifying payload size...</p>
-                    </div>
-                  ) : uploadedUrl ? (
-                    <div className="py-2 space-y-3">
-                      <div className="w-12 h-12 rounded-xl bg-jade-500/10 text-jade-500 flex items-center justify-center mx-auto">
-                        <CheckCircle className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <p className="font-bold text-ink-900 dark:text-white text-xs">File Uploaded Successfully!</p>
-                        <p className="text-xs text-jade-600 dark:text-jade-400 font-mono mt-0.5">
-                          Source: {uploadSource}
-                        </p>
-                      </div>
-                      
-                      {/* Document Preview Thumbnail if image */}
-                      {file && file.type.startsWith('image/') && (
-                        <div className="relative mx-auto w-32 aspect-[3/2] rounded-lg overflow-hidden border border-ink-200 dark:border-ink-800 mt-2 shadow-sm bg-white dark:bg-ink-900">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img 
-                            src={uploadedUrl} 
-                            alt="ID Preview" 
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                      )}
-
-                      <p className="text-xs text-ink-400 underline font-semibold">
-                        Click or drop another file to replace
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="py-4">
-                      <Upload className="w-8 h-8 text-ink-400 mx-auto mb-2.5" />
-                      <span className="font-extrabold block text-ink-800 dark:text-ink-200 mb-1 font-sans">
-                        Click to select government ID or drag-and-drop
-                      </span>
-                      <span className="text-xs text-ink-400 block">
-                        PDF, PNG, JPG (Max size 5MB)
-                      </span>
-                    </div>
-                  )}
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {requiredSlots.map((slot) => (
+                    <UploadSlot
+                      key={slot.key}
+                      slot={slot}
+                      value={docs[slot.key]}
+                      uploading={uploadingSlot === slot.key}
+                      onPick={() => pickSlot(slot.key)}
+                    />
+                  ))}
                 </div>
               </div>
 
-              {uploadedUrl && (
-                <div className="p-3 bg-jade-500/5 border border-jade-500/10 rounded-xl flex items-start gap-2.5">
-                  <Info className="w-4 h-4 text-jade-500 shrink-0 mt-0.5" />
-                  <p className="text-xs text-jade-600 dark:text-jade-400 leading-relaxed font-sans">
-                    <strong>Secure Link:</strong> Government ID is isolated in server storage. Only automated security scanners can inspect details to protect your privacy.
+              {(docs.id || docs.selfie || docs.address || docs.registration) && (
+                <div className="flex items-start gap-2.5 rounded-xl border border-jade-500/10 bg-jade-500/5 p-3">
+                  <Info className="mt-0.5 h-4 w-4 shrink-0 text-jade-500" />
+                  <p className="text-xs leading-relaxed text-jade-700 dark:text-jade-300">
+                    <strong>Private by design.</strong> Your documents are stored in isolated,
+                    access-controlled storage. Only the GoodSale review team can open them, and they
+                    are never shown on your public profile.
                   </p>
                 </div>
               )}
 
               {bvnError && (
-                <p className="p-3 bg-ink-500/10 border border-ink-500/20 rounded-xl text-ink-500 font-bold text-center">
+                <p className="rounded-xl border border-ink-500/20 bg-ink-500/10 p-3 text-center font-semibold text-ink-600 dark:text-ink-300">
                   {bvnError}
                 </p>
               )}
 
               <button
                 type="submit"
-                disabled={uploading}
-                className="w-full py-3 bg-jade-500 hover:bg-jade-600 text-white font-sans font-extrabold text-xs rounded-xl transition-all shadow-md shadow-jade-500/10 cursor-pointer flex items-center justify-center gap-1 disabled:opacity-50"
+                disabled={uploadingSlot !== null}
+                className="flex w-full cursor-pointer items-center justify-center gap-1 rounded-xl bg-jade-500 py-3 font-display text-sm font-semibold text-white shadow-md shadow-jade-500/10 transition-all hover:bg-jade-600 disabled:opacity-50"
               >
-                Submit ID Verification & Auto-Verify Profile
-                <ChevronRight className="w-4 h-4" />
+                Submit application for review
+                <ChevronRight className="h-4 w-4" />
               </button>
-
             </form>
           )}
-
         </div>
-
       </div>
     </div>
   );

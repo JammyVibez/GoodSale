@@ -9,7 +9,7 @@ import {
   Shirt, Cpu, Smartphone, Laptop, Armchair, Apple, Car, BookOpen, Gavel
 } from 'lucide-react';
 import { Product, getDBState, UserRole, useDBState, dbOperations } from '../lib/store';
-import { SmartAvatar } from './ui/SmartImage';
+import { SmartAvatar, SmartImage } from './ui/SmartImage';
 import EmptyState from './ui/EmptyState';
 import AdSlot from './AdSlot';
 
@@ -172,10 +172,10 @@ export default function LandingView({
         <section className="mb-8 rounded-[32px] border border-ink-200 bg-white p-6 shadow-sm sm:p-8 dark:border-ink-800 dark:bg-ink-900">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
-              <span className="font-mono text-xs font-bold uppercase tracking-widest text-jade-600 dark:text-jade-400">
+              <span className="text-sm font-semibold text-jade-600 dark:text-jade-400">
                 Marketplace
               </span>
-              <h1 className="mt-2 font-display text-2xl font-black tracking-tight text-ink-900 sm:text-3xl dark:text-white">
+              <h1 className="mt-2 font-display text-2xl font-bold tracking-tight text-ink-900 sm:text-3xl dark:text-white">
                 Find it. Escrow it. Receive it.
               </h1>
               <p className="mt-2 max-w-xl text-sm leading-relaxed text-ink-500">
@@ -206,10 +206,10 @@ export default function LandingView({
                   key={stat.label}
                   className="rounded-2xl border border-ink-100 bg-ink-50 px-4 py-3 dark:border-ink-800 dark:bg-ink-950/50"
                 >
-                  <dd className="font-mono text-lg font-black leading-none text-ink-900 dark:text-white">
+                  <dd className="text-lg font-semibold leading-none text-ink-900 dark:text-white">
                     {stat.value}
                   </dd>
-                  <dt className="mt-1 font-mono text-xs uppercase tracking-widest text-ink-500">
+                  <dt className="mt-1 text-xs font-medium text-ink-500">
                     {stat.label}
                   </dt>
                 </div>
@@ -225,7 +225,7 @@ export default function LandingView({
         <div className="w-full bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800/85 rounded-3xl p-1.5 sm:p-2 mb-6 sm:mb-8 flex gap-1 sm:gap-2 shadow-sm sticky top-[106px] md:top-16 z-20 backdrop-blur-md bg-white/95 dark:bg-ink-900/95 transition-all">
           <button
             onClick={() => setActiveMainTab('marketplace')}
-            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 py-2.5 sm:py-3.5 rounded-2xl font-sans font-extrabold text-xs sm:text-xs md:text-sm uppercase tracking-wide sm:tracking-wider transition-all cursor-pointer ${
+            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 py-2.5 sm:py-3.5 rounded-2xl font-semibold text-sm transition-all cursor-pointer ${
               activeMainTab === 'marketplace'
                 ? 'bg-gradient-to-r from-jade-500 to-jade-600 text-white shadow-lg shadow-jade-500/20 scale-[1.01]'
                 : 'text-ink-600 dark:text-ink-400 hover:bg-ink-50 dark:hover:bg-ink-800 hover:text-ink-800'
@@ -241,15 +241,15 @@ export default function LandingView({
           
           <button
             onClick={() => setActiveMainTab('flash_sale')}
-            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 py-2.5 sm:py-3.5 rounded-2xl font-sans font-extrabold text-xs sm:text-xs md:text-sm uppercase tracking-wide sm:tracking-wider transition-all cursor-pointer ${
+            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 py-2.5 sm:py-3.5 rounded-2xl font-semibold text-sm transition-all cursor-pointer ${
               activeMainTab === 'flash_sale'
                 ? 'bg-gradient-to-r from-jade-500 to-jade-600 text-white shadow-lg shadow-jade-500/20 scale-[1.01]'
                 : 'text-ink-600 dark:text-ink-400 hover:bg-ink-50 dark:hover:bg-ink-800 hover:text-ink-800'
             }`}
           >
             <Zap className="w-4 h-4" />
-            <span className="hidden xs:inline">Flash Sales</span>
-            <span className="inline xs:hidden">Flash</span>
+            <span className="hidden sm:inline">Flash Sales</span>
+            <span className="inline sm:hidden">Flash</span>
             <span className={`ml-1 px-1 sm:px-1.5 py-0.5 rounded-md text-[10px] sm:text-xs ${activeMainTab === 'flash_sale' ? 'bg-white/20 text-white' : 'bg-ink-100 dark:bg-ink-800 text-ink-500'}`}>
               {Math.min(db.products.filter(p => !p.isAuction).length, 4)}
               <span className="hidden sm:inline"> Active</span>
@@ -258,7 +258,7 @@ export default function LandingView({
 
           <button
             onClick={() => setActiveMainTab('auction')}
-            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 py-2.5 sm:py-3.5 rounded-2xl font-sans font-extrabold text-xs sm:text-xs md:text-sm uppercase tracking-wide sm:tracking-wider transition-all cursor-pointer ${
+            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 py-2.5 sm:py-3.5 rounded-2xl font-semibold text-sm transition-all cursor-pointer ${
               activeMainTab === 'auction'
                 ? 'bg-gradient-to-r from-jade-500 to-jade-600 text-white shadow-lg shadow-jade-500/20 scale-[1.01]'
                 : 'text-ink-600 dark:text-ink-400 hover:bg-ink-50 dark:hover:bg-ink-800 hover:text-ink-800'
@@ -279,8 +279,8 @@ export default function LandingView({
             <section id="categories-section" className="mb-10 bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800/80 p-6 sm:p-8 rounded-[32px] shadow-sm">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="font-display font-black text-xl text-ink-900 dark:text-white flex items-center gap-2">
-                <Grid className="w-5.5 h-5.5 text-ink-500 animate-spin-slow" />
+              <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
+                <Grid className="w-5 h-5 text-ink-500 animate-spin-slow" />
                 Explore Categories
               </h2>
               <p className="text-xs text-ink-400 mt-1">Shop verified Nigerian deals by department</p>
@@ -350,23 +350,23 @@ export default function LandingView({
           /* 3. REDESIGNED JUMIA-STYLE ACTIVE FLASH SALES */
           <section id="flash-sales-section" className="mb-10 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 p-6 rounded-[32px] shadow-sm relative overflow-hidden">
           
-          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-ink-500 via-ink-500 to-ink-500" />
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-jade-400 via-jade-500 to-jade-600" />
           
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
             <div className="flex items-center gap-2">
-              <div className="w-10 h-10 rounded-xl bg-ink-500/10 flex items-center justify-center text-ink-500 animate-pulse">
-                <Flame className="w-5.5 h-5.5 fill-ink-500/10" />
+              <div className="w-10 h-10 rounded-xl bg-jade-500/10 flex items-center justify-center text-jade-600 dark:text-jade-400 animate-pulse">
+                <Flame className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="font-display font-black text-lg text-ink-900 dark:text-white leading-tight">Today’s Featured Deals</h2>
+                <h2 className="font-display font-bold text-base text-ink-900 dark:text-white leading-tight">Today’s featured deals</h2>
                 <p className="text-xs text-ink-400">Hand-picked listings from verified merchants — escrow protected</p>
               </div>
             </div>
             
             {/* Countdown timer UI */}
             <div className="flex items-center gap-2 bg-ink-50/80 dark:bg-ink-950/20 px-3 py-1.5 rounded-xl border border-ink-100 dark:border-ink-900/30 text-xs font-bold text-ink-600 dark:text-ink-400">
-              <span className="uppercase tracking-wider text-xs font-black">Ends In:</span>
-              <span className="font-mono text-xs font-black tracking-widest animate-pulse">
+              <span className="text-xs font-semibold text-ink-500">Ends in</span>
+              <span className="text-xs font-semibold tabular-nums">
                 {String(timeLeft.hours).padStart(2, '0')}h : {String(timeLeft.minutes).padStart(2, '0')}m : {String(timeLeft.seconds).padStart(2, '0')}s
               </span>
             </div>
@@ -396,12 +396,17 @@ export default function LandingView({
                 >
                   {/* Left image wrapper */}
                   <div className="w-28 h-28 rounded-xl bg-ink-200 dark:bg-ink-700 relative overflow-hidden shrink-0">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={item.images[0]} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                    <SmartImage
+                      src={item.images[0]}
+                      alt={item.title}
+                      seed={`deal-${item.id}`}
+                      className="h-full w-full"
+                      imgClassName="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
                     
                     {/* Flash Sale absolute tags */}
-                    <span className="absolute top-2 left-2 px-2 py-0.5 bg-ink-600 text-white text-xs font-black rounded-lg uppercase shadow-sm tracking-wide">
-                      FEATURED
+                    <span className="absolute top-2 left-2 px-2 py-0.5 bg-jade-600 text-white text-xs font-semibold rounded-lg shadow-sm">
+                      Featured
                     </span>
                     <span className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/70 backdrop-blur-sm text-white text-[10px] font-bold rounded">
                       FLASH DEAL
@@ -412,8 +417,8 @@ export default function LandingView({
                   <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
                     <div>
                       <div className="flex items-center justify-between gap-2 mb-1">
-                        <span className="text-xs font-mono font-bold text-ink-500 uppercase tracking-widest">{item.category}</span>
-                        <span className="text-xs text-ink-400 dark:text-ink-500 font-mono">@{item.brand || 'Vetted'}</span>
+                        <span className="text-xs font-medium text-ink-500">{item.category}</span>
+                        <span className="text-xs text-ink-400 dark:text-ink-500">@{item.brand || 'Vetted'}</span>
                       </div>
                       <h4 className="font-display font-bold text-sm text-ink-900 dark:text-white truncate group-hover:text-ink-500 transition-colors">{item.title}</h4>
                       <p className="text-xs text-ink-500 dark:text-ink-400 line-clamp-1 mt-0.5">{item.description}</p>
@@ -423,16 +428,16 @@ export default function LandingView({
                     <div className="my-2.5 space-y-1">
                       <div className="flex justify-between items-center text-xs font-bold">
                         <span className="text-ink-400">Sold: {soldPercentage}%</span>
-                        <span className="text-ink-500 uppercase tracking-wider font-extrabold animate-pulse">Only {stockLeft} left!</span>
+                        <span className="text-ink-500 font-semibold">Only {stockLeft} left</span>
                       </div>
                       <div className="w-full bg-ink-200 dark:bg-ink-800 h-1.5 rounded-full overflow-hidden">
-                        <div className="bg-gradient-to-r from-ink-500 to-ink-500 h-full rounded-full" style={{ width: `${soldPercentage}%` }} />
+                        <div className="bg-gradient-to-r from-jade-400 to-jade-600 h-full rounded-full" style={{ width: `${soldPercentage}%` }} />
                       </div>
                     </div>
 
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex items-baseline gap-1.5">
-                        <span className="font-mono font-black text-base text-ink-600 dark:text-ink-400">₦{discountedPrice.toLocaleString()}</span>
+                        <span className="font-display font-bold text-lg tracking-tight text-ink-900 dark:text-white">₦{discountedPrice.toLocaleString()}</span>
                       </div>
 
                       <button
@@ -440,7 +445,7 @@ export default function LandingView({
                           e.stopPropagation();
                           onAddToCart(item.id);
                         }}
-                        className="px-3.5 py-1.5 bg-ink-500 hover:bg-ink-600 active:scale-95 text-white font-display font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-ink-500/10 cursor-pointer"
+                        className="px-3.5 py-1.5 bg-jade-500 hover:bg-jade-600 active:scale-95 text-white font-semibold text-xs rounded-xl transition-all shadow-md shadow-jade-500/20 cursor-pointer"
                       >
                         Buy Now
                       </button>
@@ -463,20 +468,20 @@ export default function LandingView({
           
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 relative z-10">
             <div className="flex items-center gap-2">
-              <div className="w-10 h-10 rounded-xl bg-ink-500/10 flex items-center justify-center text-ink-500 border border-ink-500/10 animate-pulse">
-                <Zap className="w-5.5 h-5.5 fill-ink-500/10" />
+              <div className="w-10 h-10 rounded-xl bg-jade-500/10 flex items-center justify-center text-jade-400 border border-jade-500/20 animate-pulse">
+                <Zap className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="font-display font-black text-lg text-white leading-tight flex items-center gap-1.5">
+                <h2 className="font-display font-bold text-base text-white leading-tight flex items-center gap-1.5">
                   Live Auctions Escrow
-                  <span className="w-2.5 h-2.5 rounded-full bg-ink-500 animate-ping" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-jade-500 animate-ping" />
                 </h2>
                 <p className="text-xs text-ink-400">Direct instant bidding on premium certified merchant stock</p>
               </div>
             </div>
             
-            <div className="px-3 py-1 bg-ink-500/10 border border-ink-500/20 text-ink-400 rounded-full font-mono text-xs uppercase tracking-wider font-bold">
-              LIVE COUNTER ACTIVE
+            <div className="px-3 py-1 bg-ink-500/10 border border-ink-500/20 text-ink-400 rounded-full text-xs font-medium">
+              Live now
             </div>
           </div>
  
@@ -494,15 +499,20 @@ export default function LandingView({
                 >
                   {/* Left Column: Image with live indicator */}
                   <div className="sm:w-44 h-48 bg-ink-800 relative overflow-hidden shrink-0">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={item.images[0]} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                    <SmartImage
+                      src={item.images[0]}
+                      alt={item.title}
+                      seed={`auction-${item.id}`}
+                      className="h-full w-full"
+                      imgClassName="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
                     
-                    <div className="absolute top-2.5 left-2.5 px-2 py-0.5 bg-ink-500 text-ink-950 text-[10px] font-black rounded uppercase tracking-wider flex items-center gap-1 shadow-md">
+                    <div className="absolute top-2.5 left-2.5 px-2 py-0.5 bg-jade-500 text-white text-xs font-semibold rounded-full flex items-center gap-1 shadow-md">
                       <Zap className="w-2.5 h-2.5 text-ink-950 fill-ink-950" />
-                      LIVE BID
+                      Live bid
                     </div>
-                    <div className="absolute bottom-2.5 left-2.5 px-1.5 py-0.5 bg-black/60 text-white text-[10px] font-mono rounded">
-                      Bids Casted: {bids.length}
+                    <div className="absolute bottom-2.5 left-2.5 px-1.5 py-0.5 bg-black/60 text-white text-xs rounded">
+                      {bids.length} bids
                     </div>
                   </div>
  
@@ -510,23 +520,23 @@ export default function LandingView({
                   <div className="p-4 flex-1 flex flex-col justify-between">
                     <div>
                       <div className="flex items-center justify-between gap-2 mb-1">
-                        <span className="text-xs font-mono font-bold text-ink-400 uppercase tracking-widest">{item.brand || 'Premium'}</span>
-                        <span className="text-xs text-ink-400 font-mono">Ends: {auction ? new Date(auction.endsAt).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : ''}</span>
+                        <span className="text-xs font-medium text-ink-400">{item.brand || 'Premium'}</span>
+                        <span className="text-xs text-ink-400">Ends {auction ? new Date(auction.endsAt).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : ''}</span>
                       </div>
                       <h4 className="font-display font-bold text-sm text-white line-clamp-1 mb-1 group-hover:text-ink-400 transition-colors">{item.title}</h4>
                       <p className="text-xs text-ink-400 line-clamp-1 leading-relaxed mb-3">{item.description}</p>
                       
                       {/* Interactive Bid Ticker */}
                       <div className="bg-ink-950/60 border border-ink-800/60 p-2 rounded-xl mb-3">
-                        <span className="text-[10px] text-ink-500 uppercase tracking-wider block font-bold mb-1">Recent Bids Log</span>
+                        <span className="text-xs text-ink-500 block font-medium mb-1">Recent bids</span>
                         {bids.slice(0, 2).length === 0 ? (
                           <span className="text-xs italic text-ink-500 block">No bids casted yet. Join in!</span>
                         ) : (
                           <div className="space-y-1">
                             {bids.slice(0, 2).map((b, idx) => (
-                              <div key={b.id} className="flex justify-between items-center text-xs font-mono">
+                              <div key={b.id} className="flex justify-between items-center text-xs">
                                 <span className="text-ink-400 truncate max-w-[80px]">@{b.username} {idx === 0 && <Star className="w-3 h-3 text-jade-500 inline" />}</span>
-                                <span className="font-extrabold text-ink-400">₦{b.amount.toLocaleString()}</span>
+                                <span className="font-semibold text-ink-400">₦{b.amount.toLocaleString()}</span>
                               </div>
                             ))}
                           </div>
@@ -537,13 +547,13 @@ export default function LandingView({
                     <div className="border-t border-ink-800/80 pt-3 space-y-2">
                       <div className="flex items-center justify-between">
                         <div>
-                          <span className="text-xs text-ink-400 uppercase tracking-widest block font-mono leading-none mb-1">Highest Bid</span>
-                          <span className="font-mono font-extrabold text-base text-white">₦{highestBid.toLocaleString()}</span>
+                          <span className="text-xs text-ink-400 block font-medium leading-none mb-1">Highest bid</span>
+                          <span className="text-base font-bold text-white">₦{highestBid.toLocaleString()}</span>
                         </div>
                         
                         <div className="text-right">
-                          <span className="text-[10px] text-ink-500 block uppercase font-mono">Minimum Next</span>
-                          <span className="font-mono text-xs text-ink-500 font-bold">₦{(highestBid + 5000).toLocaleString()}</span>
+                          <span className="text-xs text-ink-500 block font-medium">Minimum next</span>
+                          <span className="text-xs text-ink-500 font-semibold">₦{(highestBid + 5000).toLocaleString()}</span>
                         </div>
                       </div>
  
@@ -560,7 +570,7 @@ export default function LandingView({
                               dbOperations.submitBid(auction.id, highestBid + 5000);
                             }
                           }}
-                          className="flex-1 py-1.5 bg-ink-800 hover:bg-ink-500 hover:text-ink-950 border border-ink-700 hover:border-ink-500 text-ink-400 font-mono font-black text-xs uppercase rounded-lg transition-all text-center cursor-pointer active:scale-95"
+                          className="flex-1 py-1.5 bg-ink-800 hover:bg-jade-500 hover:text-white border border-ink-700 hover:border-jade-500 text-ink-300 font-semibold text-xs rounded-lg transition-all text-center cursor-pointer active:scale-95"
                           title="Place quick bid of +₦5,000"
                         >
                           +₦5,000
@@ -576,7 +586,7 @@ export default function LandingView({
                               dbOperations.submitBid(auction.id, highestBid + 20000);
                             }
                           }}
-                          className="flex-1 py-1.5 bg-ink-800 hover:bg-ink-500 hover:text-ink-950 border border-ink-700 hover:border-ink-500 text-ink-400 font-mono font-black text-xs uppercase rounded-lg transition-all text-center cursor-pointer active:scale-95"
+                          className="flex-1 py-1.5 bg-ink-800 hover:bg-jade-500 hover:text-white border border-ink-700 hover:border-jade-500 text-ink-300 font-semibold text-xs rounded-lg transition-all text-center cursor-pointer active:scale-95"
                           title="Place quick bid of +₦20,000"
                         >
                           +₦20,000
@@ -586,7 +596,7 @@ export default function LandingView({
                             e.stopPropagation();
                             onSelectProduct(item.id);
                           }}
-                          className="px-3 py-1.5 bg-ink-500 hover:bg-ink-600 text-ink-950 font-display font-black text-xs uppercase tracking-wider rounded-lg transition-all cursor-pointer text-center"
+                          className="px-3 py-1.5 bg-jade-500 hover:bg-jade-600 text-white font-semibold text-xs rounded-lg transition-all cursor-pointer text-center"
                         >
                           Bid Info
                         </button>
@@ -628,7 +638,7 @@ export default function LandingView({
             </button>
           </div>
 
-          <p className="text-xs text-ink-400 font-mono">Found {filteredProducts.length} items matching criteria</p>
+          <p className="text-xs text-ink-400">Found {filteredProducts.length} items</p>
         </section>
 
         {/* 6. Marketplace Product Catalog (AliExpress/Temu/Jumia style dense cards grid) */}
@@ -639,17 +649,17 @@ export default function LandingView({
         <section id="catalog-section" className="mb-12">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
-              <h2 className="font-display font-black text-xl text-ink-900 dark:text-white flex items-center gap-2">
-                <ShoppingBag className="w-5.5 h-5.5 text-jade-500" />
+              <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
+                <ShoppingBag className="w-5 h-5 text-jade-500" />
                 Marketplace Super Deals
               </h2>
               <p className="text-xs text-ink-400 mt-1">Direct-from-merchant listings with escrow payment protection guarantee.</p>
             </div>
             
             {/* Quick Jumia style promo badge */}
-            <div className="px-3 py-1 bg-ink-500/10 border border-ink-500/20 rounded-xl text-ink-500 font-mono text-xs font-bold flex items-center gap-1.5 self-start sm:self-center">
-              <span className="w-1.5 h-1.5 rounded-full bg-ink-500 animate-ping" />
-              Escrow Guarantee Secure
+            <div className="px-3 py-1 bg-jade-500/10 border border-jade-500/20 rounded-xl text-jade-700 dark:text-jade-300 text-xs font-semibold flex items-center gap-1.5 self-start sm:self-center">
+              <span className="w-1.5 h-1.5 rounded-full bg-jade-500 animate-ping" />
+              Escrow protected
             </div>
           </div>
 
@@ -671,7 +681,7 @@ export default function LandingView({
                     <button
                       type="button"
                       onClick={() => onOpenAuth?.('register')}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-jade-500 hover:bg-jade-600 text-white text-xs font-sans font-extrabold uppercase tracking-wide rounded-xl shadow-lg shadow-jade-500/20 transition-all cursor-pointer press-scale focus-ring"
+                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-jade-500 hover:bg-jade-600 text-white text-xs font-semibold rounded-xl shadow-lg shadow-jade-500/20 transition-all cursor-pointer press-scale focus-ring"
                     >
                       <ShoppingBag className="w-4 h-4" />
                       List the first item
@@ -691,7 +701,10 @@ export default function LandingView({
             )
           ) : (
             /* DENSE MULTI-COLUMN INTERACTIVE PRODUCT GRID (TEMU & ALIEXPRESS INSPIRED) */
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3" id="products-catalog-grid">
+            <div
+              className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4"
+              id="products-catalog-grid"
+            >
               {filteredProducts.map((product) => {
                 const seller = db.users.find(u => u.id === product.sellerId);
                 const sellerProfile = db.profiles.find(p => p.userId === product.sellerId);
@@ -729,31 +742,31 @@ export default function LandingView({
                     
                     {/* A. Square Image Block with badges */}
                     <div className="aspect-square bg-ink-50 dark:bg-ink-950/40 relative overflow-hidden shrink-0 border-b border-ink-100 dark:border-ink-800/60">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img 
-                        src={product.images[0]} 
-                        alt={product.title} 
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                        referrerPolicy="no-referrer"
+                      <SmartImage
+                        src={product.images[0]}
+                        alt={product.title}
+                        seed={`product-${product.id}`}
+                        className="h-full w-full"
+                        imgClassName="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500"
                       />
                       
                       {/* Discount banner only when seller set a compare-at style deal via low stock flash */}
                       {product.stockStatus === 'LOW_STOCK' && (
-                        <div className="absolute top-1.5 left-1.5 px-2 py-0.5 bg-ink-600 dark:bg-ink-500 text-white text-xs font-mono font-black tracking-wider rounded shadow-md flex items-center gap-0.5">
-                          <span>LOW STOCK</span>
+                        <div className="absolute top-1.5 left-1.5 px-2 py-0.5 bg-jade-600 dark:bg-jade-500 text-white text-xs font-semibold rounded shadow-md flex items-center gap-0.5">
+                          <span>Low stock</span>
                         </div>
                       )}
 
                       {stockLeft > 0 && stockLeft <= 5 && (
-                        <div className="absolute bottom-1.5 right-1.5 px-2 py-0.5 bg-ink-500 text-ink-950 text-[10px] font-mono font-black uppercase tracking-wider rounded shadow-sm">
+                        <div className="absolute bottom-1.5 right-1.5 px-2 py-0.5 bg-jade-500 text-white text-xs font-semibold rounded shadow-sm">
                           Only {stockLeft} left
                         </div>
                       )}
 
                       {/* Small Escrow lock overlay */}
-                      <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 bg-ink-900/90 backdrop-blur-md text-[10px] font-mono font-bold text-jade-400 rounded-md border border-jade-500/20 shadow flex items-center gap-1">
+                      <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 bg-ink-900/90 backdrop-blur-md text-xs font-medium text-jade-400 rounded-md border border-jade-500/20 shadow flex items-center gap-1">
                         <Shield className="w-2.5 h-2.5 text-jade-400" />
-                        <span>Escrow Locked</span>
+                        <span>Escrow</span>
                       </div>
 
                       {/* Favorite Heart Button */}
@@ -761,14 +774,14 @@ export default function LandingView({
                         onClick={(e) => toggleFavorite(product.id, e)}
                         className="absolute top-1.5 right-1.5 p-1.5 bg-white/95 dark:bg-ink-900/95 backdrop-blur-sm rounded-full text-ink-500 dark:text-ink-400 hover:text-ink-500 dark:hover:text-ink-400 transition-colors cursor-pointer shadow z-10"
                       >
-                        <Heart className={`w-3 h-3 ${favorites.includes(product.id) ? 'fill-ink-500 text-ink-500' : ''}`} />
+                        <Heart className={`h-3 w-3 ${favorites.includes(product.id) ? 'fill-jade-500 text-jade-500' : ''}`} />
                       </button>
                     </div>
 
                     {/* B. Details text block — roomy spacing so lines don't collapse */}
-                    <div className="p-4 flex-1 flex flex-col justify-between gap-3.5 text-xs">
+                    <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between gap-3.5 text-xs">
                       
-                      <div className="space-y-2.5">
+                      <div className="space-y-3">
                         
                         {/* 1. Vendor Username & Link with Store icon */}
                         <div className="flex items-center justify-between text-xs bg-ink-50 dark:bg-ink-800/40 p-1.5 rounded-xl border border-ink-100 dark:border-ink-800/60 font-sans">
@@ -781,25 +794,25 @@ export default function LandingView({
                             title="View Vendor Storefront"
                           >
                             <Store className="w-3.5 h-3.5 text-jade-500 shrink-0" />
-                            <span className="font-bold text-ink-700 dark:text-ink-300 font-mono truncate text-xs">
+                            <span className="font-semibold text-ink-700 dark:text-ink-300 truncate text-xs">
                               @{seller?.username || 'vendor'}
                             </span>
                             {isSellerVerified && (
-                              <CheckCircle className="w-3 h-3 text-ink-500 fill-ink-500/20 shrink-0" />
+                              <CheckCircle className="w-3 h-3 shrink-0 text-jade-500" />
                             )}
                           </div>
-                          <span className="text-xs font-mono font-bold text-ink-400 shrink-0 uppercase tracking-tight bg-white dark:bg-ink-900 px-1 py-0.5 rounded border border-ink-150 dark:border-ink-800 ml-1">
+                          <span className="text-xs font-medium text-ink-400 shrink-0 bg-white dark:bg-ink-900 px-1 py-0.5 rounded border border-ink-150 dark:border-ink-800 ml-1">
                             {sellerProfile?.city || 'Nigeria'}
                           </span>
                         </div>
 
                         {/* 2. Category name */}
-                        <div className="text-xs font-mono font-bold text-ink-400 uppercase tracking-wider">
+                        <div className="text-xs font-medium text-ink-400">
                           {product.category}
                         </div>
 
                         {/* 3. Headline with 2-line clamp */}
-                        <h4 className="font-sans font-bold text-xs text-ink-800 dark:text-ink-200 line-clamp-2 leading-snug tracking-tight group-hover:text-jade-500 dark:group-hover:text-jade-400 transition-colors min-h-[2.25rem]">
+                        <h4 className="font-display font-bold text-sm sm:text-base text-ink-900 dark:text-white line-clamp-2 leading-snug tracking-tight group-hover:text-jade-600 dark:group-hover:text-jade-400 transition-colors min-h-[2.75rem]">
                           {product.title}
                         </h4>
 
@@ -810,13 +823,13 @@ export default function LandingView({
                               <>
                                 <div className="flex text-ink-500 text-xs">
                                   {Array.from({ length: Math.round(parseFloat(avgRating)) }).map((_, i) => (
-                            <Star key={i} className="w-3.5 h-3.5 fill-jade-500 text-jade-500" />
+                            <Star key={i} className="star-filled w-3.5 h-3.5" />
                           ))}
                                   {Array.from({ length: Math.max(0, 5 - Math.round(parseFloat(avgRating))) }).map((_, i) => (
-                            <Star key={i} className="w-3.5 h-3.5 text-ink-300 dark:text-ink-700" />
+                            <Star key={i} className="star-empty h-3.5 w-3.5" />
                           ))}
                                 </div>
-                                <span className="font-bold text-xs text-ink-600 dark:text-ink-400">
+                                <span className="text-xs font-bold text-ink-700 dark:text-ink-200">
                                   {avgRating}
                                 </span>
                                 <span className="text-ink-400 text-xs">
@@ -832,7 +845,7 @@ export default function LandingView({
                           </div>
                           
                           {/* Escrow Delivery Badge */}
-                          <div className="flex items-center justify-between text-xs font-mono mt-0.5">
+                          <div className="flex items-center justify-between text-xs mt-0.5">
                             <span className="text-jade-600 dark:text-jade-400 font-sans font-medium flex items-center gap-0.5">
                               Escrow Delivery
                             </span>
@@ -841,7 +854,7 @@ export default function LandingView({
 
                         {stockLeft > 0 && stockLeft <= 8 && (
                           <div className="pt-0.5">
-                            <div className="flex items-center justify-between text-xs font-mono text-ink-400">
+                            <div className="flex items-center justify-between text-xs text-ink-400">
                               <span className="text-ink-600 dark:text-ink-400 font-bold">
                                 {stockLeft} in stock
                               </span>
@@ -849,7 +862,7 @@ export default function LandingView({
                             </div>
                             <div className="w-full bg-ink-150 dark:bg-ink-800 h-1 rounded-full overflow-hidden mt-1">
                               <div
-                                className="bg-ink-500 h-full rounded-full transition-all duration-500"
+                                className="bg-jade-500 h-full rounded-full transition-all duration-500"
                                 style={{
                                   width: `${Math.min(100, Math.max(8, (stockLeft / Math.max(stockLeft + soldCount, 1)) * 100))}%`,
                                 }}
@@ -861,7 +874,7 @@ export default function LandingView({
                         {/* 6. Price */}
                         <div className="pt-1">
                           <div className="flex items-baseline gap-1.5 flex-wrap">
-                            <span className="font-mono font-extrabold text-sm sm:text-base text-ink-600 dark:text-ink-400 leading-none">
+                            <span className="font-display font-bold text-base sm:text-lg leading-none tracking-tight text-ink-900 dark:text-white">
                               ₦{product.price.toLocaleString()}
                             </span>
                           </div>
@@ -871,13 +884,13 @@ export default function LandingView({
 
                       {/* C. Direct Action Footer */}
                       <div className="pt-2 border-t border-ink-100 dark:border-ink-800/80 flex items-center justify-between gap-1">
-                        <span className="text-[10px] font-mono text-jade-500 dark:text-jade-400 font-black tracking-wider uppercase block">
-                          Escrow safe
+                        <span className="text-xs font-medium text-jade-500 dark:text-jade-400 block">
+                          Escrow protected
                         </span>
                         
                         <button 
                           onClick={handleQuickAddToCart}
-                          className="w-7 h-7 bg-ink-100 dark:bg-ink-800 hover:bg-jade-500 hover:text-white dark:hover:bg-jade-500 dark:hover:text-white text-ink-800 dark:text-ink-300 rounded-full border border-ink-200 dark:border-ink-700/60 transition-all flex items-center justify-center shrink-0 shadow-sm cursor-pointer"
+                          className="h-9 w-9 bg-jade-500 hover:bg-jade-600 text-white rounded-full transition-all flex items-center justify-center shrink-0 shadow-sm shadow-jade-500/20 cursor-pointer"
                           title="Add to Shopping Cart"
                         >
                           <ShoppingBag className="w-3.5 h-3.5" />
@@ -896,8 +909,8 @@ export default function LandingView({
         {/* 7. Featured Verified Businesses */}
         <section id="businesses-section" className="mb-8">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="font-display font-black text-lg text-ink-900 dark:text-white">
-              Featured Verified Stores
+            <h2 className="font-display font-bold text-base text-ink-900 dark:text-white">
+              Featured verified stores
             </h2>
           </div>
 
@@ -909,21 +922,20 @@ export default function LandingView({
                 className="p-5 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl flex items-center gap-4 hover:shadow-md cursor-pointer transition-all relative overflow-hidden group hover:border-jade-500/40"
               >
                 <div className="w-14 h-14 rounded-full bg-jade-500/10 flex items-center justify-center overflow-hidden shrink-0 border border-ink-100 dark:border-ink-800">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={biz.logoUrl} alt={biz.name} className="w-full h-full object-cover" />
+                  <SmartAvatar src={biz.logoUrl} name={biz.name} seed={`biz-${biz.id}`} className="h-full w-full" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 mb-1">
                     <h4 className="font-display font-bold text-sm text-ink-900 dark:text-white truncate">{biz.name}</h4>
                     <span title="Premium Business Badge">
-                      <CheckCircle className="w-4 h-4 text-ink-500 fill-ink-500/10 shrink-0" />
+                      <CheckCircle className="h-4 w-4 shrink-0 text-jade-500" />
                     </span>
                   </div>
                   <p className="text-xs text-ink-500 dark:text-ink-400 line-clamp-1 mb-2 leading-relaxed">{biz.description}</p>
                   
-                  <div className="flex items-center gap-4 text-xs font-mono text-ink-400">
+                  <div className="flex items-center gap-4 text-xs text-ink-400">
                     <span className="flex items-center gap-1">
-                      <Star className="w-3 h-3 text-ink-400 fill-ink-400" />
+                      <Star className="star-filled w-3 h-3" />
                       {biz.rating} ({biz.reviewsCount})
                     </span>
                     <span>Followers: {biz.followers}</span>

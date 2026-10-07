@@ -264,7 +264,7 @@ export default function RevenueCenterView() {
             <Sparkles className="w-3.5 h-3.5 text-ink-300" />
             GoodSale Revenue Engine
           </div>
-          <h1 className="text-2xl md:text-4xl font-extrabold tracking-tight">
+          <h1 className="text-2xl md:text-4xl font-semibold tracking-tight">
             Revenue & Wallet Portal
           </h1>
           <p className="text-xs md:text-sm text-ink-100 font-medium animate-fade-in">
@@ -290,8 +290,8 @@ export default function RevenueCenterView() {
               
               {/* Wallet Card Balance quick check */}
               <div className="bg-gradient-to-br from-jade-500/10 to-jade-600/5 dark:from-jade-950/20 border border-jade-500/20 p-4 rounded-2xl space-y-1.5">
-                <span className="text-xs text-jade-600 dark:text-jade-400 font-bold uppercase tracking-wider font-mono">Available Wallet Balance</span>
-                <p className="text-2xl font-black text-jade-600 dark:text-jade-400 font-mono">
+                <span className="text-xs text-jade-600 dark:text-jade-400 font-bold tracking-wider font-mono">Available Wallet Balance</span>
+                <p className="text-2xl font-bold text-jade-600 dark:text-jade-400 font-mono">
                   ₦{wallet ? wallet.balance.toLocaleString() : '0'}
                 </p>
                 <div className="text-xs text-ink-400">
@@ -386,7 +386,7 @@ export default function RevenueCenterView() {
                     
                     {/* Deposit Simulator Panel */}
                     <div className="space-y-4">
-                      <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-jade-600 dark:text-jade-400">Funding Deposit Portal</h4>
+                      <h4 className="text-xs font-bold tracking-wider font-mono text-jade-600 dark:text-jade-400">Funding Deposit Portal</h4>
                       
                       <form onSubmit={handleDeposit} className="space-y-4 bg-ink-50 dark:bg-ink-950 p-5 rounded-2xl border border-ink-100 dark:border-ink-850">
                         <div className="space-y-1.5">
@@ -402,7 +402,7 @@ export default function RevenueCenterView() {
 
                         <div className="p-3 bg-white dark:bg-ink-900 rounded-xl border border-ink-100 dark:border-ink-800 flex items-center justify-between text-xs">
                           <span className="text-ink-400 font-medium">Gateway Service:</span>
-                          <span className="font-extrabold text-[#0A854B] flex items-center gap-1">
+                          <span className="font-semibold text-[#0A854B] flex items-center gap-1">
                             Paystack Secure Checkout
                           </span>
                         </div>
@@ -418,7 +418,7 @@ export default function RevenueCenterView() {
 
                     {/* Withdrawal Payout Form Panel */}
                     <div className="space-y-4">
-                      <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-ink-500">Bank Withdrawal Payout</h4>
+                      <h4 className="text-xs font-bold tracking-wider font-mono text-ink-500">Bank Withdrawal Payout</h4>
                       
                       <form onSubmit={handleWithdraw} className="space-y-4 bg-ink-50 dark:bg-ink-950 p-5 rounded-2xl border border-ink-100 dark:border-ink-850">
                         
@@ -476,7 +476,7 @@ export default function RevenueCenterView() {
 
                         <button
                           type="submit"
-                          className="w-full py-3 bg-ink-500 hover:bg-ink-600 text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-transform active:scale-95"
+                          className="w-full py-3 bg-jade-500 hover:bg-jade-600 text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-transform active:scale-95"
                         >
                           Request Bank Payout Settlement
                         </button>
@@ -487,7 +487,7 @@ export default function RevenueCenterView() {
 
                   {/* Transaction Ledger list */}
                   <div className="space-y-4 pt-6 border-t border-ink-100 dark:border-ink-800">
-                    <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-ink-500">Secure Wallet Transaction Ledger</h4>
+                    <h4 className="text-xs font-bold tracking-wider font-mono text-ink-500">Secure Wallet Transaction Ledger</h4>
                     
                     {myTransactions.length === 0 ? (
                       <p className="text-xs text-ink-400 italic text-center py-8">
@@ -501,7 +501,7 @@ export default function RevenueCenterView() {
                             className="bg-ink-50 dark:bg-ink-950 rounded-2xl p-4 border border-ink-100 dark:border-ink-800/60 flex items-center justify-between text-xs"
                           >
                             <div className="space-y-1">
-                              <span className="font-extrabold text-ink-800 dark:text-ink-200">
+                              <span className="font-semibold text-ink-800 dark:text-ink-200">
                                 {t.description}
                               </span>
                               <div className="flex items-center gap-2 text-xs text-ink-400 font-mono">
@@ -512,7 +512,7 @@ export default function RevenueCenterView() {
                                 </span>
                               </div>
                             </div>
-                            <span className={`font-black font-mono text-xs ${t.amount > 0 ? 'text-jade-500' : 'text-ink-500'}`}>
+                            <span className={`font-bold font-mono text-xs ${t.amount > 0 ? 'text-jade-500' : 'text-ink-500'}`}>
                               {t.amount > 0 ? '+' : ''}₦{t.amount.toLocaleString()}
                             </span>
                           </div>
@@ -555,13 +555,13 @@ export default function RevenueCenterView() {
                         +
                       </div>
                       <div className="space-y-4">
-                        <div className="inline-flex items-center gap-1 bg-ink-500/10 text-ink-600 dark:text-ink-400 text-xs font-black px-2.5 py-1 rounded-full uppercase tracking-wider font-mono">
-                          <Star className="w-3 h-3 fill-ink-500 text-ink-500" />
+                        <div className="inline-flex items-center gap-1 bg-ink-500/10 text-ink-600 dark:text-ink-400 text-xs font-bold px-2.5 py-1 rounded-full tracking-wider font-mono">
+                          <Star className="star-filled w-3 h-3" />
                           Verified+ Premium Member
                         </div>
 
                         <div className="space-y-1">
-                          <h4 className="text-lg font-extrabold text-ink-850 dark:text-white">Verified+ Professional Profile</h4>
+                          <h4 className="text-lg font-semibold text-ink-850 dark:text-white">Verified+ Professional Profile</h4>
                           <p className="text-xs text-ink-400 leading-relaxed">
                             Acquire the prestigious gold star and tick verified badges on your storefront, automatically boosting all search inventory items.
                           </p>
@@ -585,8 +585,8 @@ export default function RevenueCenterView() {
 
                       <div className="pt-6 border-t border-ink-100 dark:border-ink-850 mt-6 flex items-center justify-between">
                         <div>
-                          <span className="text-xs text-ink-400 block uppercase">Premium Fee</span>
-                          <span className="text-xl font-black text-ink-500 font-mono">
+                          <span className="text-xs text-ink-400 block">Premium Fee</span>
+                          <span className="text-xl font-bold text-ink-500 font-mono">
                             ₦{settings.verifiedPlusPrice.toLocaleString()} <span className="text-xs font-normal text-ink-400">/mo</span>
                           </span>
                         </div>
@@ -608,13 +608,13 @@ export default function RevenueCenterView() {
                     {/* Program 2: Business Premium Subscription */}
                     <div className="border border-jade-500/20 rounded-3xl p-6 bg-gradient-to-br from-jade-500/5 to-ink-900/10 relative overflow-hidden flex flex-col justify-between">
                       <div className="space-y-4">
-                        <div className="inline-flex items-center gap-1 bg-jade-500/10 text-jade-600 dark:text-jade-400 text-xs font-black px-2.5 py-1 rounded-full uppercase tracking-wider font-mono">
+                        <div className="inline-flex items-center gap-1 bg-jade-500/10 text-jade-600 dark:text-jade-400 text-xs font-bold px-2.5 py-1 rounded-full tracking-wider font-mono">
                           <Zap className="w-3 h-3 text-jade-500" />
                           Business Premium Plan
                         </div>
 
                         <div className="space-y-1">
-                          <h4 className="text-lg font-extrabold text-ink-850 dark:text-white">Business Enterprise Storefront</h4>
+                          <h4 className="text-lg font-semibold text-ink-850 dark:text-white">Business Enterprise Storefront</h4>
                           <p className="text-xs text-ink-400 leading-relaxed">
                             Upgrade your individual profile status to a multi-branch corporate business entity, with advanced inventory catalogs, analytics dashboards, and barcode autofills.
                           </p>
@@ -638,8 +638,8 @@ export default function RevenueCenterView() {
 
                       <div className="pt-6 border-t border-ink-100 dark:border-ink-850 mt-6 flex items-center justify-between">
                         <div>
-                          <span className="text-xs text-ink-400 block uppercase">Membership Price</span>
-                          <span className="text-xl font-black text-jade-500 font-mono">
+                          <span className="text-xs text-ink-400 block">Membership Price</span>
+                          <span className="text-xl font-bold text-jade-500 font-mono">
                             ₦{settings.subPremiumPrice.toLocaleString()} <span className="text-xs font-normal text-ink-400">/mo</span>
                           </span>
                         </div>
@@ -689,7 +689,7 @@ export default function RevenueCenterView() {
                   <div className="bg-ink-50 dark:bg-ink-950 p-6 rounded-3xl border border-ink-100 dark:border-ink-850 space-y-6">
                     
                     <div className="space-y-1">
-                      <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-ink-500">1. Select Listing to Boost</h4>
+                      <h4 className="text-xs font-bold tracking-wider font-mono text-ink-500">1. Select Listing to Boost</h4>
                       {myProducts.length === 0 ? (
                         <p className="text-xs text-ink-400 italic">
                           You currently do not have any active product listings in your inventory to promote. Create some in your Dashboard.
@@ -712,7 +712,7 @@ export default function RevenueCenterView() {
                       
                       {/* Promoted Placement 1: Featured Listing */}
                       <div className="space-y-4 bg-white dark:bg-ink-900 p-5 rounded-2xl border border-ink-100 dark:border-ink-800">
-                        <div className="inline-flex items-center gap-1 bg-ink-500/10 text-ink-600 dark:text-ink-400 text-xs font-black px-2 py-0.5 rounded uppercase">
+                        <div className="inline-flex items-center gap-1 bg-ink-500/10 text-ink-600 dark:text-ink-400 text-xs font-bold px-2 py-0.5 rounded">
                           Featured listing
                         </div>
                         <p className="text-xs text-ink-400 leading-relaxed">
@@ -720,7 +720,7 @@ export default function RevenueCenterView() {
                         </p>
 
                         <div className="space-y-1.5">
-                          <label className="text-xs font-bold text-ink-400 font-mono uppercase block">Boost Duration</label>
+                          <label className="text-xs font-bold text-ink-400 font-mono block">Boost Duration</label>
                           <select 
                             value={featuredDuration}
                             onChange={(e) => setFeaturedDuration(e.target.value as any)}
@@ -735,7 +735,7 @@ export default function RevenueCenterView() {
 
                         <button
                           onClick={() => handlePromoteProduct('FEATURED')}
-                          className="w-full py-2.5 bg-ink-500 hover:bg-ink-600 text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-transform active:scale-95"
+                          className="w-full py-2.5 bg-jade-500 hover:bg-jade-600 text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-transform active:scale-95"
                         >
                           Purchase Featured Placement
                         </button>
@@ -744,20 +744,20 @@ export default function RevenueCenterView() {
                       {/* Promoted Placement 2: Flash Sales */}
                       <div className="space-y-4 bg-white dark:bg-ink-900 p-5 rounded-2xl border border-ink-100 dark:border-ink-800 justify-between flex flex-col">
                         <div className="space-y-4">
-                          <div className="inline-flex items-center gap-1 bg-ink-500/10 text-ink-600 dark:text-ink-400 text-xs font-black px-2 py-0.5 rounded uppercase">
+                          <div className="inline-flex items-center gap-1 bg-ink-500/10 text-ink-600 dark:text-ink-400 text-xs font-bold px-2 py-0.5 rounded">
                             Flash Sale Block scheduler
                           </div>
                           <p className="text-xs text-ink-400 leading-relaxed">
                             Schedules the item into the front-page high-traffic countdown flash sale blocks for instant sellouts.
                           </p>
-                          <p className="text-xs font-black text-ink-500 font-mono">
+                          <p className="text-xs font-bold text-ink-500 font-mono">
                             Fixed Promotion Price: ₦{settings.flashSaleFeaturePrice.toLocaleString()}
                           </p>
                         </div>
 
                         <button
                           onClick={() => handlePromoteProduct('FLASHSALE')}
-                          className="w-full py-2.5 bg-ink-500 hover:bg-ink-650 text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-transform active:scale-95"
+                          className="w-full py-2.5 bg-jade-500 hover:bg-jade-600 text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-transform active:scale-95"
                         >
                           Schedule into Flash Sales
                         </button>
@@ -797,7 +797,7 @@ export default function RevenueCenterView() {
                     
                     {/* Sponsored Ad Creator Form */}
                     <div className="space-y-4">
-                      <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-jade-600 dark:text-jade-400">Initialize Campaign</h4>
+                      <h4 className="text-xs font-bold tracking-wider font-mono text-jade-600 dark:text-jade-400">Initialize Campaign</h4>
                       
                       <form onSubmit={handleCreateAd} className="space-y-4 bg-ink-50 dark:bg-ink-950 p-5 rounded-2xl border border-ink-100 dark:border-ink-850">
                         
@@ -871,7 +871,7 @@ export default function RevenueCenterView() {
 
                     {/* Active Ad Campaign reports & Interactive CPC Click Simulator */}
                     <div className="space-y-4">
-                      <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-ink-500">Active CPC Ad Campaigns</h4>
+                      <h4 className="text-xs font-bold tracking-wider font-mono text-ink-500">Active CPC Ad Campaigns</h4>
                       
                       {myCampaigns.length === 0 ? (
                         <p className="text-xs text-ink-400 italic py-8 text-center bg-ink-50 dark:bg-ink-950/50 rounded-2xl border border-dashed border-ink-100 dark:border-ink-800">
@@ -886,10 +886,10 @@ export default function RevenueCenterView() {
                             >
                               <div className="flex justify-between items-start">
                                 <div>
-                                  <h5 className="text-xs font-extrabold text-ink-800 dark:text-ink-200 truncate max-w-[200px]">
+                                  <h5 className="text-xs font-semibold text-ink-800 dark:text-ink-200 truncate max-w-[200px]">
                                     {ad.title}
                                   </h5>
-                                  <span className="text-xs font-bold text-ink-400 bg-ink-100 dark:bg-ink-900 px-1.5 py-0.5 rounded uppercase mt-1 inline-block">
+                                  <span className="text-xs font-bold text-ink-400 bg-ink-100 dark:bg-ink-900 px-1.5 py-0.5 rounded mt-1 inline-block">
                                     {ad.type}
                                   </span>
                                 </div>
@@ -901,16 +901,16 @@ export default function RevenueCenterView() {
                               {/* CPC Metrics */}
                               <div className="grid grid-cols-3 gap-2 text-center text-xs bg-white dark:bg-ink-900 p-2.5 rounded-xl border border-ink-100 dark:border-ink-800 font-mono">
                                 <div>
-                                  <span className="text-xs text-ink-400 block uppercase">Impressions</span>
-                                  <span className="font-extrabold text-jade-500">{ad.impressions || Math.floor(Math.random() * 200) + 120}</span>
+                                  <span className="text-xs text-ink-400 block">Impressions</span>
+                                  <span className="font-semibold text-jade-500">{ad.impressions || Math.floor(Math.random() * 200) + 120}</span>
                                 </div>
                                 <div>
-                                  <span className="text-xs text-ink-400 block uppercase">Clicks</span>
-                                  <span className="font-extrabold text-ink-500">{ad.clicks}</span>
+                                  <span className="text-xs text-ink-400 block">Clicks</span>
+                                  <span className="font-semibold text-ink-500">{ad.clicks}</span>
                                 </div>
                                 <div>
-                                  <span className="text-xs text-ink-400 block uppercase">Spent</span>
-                                  <span className="font-extrabold text-ink-500">₦{ad.spent.toLocaleString()}</span>
+                                  <span className="text-xs text-ink-400 block">Spent</span>
+                                  <span className="font-semibold text-ink-500">₦{ad.spent.toLocaleString()}</span>
                                 </div>
                               </div>
 

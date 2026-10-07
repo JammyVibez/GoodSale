@@ -62,7 +62,7 @@ export default function LoyaltyHubView() {
               <Award className="w-3.5 h-3.5" />
               GoodSale Loyal Elite Club
             </span>
-            <h1 className="font-sans font-extrabold text-2xl sm:text-3xl tracking-tight leading-snug">
+            <h1 className="font-sans font-semibold text-2xl sm:text-3xl tracking-tight leading-snug">
               Earn Rewards. <br />
               Grow Your Trust Merchant Status.
             </h1>
@@ -72,13 +72,13 @@ export default function LoyaltyHubView() {
 
             <div className="flex flex-wrap items-center gap-4 pt-2">
               <div>
-                <span className="text-xs text-ink-400 block uppercase font-medium">Your Loyalty Points</span>
-                <span className="font-sans font-extrabold text-2xl text-ink-400">{user.goodPoints.toLocaleString()} GP</span>
+                <span className="text-xs text-ink-400 block font-medium">Your Loyalty Points</span>
+                <span className="font-sans font-semibold text-2xl text-ink-400">{user.goodPoints.toLocaleString()} GP</span>
               </div>
 
               <button
                 onClick={handleClaimDailyReward}
-                className="px-5 py-2.5 bg-jade-500 hover:bg-jade-600 text-white font-sans font-extrabold text-xs rounded-xl transition-all shadow-md shadow-jade-500/10 cursor-pointer"
+                className="px-5 py-2.5 bg-jade-500 hover:bg-jade-600 text-white font-sans font-semibold text-xs rounded-xl transition-all shadow-md shadow-jade-500/10 cursor-pointer"
               >
                 Claim Daily 10 GP Reward
               </button>
@@ -97,7 +97,7 @@ export default function LoyaltyHubView() {
           
           {/* Rewards Catalog */}
           <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-6 shadow-sm space-y-4">
-            <h3 className="font-sans font-extrabold text-sm text-ink-900 dark:text-white flex items-center gap-2">
+            <h3 className="font-sans font-semibold text-sm text-ink-900 dark:text-white flex items-center gap-2">
               <Gift className="w-5 h-5 text-jade-500" />
               Redeem Point Vouchers
             </h3>
@@ -131,7 +131,7 @@ export default function LoyaltyHubView() {
 
           {/* Referral Link copy portal */}
           <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-6 shadow-sm space-y-4">
-            <h3 className="font-sans font-extrabold text-sm text-ink-900 dark:text-white flex items-center gap-2">
+            <h3 className="font-sans font-semibold text-sm text-ink-900 dark:text-white flex items-center gap-2">
               <Share2 className="w-5 h-5 text-jade-500" />
               Refer Merchants & Buyers
             </h3>
@@ -142,7 +142,7 @@ export default function LoyaltyHubView() {
 
             <div className="p-4 bg-ink-50 dark:bg-ink-800/40 rounded-2xl space-y-3 text-xs">
               <div>
-                <span className="text-ink-400 block text-xs uppercase font-bold mb-1">Your Referral Invite Code</span>
+                <span className="text-ink-400 block text-xs font-bold mb-1">Your Referral Invite Code</span>
                 <div className="flex gap-2">
                   <span className="flex-1 px-3.5 py-2 bg-white dark:bg-ink-900 border border-ink-100 dark:border-ink-800 font-mono font-bold text-ink-800 dark:text-ink-300 rounded-xl flex items-center">
                     GOOD-{user.username.toUpperCase()}-REF

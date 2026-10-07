@@ -31,6 +31,18 @@ import {
   upsertPaymentSettings,
   insertNotification,
   insertFeaturedListing,
+  toggleMessageReaction,
+  insertCall,
+  updateCall,
+  insertReport,
+  updateReport,
+  deleteReportById,
+  upsertServiceArea,
+  updateServiceAreaFlags,
+  deleteServiceAreaById,
+  insertVerificationApplication,
+  updateVerificationReview,
+  updateDeliveryPartnerReview,
 } from '@/lib/data/persist';
 import { resolveCityCoords, bestCoords } from '@/lib/geo';
 import { computePlatformFee } from '@/lib/fees';
@@ -70,6 +82,16 @@ import {
   Business,
   BusinessSubscription,
   VerifiedPlusSubscription,
+  Call,
+  CallKind,
+  CallStatus,
+  MessageReaction,
+  Report,
+  ReportStatus,
+  ReportTargetType,
+  ServiceArea,
+  VerificationKind,
+  VerificationDocument,
 } from '@/lib/types';
 
 // Re-export domain types so existing imports from '../lib/store' keep working
@@ -317,26 +339,47 @@ export const dbOperations = {
   },
 
   /**
-   * Trust tiers are granted by GoodSale review — never self-assigned. The
-   * database enforces this too (a trigger blocks client role writes), so this
-   * helper only mirrors an already-authorized admin action into local state.
-   * Non-admins get an explicit error instead of a silently faked upgrade.
+   * Account-type switch. Buyers can promote themselves to Individual Seller or
+   * Business Owner (and switch back) from Settings at any time — buying is
+   * always available to every role. GoodSale-verified tiers and staff roles
+   * stay locked to review. The database mirrors this rule in migration 011.
    */
   updateCurrentUserRole(role: UserRole) {
     const state = getDBState();
     const current = state.currentUser;
     if (!current) return { error: 'Not signed in' } as const;
 
+    const selfService: UserRole[] = [UserRole.BUYER, UserRole.SELLER, UserRole.BUSINESS];
     const isAdmin = current.role === UserRole.ADMIN || current.role === UserRole.SUPER_ADMIN;
     if (!isAdmin) {
-      console.warn('Role changes require GoodSale verification and are not self-service.');
-      return { error: 'Role changes require verification by GoodSale.' } as const;
+      if (!selfService.includes(role)) {
+        return { error: 'That account type is granted by GoodSale review.' } as const;
+      }
+      if (!selfService.includes(current.role)) {
+        return {
+          error: 'Your verified account type can only be changed by GoodSale support.',
+        } as const;
+      }
     }
 
     current.role = role;
     const dbUser = state.users.find((u) => u.id === current.id);
     if (dbUser) dbUser.role = role;
     saveDBState(state);
+
+    // Mirror the change to Supabase so it survives a reload. The DB allows
+    // self-service switches among the public tiers only (migration 011).
+    const client = createClient();
+    const profileId = current.id;
+    if (client) {
+      void (async () => {
+        const { error } = await client.rpc('set_own_role', { p_role: role });
+        if (error) {
+          await client.from('profiles').update({ role }).eq('id', profileId);
+        }
+        await reloadFromSupabase();
+      })();
+    }
     return { success: true } as const;
   },
 
@@ -1059,6 +1102,10 @@ export const dbOperations = {
       documentImageUrl: docImageUrl || '',
       selfieImageUrl: selfie,
       proofOfAddressUrl: '',
+      applicationKind: VerificationKind.IDENTITY,
+      documents: docImageUrl ? [{ label: 'ID document', url: docImageUrl }] : [],
+      businessName: '',
+      businessAddress: '',
       status: VerificationStatus.PENDING,
       createdAt: new Date().toISOString(),
     };
@@ -1184,10 +1231,22 @@ export const dbOperations = {
 
     const client = createClient();
     if (client) {
-      await client.from('identity_verifications').update({
-        status,
-        admin_notes: notes,
-      }).eq('id', verId);
+      // Record who decided, when, and why so the applicant's file is auditable.
+      try {
+        await updateVerificationReview(client, verId, {
+          status,
+          admin_notes: notes,
+          rejection_reason: status === VerificationStatus.REJECTED ? notes : '',
+          reviewed_by: state.currentUser?.id ?? 0,
+          reviewed_at: new Date().toISOString(),
+        });
+      } catch (err) {
+        console.error('Failed to record verification review:', err);
+        await client.from('identity_verifications').update({
+          status,
+          admin_notes: notes,
+        }).eq('id', verId);
+      }
       if (status === VerificationStatus.APPROVED && ver) {
         const roleToSet =
           targetRole ||
@@ -1207,7 +1266,7 @@ export const dbOperations = {
   },
 
   // Chat/Messages flow
-  async sendMessage(roomId: number, text?: string, imgUrl?: string, videoUrl?: string, receiptDetails?: any, productDetails?: any) {
+  async sendMessage(roomId: number, text?: string, imgUrl?: string, videoUrl?: string, receiptDetails?: any, productDetails?: any, replyToId?: number) {
     const state = getDBState();
     if (!state.currentUser) return;
 
@@ -1225,6 +1284,7 @@ export const dbOperations = {
           videoUrl,
           receiptDetails,
           productDetails,
+          replyToId,
         });
         state.messages.push(saved);
         const preview = text || (imgUrl ? 'Sent an image' : videoUrl ? 'Sent a video' : 'Sent an attachment');
@@ -1250,6 +1310,7 @@ export const dbOperations = {
       videoUrl,
       receiptDetails,
       productDetails,
+      replyToId,
       createdAt: new Date().toISOString(),
     };
     state.messages.push(newMsg);
@@ -2255,6 +2316,13 @@ export const dbOperations = {
       nin: partnerData.nin,
       selfieUrl: partnerData.selfieUrl || '',
       licenseUrl: partnerData.licenseUrl,
+      // Keep every uploaded file in one reviewable list for the admin.
+      documents: [
+        ...(Array.isArray(partnerData.documents) ? partnerData.documents : []),
+        ...(partnerData.selfieUrl ? [{ label: 'Passport photograph', url: partnerData.selfieUrl, kind: 'SELFIE' }] : []),
+        ...(partnerData.licenseUrl ? [{ label: "Driver's licence", url: partnerData.licenseUrl, kind: 'LICENSE' }] : []),
+        ...(partnerData.nin ? [{ label: 'NIN number', url: '', kind: 'IDENTITY' as const, note: String(partnerData.nin) }] : []),
+      ],
       createdAt: new Date().toISOString(),
     };
     state.deliveryPartners.push(partner);
@@ -2302,19 +2370,22 @@ export const dbOperations = {
         nin: partner.nin,
         selfie_url: partner.selfieUrl,
         license_url: partner.licenseUrl ?? null,
+        documents: partner.documents ?? [],
       }).then(() => reloadFromSupabase()).catch((err) => console.error('Failed to persist partner:', err));
     }
 
     return partner;
   },
 
-  approveDeliveryPartner(partnerId: number) {
+  async approveDeliveryPartner(partnerId: number) {
     const state = getDBState();
     const partner = state.deliveryPartners.find(p => p.id === partnerId);
     if (!partner) return null;
 
     partner.status = 'APPROVED';
     partner.isAvailable = true;
+    partner.reviewedBy = state.currentUser?.id;
+    partner.reviewedAt = new Date().toISOString();
 
     state.notifications.push({
       id: state.notifications.length + 1,
@@ -2337,6 +2408,21 @@ export const dbOperations = {
     });
 
     saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      try {
+        await updateDeliveryPartnerReview(client, partnerId, {
+          status: 'APPROVED',
+          rejection_reason: '',
+          reviewed_by: state.currentUser?.id ?? 0,
+          reviewed_at: partner.reviewedAt,
+        });
+        await reloadFromSupabase();
+      } catch (err) {
+        console.error('Failed to record partner approval:', err);
+      }
+    }
     return partner;
   },
 
@@ -3362,18 +3448,23 @@ export const dbOperations = {
     return { success: true };
   },
 
-  async adminRejectDeliveryPartner(partnerId: number) {
+  async adminRejectDeliveryPartner(partnerId: number, reason?: string) {
     const state = dbOperations.requireAdmin();
     const partner = state.deliveryPartners.find((p) => p.id === partnerId);
     if (!partner) return { error: 'Partner not found' };
     partner.status = 'REJECTED';
     partner.isAvailable = false;
+    partner.rejectionReason = reason || '';
+    partner.reviewedBy = state.currentUser!.id;
+    partner.reviewedAt = new Date().toISOString();
     dbOperations.addAuditLog(state.currentUser!.id, 'ADMIN_REJECT_PARTNER', 'DELIVERY_PARTNER', partnerId, partner.fullName);
     state.notifications.push({
       id: state.notifications.length + 1,
       userId: partner.userId,
       title: 'Delivery Partner Application Rejected',
-      message: 'Your GoodDispatch application was rejected. Contact support for details.',
+      message: reason
+        ? `Your GoodDispatch application was rejected. Reason: ${reason}`
+        : 'Your GoodDispatch application was rejected. Contact support for details.',
       type: 'VERIFICATION',
       isRead: false,
       createdAt: new Date().toISOString(),
@@ -3381,8 +3472,461 @@ export const dbOperations = {
     saveDBState(state);
     const client = createClient();
     if (client) {
-      await client.from('delivery_partners').update({ status: 'REJECTED', is_available: false }).eq('id', partnerId);
+      try {
+        await updateDeliveryPartnerReview(client, partnerId, {
+          status: 'REJECTED',
+          rejection_reason: reason || '',
+          reviewed_by: state.currentUser!.id,
+          reviewed_at: partner.reviewedAt!,
+        });
+        await client.from('delivery_partners').update({ is_available: false }).eq('id', partnerId);
+        await reloadFromSupabase();
+      } catch (err) {
+        console.error('Failed to record partner rejection:', err);
+      }
+    }
+    return { success: true };
+  },
+
+  // -------------------------------------------------------------------------
+  // Service areas — the states & cities GoodSale is live in. Admin-managed,
+  // rendered everywhere the app asks for a state/city (sell form, addresses,
+  // rider onboarding, delivery quoting, checkout).
+  // -------------------------------------------------------------------------
+  /** Every state GoodSale is configured in. */
+  serviceStates(): string[] {
+    return Array.from(new Set(getDBState().serviceAreas.map((a) => a.state))).sort((a, b) => a.localeCompare(b));
+  },
+
+  /** Cities, optionally narrowed to one state. */
+  serviceCities(stateName?: string): string[] {
+    const areas = getDBState().serviceAreas;
+    const pool = stateName ? areas.filter((a) => a.state === stateName) : areas;
+    return Array.from(new Set(pool.map((a) => a.city))).sort((a, b) => a.localeCompare(b));
+  },
+
+  /** Cities where sellers may list and buyers may order. */
+  salesCities(stateName?: string): string[] {
+    const areas = getDBState().serviceAreas.filter((a) => a.salesEnabled);
+    const pool = stateName ? areas.filter((a) => a.state === stateName) : areas;
+    return Array.from(new Set(pool.map((a) => a.city))).sort((a, b) => a.localeCompare(b));
+  },
+
+  /** Cities where GoodDispatch riders accept deliveries. */
+  deliveryCities(stateName?: string): string[] {
+    const areas = getDBState().serviceAreas.filter((a) => a.deliveryEnabled);
+    const pool = stateName ? areas.filter((a) => a.state === stateName) : areas;
+    return Array.from(new Set(pool.map((a) => a.city))).sort((a, b) => a.localeCompare(b));
+  },
+
+  /**
+   * Can GoodSale sell/fulfil here? When no coverage has been configured yet we
+   * allow everyone through, so an empty admin list never locks the app up.
+   */
+  isSalesArea(stateName?: string, city?: string): boolean {
+    const areas = getDBState().serviceAreas;
+    if (!areas.length) return true;
+    if (!city) return areas.some((a) => a.salesEnabled && (!stateName || a.state === stateName));
+    const match = areas.find(
+      (a) => a.city.toLowerCase() === city.toLowerCase() && (!stateName || a.state.toLowerCase() === stateName.toLowerCase())
+    );
+    return match ? match.salesEnabled : false;
+  },
+
+  /** Can a rider accept deliveries here? */
+  isDeliveryArea(stateName?: string, city?: string): boolean {
+    const areas = getDBState().serviceAreas;
+    if (!areas.length) return true;
+    if (!city) return areas.some((a) => a.deliveryEnabled && (!stateName || a.state === stateName));
+    const match = areas.find(
+      (a) => a.city.toLowerCase() === city.toLowerCase() && (!stateName || a.state.toLowerCase() === stateName.toLowerCase())
+    );
+    return match ? match.deliveryEnabled : false;
+  },
+
+  async adminUpsertServiceArea(area: { state: string; city: string; salesEnabled: boolean; deliveryEnabled: boolean }) {
+    const state = dbOperations.requireAdmin();
+    const stateName = area.state.trim();
+    const city = area.city.trim();
+    if (!stateName || !city) return { error: 'State and city are both required.' };
+
+    const existing = state.serviceAreas.find(
+      (a) => a.state.toLowerCase() === stateName.toLowerCase() && a.city.toLowerCase() === city.toLowerCase()
+    );
+
+    if (existing) {
+      existing.salesEnabled = area.salesEnabled;
+      existing.deliveryEnabled = area.deliveryEnabled;
+    } else {
+      state.serviceAreas.push({
+        id: Math.max(0, ...state.serviceAreas.map((a) => a.id)) + 1,
+        state: stateName,
+        city,
+        salesEnabled: area.salesEnabled,
+        deliveryEnabled: area.deliveryEnabled,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    dbOperations.addAuditLog(
+      state.currentUser!.id,
+      existing ? 'ADMIN_UPDATE_SERVICE_AREA' : 'ADMIN_ADD_SERVICE_AREA',
+      'SERVICE_AREA',
+      existing?.id ?? 0,
+      `${stateName} · ${city} (sales ${area.salesEnabled ? 'on' : 'off'}, delivery ${area.deliveryEnabled ? 'on' : 'off'})`
+    );
+    saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      try {
+        await upsertServiceArea(client, { state: stateName, city, salesEnabled: area.salesEnabled, deliveryEnabled: area.deliveryEnabled });
+        await reloadFromSupabase();
+      } catch (err) {
+        console.error('Failed to persist service area:', err);
+        return { error: 'Saved locally but could not reach the server. Try again.' };
+      }
+    }
+    return { success: true };
+  },
+
+  async adminToggleServiceArea(id: number, patch: { salesEnabled?: boolean; deliveryEnabled?: boolean }) {
+    const state = dbOperations.requireAdmin();
+    const area = state.serviceAreas.find((a) => a.id === id);
+    if (!area) return { error: 'Area not found' };
+
+    if (patch.salesEnabled != null) area.salesEnabled = patch.salesEnabled;
+    if (patch.deliveryEnabled != null) area.deliveryEnabled = patch.deliveryEnabled;
+    saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      await updateServiceAreaFlags(client, id, { sales_enabled: area.salesEnabled, delivery_enabled: area.deliveryEnabled });
       await reloadFromSupabase();
+    }
+    return { success: true };
+  },
+
+  async adminDeleteServiceArea(id: number) {
+    const state = dbOperations.requireAdmin();
+    const area = state.serviceAreas.find((a) => a.id === id);
+    if (!area) return { error: 'Area not found' };
+
+    state.serviceAreas = state.serviceAreas.filter((a) => a.id !== id);
+    dbOperations.addAuditLog(state.currentUser!.id, 'ADMIN_DELETE_SERVICE_AREA', 'SERVICE_AREA', id, `${area.state} · ${area.city}`);
+    saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      await deleteServiceAreaById(client, id);
+      await reloadFromSupabase();
+    }
+    return { success: true };
+  },
+
+  // -------------------------------------------------------------------------
+  // Reports — any signed-in user can flag a user, product, message or order.
+  // -------------------------------------------------------------------------
+  async createReport(input: {
+    targetType: ReportTargetType;
+    targetId: number;
+    targetLabel: string;
+    reason: string;
+    details?: string;
+    evidenceUrl?: string;
+  }) {
+    const state = getDBState();
+    const me = state.currentUser;
+    if (!me) return { error: 'Sign in to file a report.' };
+    if (!input.reason.trim()) return { error: 'Pick a reason for the report.' };
+
+    const details = input.details?.trim() || '';
+    const local: Report = {
+      id: Math.max(0, ...state.reports.map((r) => r.id)) + 1,
+      reporterId: me.id,
+      targetType: input.targetType,
+      targetId: input.targetId,
+      targetLabel: input.targetLabel,
+      reason: input.reason,
+      details,
+      evidenceUrl: input.evidenceUrl || '',
+      status: 'OPEN',
+      createdAt: new Date().toISOString(),
+    };
+    state.reports.push(local);
+    saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      try {
+        await insertReport(client, {
+          reporterId: me.id,
+          targetType: input.targetType,
+          targetId: input.targetId,
+          targetLabel: input.targetLabel,
+          reason: input.reason,
+          details,
+          evidenceUrl: input.evidenceUrl,
+        });
+        await reloadFromSupabase();
+      } catch (err) {
+        console.error('Failed to file report:', err);
+        return { error: 'Could not send the report. Try again.' };
+      }
+    }
+    return { success: true, report: local };
+  },
+
+  async adminUpdateReport(id: number, patch: { status?: ReportStatus; adminNotes?: string }) {
+    const state = dbOperations.requireAdmin();
+    const report = state.reports.find((r) => r.id === id);
+    if (!report) return { error: 'Report not found' };
+
+    if (patch.status) {
+      report.status = patch.status;
+      if (patch.status === 'RESOLVED' || patch.status === 'DISMISSED') {
+        report.resolvedBy = state.currentUser!.id;
+        report.resolvedAt = new Date().toISOString();
+      }
+    }
+    if (patch.adminNotes != null) report.adminNotes = patch.adminNotes;
+
+    dbOperations.addAuditLog(state.currentUser!.id, 'ADMIN_REPORT_TRIAGE', 'REPORT', id, `${report.targetType} → ${report.status}`);
+    saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      try {
+        await updateReport(client, id, {
+          status: report.status,
+          admin_notes: report.adminNotes ?? '',
+          resolved_by: report.resolvedBy ?? null,
+          resolved_at: report.resolvedAt ?? null,
+        });
+        await reloadFromSupabase();
+      } catch (err) {
+        console.error('Failed to update report:', err);
+      }
+    }
+    return { success: true };
+  },
+
+  async adminDeleteReport(id: number) {
+    const state = dbOperations.requireAdmin();
+    if (!state.reports.some((r) => r.id === id)) return { error: 'Report not found' };
+    state.reports = state.reports.filter((r) => r.id !== id);
+    dbOperations.addAuditLog(state.currentUser!.id, 'ADMIN_DELETE_REPORT', 'REPORT', id, 'Report removed');
+    saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      await deleteReportById(client, id);
+      await reloadFromSupabase();
+    }
+    return { success: true };
+  },
+
+  // -------------------------------------------------------------------------
+  // Chat — replies, reactions and calls
+  // -------------------------------------------------------------------------
+  /** Toggle the signed-in user's emoji reaction on a message. */
+  async toggleReaction(messageId: number, emoji: string) {
+    const state = getDBState();
+    const me = state.currentUser;
+    if (!me) return { error: 'Sign in to react.' };
+
+    const mine = state.messageReactions.find((r) => r.messageId === messageId && r.userId === me.id && r.emoji === emoji);
+    if (mine) {
+      state.messageReactions = state.messageReactions.filter((r) => r.id !== mine.id);
+      saveDBState(state);
+      withClient((c) => toggleMessageReaction(c, { messageId, userId: me.id, emoji, add: false }));
+    } else {
+      state.messageReactions.push({
+        id: Math.max(0, ...state.messageReactions.map((r) => r.id)) + 1,
+        messageId,
+        userId: me.id,
+        emoji,
+        createdAt: new Date().toISOString(),
+      });
+      saveDBState(state);
+      withClient((c) => toggleMessageReaction(c, { messageId, userId: me.id, emoji, add: true }));
+    }
+    return { success: true };
+  },
+
+  /**
+   * Open a call record so the attempt lands in both parties' call history even
+   * if nobody picks up. Returns the persisted id used to update the outcome.
+   */
+  async startCall(roomId: number, kind: CallKind) {
+    const state = getDBState();
+    const me = state.currentUser;
+    if (!me) return { error: 'Sign in to place a call.' };
+
+    const room = state.chatRooms.find((r) => r.id === roomId);
+    if (!room) return { error: 'Conversation not found.' };
+    const calleeId = room.buyerId === me.id ? room.sellerId : room.buyerId;
+
+    const now = new Date().toISOString();
+    const local: Call = {
+      id: Math.max(0, ...state.calls.map((c) => c.id)) + 1,
+      roomId,
+      callerId: me.id,
+      calleeId,
+      kind,
+      status: 'RINGING',
+      startedAt: now,
+      durationSeconds: 0,
+      createdAt: now,
+    };
+    state.calls.push(local);
+    saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      try {
+        const dbId = await insertCall(client, { roomId, callerId: me.id, calleeId, kind });
+        await reloadFromSupabase();
+        return { success: true, callId: dbId };
+      } catch (err) {
+        console.error('Failed to open call record:', err);
+      }
+    }
+    return { success: true, callId: local.id };
+  },
+
+  /** Close out a call with its final status and talk duration. */
+  async finishCall(callId: number, status: CallStatus, durationSeconds = 0) {
+    const state = getDBState();
+    const call = state.calls.find((c) => c.id === callId);
+    if (!call) return { error: 'Call not found' };
+
+    call.status = status;
+    call.durationSeconds = Math.max(0, Math.round(durationSeconds));
+    if (status === 'ONGOING' && !call.answeredAt) call.answeredAt = new Date().toISOString();
+    if (status !== 'RINGING' && status !== 'ONGOING') {
+      call.endedAt = new Date().toISOString();
+    }
+    saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      await updateCall(client, callId, {
+        status,
+        answered_at: call.answeredAt ?? null,
+        ended_at: call.endedAt ?? null,
+        duration_seconds: call.durationSeconds,
+      });
+      await reloadFromSupabase();
+    }
+    return { success: true };
+  },
+
+  // -------------------------------------------------------------------------
+  // Cover photos / storefront banners
+  // -------------------------------------------------------------------------
+  async updateCoverPhoto(url: string, scope: 'USER' | 'BUSINESS' = 'USER') {
+    const state = getDBState();
+    const me = state.currentUser;
+    if (!me) return { error: 'Sign in to update your cover.' };
+
+    if (scope === 'BUSINESS') {
+      const biz = state.businesses.find((b) => b.ownerId === me.id);
+      if (!biz) return { error: 'No business profile found.' };
+      biz.bannerUrl = url;
+    } else {
+      const profile = state.profiles.find((p) => p.userId === me.id);
+      if (!profile) return { error: 'No profile found.' };
+      profile.coverUrl = url;
+    }
+    saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      if (scope === 'BUSINESS') {
+        await client.from('businesses').update({ banner_url: url }).eq('owner_id', me.id);
+      } else {
+        await client.from('profiles').update({ cover_url: url }).eq('id', me.id);
+      }
+      await reloadFromSupabase();
+    }
+    return { success: true };
+  },
+
+  // -------------------------------------------------------------------------
+  // Verification applications (seller / business / identity) with the full
+  // document set attached so admins review everything before deciding.
+  // -------------------------------------------------------------------------
+  async submitVerificationApplication(input: {
+    kind: VerificationKind;
+    fullName: string;
+    documentType: DocumentType;
+    documentNumber: string;
+    documentImageUrl?: string;
+    selfieImageUrl?: string;
+    proofOfAddressUrl?: string;
+    documents?: VerificationDocument[];
+    businessName?: string;
+    businessAddress?: string;
+  }) {
+    const state = getDBState();
+    const me = state.currentUser;
+    if (!me) return { error: 'Sign in to apply for verification.' };
+
+    // One open application per kind at a time.
+    const pending = state.verifications.find(
+      (v) => v.userId === me.id && v.applicationKind === input.kind && v.status === VerificationStatus.PENDING
+    );
+    if (pending) return { error: 'You already have a review in progress for this check.' };
+
+    const documents = input.documents ?? [];
+    if (!input.fullName.trim() || !input.documentNumber.trim()) {
+      return { error: 'Legal name and document number are required.' };
+    }
+    if (!input.documentImageUrl && !documents.length) {
+      return { error: 'Upload at least one document for review.' };
+    }
+
+    const local: IdentityVerification = {
+      id: Math.max(0, ...state.verifications.map((v) => v.id)) + 1,
+      userId: me.id,
+      fullName: input.fullName.trim(),
+      documentType: input.documentType,
+      documentNumber: input.documentNumber.trim(),
+      documentImageUrl: input.documentImageUrl || '',
+      selfieImageUrl: input.selfieImageUrl || '',
+      proofOfAddressUrl: input.proofOfAddressUrl || '',
+      status: VerificationStatus.PENDING,
+      createdAt: new Date().toISOString(),
+      applicationKind: input.kind,
+      documents,
+      businessName: input.businessName || '',
+      businessAddress: input.businessAddress || '',
+    };
+    state.verifications.push(local);
+    saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      try {
+        await insertVerificationApplication(client, {
+          userId: me.id,
+          applicationKind: input.kind,
+          fullName: local.fullName,
+          documentType: input.documentType,
+          documentNumber: local.documentNumber,
+          documentImageUrl: local.documentImageUrl,
+          selfieImageUrl: local.selfieImageUrl,
+          proofOfAddressUrl: local.proofOfAddressUrl,
+          documents,
+          businessName: input.businessName,
+          businessAddress: input.businessAddress,
+        });
+        await reloadFromSupabase();
+      } catch (err) {
+        console.error('Failed to submit verification application:', err);
+        return { error: 'Could not submit right now. Check your uploads and try again.' };
+      }
     }
     return { success: true };
   },

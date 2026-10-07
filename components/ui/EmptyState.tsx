@@ -50,7 +50,7 @@ export default function EmptyState({
           <LottieAnimation animationData={lottieStates[state]} className="h-full w-full" />
         </div>
       </div>
-      <h3 className={`font-black tracking-tight text-ink-900 dark:text-white ${s.title}`}>
+      <h3 className={`font-bold tracking-tight text-ink-900 dark:text-white ${s.title}`}>
         {title}
       </h3>
       {description && (

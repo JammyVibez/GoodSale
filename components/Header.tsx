@@ -96,7 +96,10 @@ export default function Header({
     if (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'system') {
       setThemeMode(savedTheme);
     } else {
-      setThemeMode('dark');
+      // No saved preference: follow the device, exactly like the pre-paint
+      // script in app/layout.tsx. Defaulting to dark here fought that script
+      // and caused the light→dark flash on first load.
+      setThemeMode('system');
     }
   }, []);
 
@@ -208,8 +211,8 @@ export default function Header({
                   className="absolute left-0 right-0 top-full mt-2 bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 rounded-2xl shadow-xl z-50 py-3 overflow-hidden animate-slide-in"
                   onMouseDown={(e) => e.preventDefault()}
                 >
-                  <div className="flex items-center justify-between px-4 pb-2 mb-1 border-b border-ink-50 dark:border-ink-800/50 text-xs font-bold text-ink-400 dark:text-ink-500 font-mono tracking-wider">
-                    <span>RECENT SEARCHES</span>
+                  <div className="flex items-center justify-between px-4 pb-2 mb-1 border-b border-ink-50 dark:border-ink-800/50 text-xs font-semibold text-ink-400 dark:text-ink-500">
+                    <span>Recent searches</span>
                     <button 
                       onClick={handleClearAllRecent}
                       className="hover:text-ink-500 transition-colors flex items-center gap-0.5 cursor-pointer"
@@ -249,7 +252,7 @@ export default function Header({
             <button
               onClick={() => onNavigate('marketplace')}
               aria-current={currentView === 'marketplace' ? 'page' : undefined}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-extrabold tracking-wide transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all cursor-pointer ${
                 currentView === 'marketplace'
                   ? 'bg-jade-500 text-white shadow-sm shadow-jade-500/30 [&_svg]:text-white'
                   : 'text-ink-600 dark:text-ink-300 hover:text-jade-500 dark:hover:text-jade-400'
@@ -267,7 +270,7 @@ export default function Header({
                 }
               }}
               aria-current={currentView === 'wallet' ? 'page' : undefined}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-extrabold tracking-wide transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all cursor-pointer ${
                 currentView === 'wallet'
                   ? 'bg-jade-500 text-white shadow-sm shadow-jade-500/30 [&_svg]:text-white'
                   : 'text-ink-600 dark:text-ink-300 hover:text-jade-500 dark:hover:text-jade-400'
@@ -285,7 +288,7 @@ export default function Header({
                 }
               }}
               aria-current={currentView === 'chats' ? 'page' : undefined}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-extrabold tracking-wide transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all cursor-pointer ${
                 currentView === 'chats'
                   ? 'bg-jade-500 text-white shadow-sm shadow-jade-500/30 [&_svg]:text-white'
                   : 'text-ink-600 dark:text-ink-300 hover:text-jade-500 dark:hover:text-jade-400'
@@ -303,7 +306,7 @@ export default function Header({
                 onNavigate('cart');
               }}
               aria-current={currentView === 'cart' ? 'page' : undefined}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-extrabold tracking-wide transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all cursor-pointer ${
                 currentView === 'cart'
                   ? 'bg-jade-500 text-white shadow-sm shadow-jade-500/30 [&_svg]:text-white'
                   : 'text-ink-600 dark:text-ink-300 hover:text-jade-500 dark:hover:text-jade-400'
@@ -334,10 +337,10 @@ export default function Header({
                   id={cta.id}
                   onClick={() => onNavigate(cta.view)}
                   aria-current={active ? 'page' : undefined}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-extrabold tracking-wide transition-all cursor-pointer select-none ${
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all cursor-pointer select-none ${
                     active
-                      ? 'bg-jade-500 text-white shadow-sm shadow-jade-500/30 [&_svg]:text-white'
-                      : 'bg-gradient-to-r from-jade-500 to-jade-600 hover:from-jade-600 hover:to-jade-700 text-white shadow-sm shadow-jade-500/25'
+                      ? 'bg-jade-500 text-white shadow-sm shadow-jade-500/25 [&_svg]:text-white'
+                      : 'bg-jade-500 hover:bg-jade-600 text-white shadow-sm shadow-jade-500/20'
                   }`}
                 >
                   <cta.Icon className="w-3.5 h-3.5" />
@@ -390,7 +393,7 @@ export default function Header({
                     <div className="flex items-center gap-1.5">
                       <span className="font-bold text-sm text-ink-900 dark:text-white font-sans">Notification Hub</span>
                       {unreadNotifications.length > 0 && (
-                        <span className="px-2 py-0.5 text-xs font-black bg-ink-500/10 text-ink-500 dark:text-ink-400 rounded-full">
+                        <span className="px-2 py-0.5 text-xs font-semibold bg-ink-500/10 text-ink-500 dark:text-ink-400 rounded-full">
                           {unreadNotifications.length} New
                         </span>
                       )}
@@ -398,7 +401,7 @@ export default function Header({
                     {unreadNotifications.length > 0 && (
                       <button 
                         onClick={handleClearNotifications}
-                        className="text-xs text-jade-600 hover:text-jade-500 dark:text-jade-400 font-extrabold hover:underline"
+                        className="text-xs text-jade-600 hover:text-jade-500 dark:text-jade-400 font-semibold hover:underline"
                       >
                         Mark all read
                       </button>
@@ -409,7 +412,7 @@ export default function Header({
                   <div className="px-4 py-2 border-b border-ink-100 dark:border-ink-800 flex gap-2 bg-white dark:bg-ink-900">
                     <button
                       onClick={() => setNotifFilter('all')}
-                      className={`px-3 py-1 text-xs font-black uppercase tracking-wider rounded-md border transition-all cursor-pointer ${
+                      className={`px-3 py-1 text-xs font-semibold rounded-md border transition-all cursor-pointer ${
                         notifFilter === 'all'
                           ? 'bg-ink-900 dark:bg-ink-100 text-white dark:text-ink-900 border-ink-900 dark:border-ink-100'
                           : 'bg-transparent text-ink-500 dark:text-ink-400 border-ink-200 dark:border-ink-800 hover:text-ink-700'
@@ -419,7 +422,7 @@ export default function Header({
                     </button>
                     <button
                       onClick={() => setNotifFilter('unread')}
-                      className={`px-3 py-1 text-xs font-black uppercase tracking-wider rounded-md border transition-all cursor-pointer ${
+                      className={`px-3 py-1 text-xs font-semibold rounded-md border transition-all cursor-pointer ${
                         notifFilter === 'unread'
                           ? 'bg-jade-500 text-white border-jade-500'
                           : 'bg-transparent text-ink-500 dark:text-ink-400 border-ink-200 dark:border-ink-800 hover:text-jade-500'
@@ -482,10 +485,10 @@ export default function Header({
                               {/* Content text */}
                               <div className="flex-1 min-w-0 pr-8">
                                 <div className="flex items-baseline justify-between gap-2 mb-0.5">
-                                  <h5 className="font-extrabold text-ink-900 dark:text-ink-100 text-xs truncate font-sans">
+                                  <h5 className="font-semibold text-ink-900 dark:text-ink-100 text-xs truncate font-sans">
                                     {notif.title}
                                   </h5>
-                                  <span className="text-xs text-ink-400 dark:text-ink-500 font-mono shrink-0">
+                                  <span className="text-xs text-ink-400 dark:text-ink-500 shrink-0">
                                     {notif.createdAt ? new Date(notif.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                                   </span>
                                 </div>
@@ -533,7 +536,7 @@ export default function Header({
                   className="flex items-center gap-1.5 bg-gradient-to-r from-ink-500/10 to-ink-500/10 hover:from-ink-500/20 hover:to-ink-500/20 border border-ink-500/30 dark:border-ink-500/20 text-ink-600 dark:text-ink-400 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all shrink-0"
                   title="Your GoodPoints Loyalty Balance"
                 >
-                  <Award className="w-3.5 h-3.5 text-ink-500 fill-ink-500/20" />
+                  <Award className="h-3.5 w-3.5 text-jade-500" />
                   <span>{user.goodPoints.toLocaleString()} GP</span>
                 </div>
               )}
@@ -575,7 +578,7 @@ export default function Header({
                         : 'bg-white dark:bg-ink-900 border-ink-200 dark:border-ink-750 hover:bg-ink-100 dark:hover:bg-ink-800'
                     }`}
                   >
-                    <span className="w-7 h-7 rounded-lg bg-jade-500/10 text-jade-600 dark:text-jade-400 flex items-center justify-center font-black text-xs">
+                    <span className="w-7 h-7 rounded-lg bg-jade-500/10 text-jade-600 dark:text-jade-400 flex items-center justify-center font-semibold text-xs">
                       {(user.fullName || 'G').trim().charAt(0).toUpperCase()}
                     </span>
                     <span className="hidden lg:block text-xs font-bold text-ink-800 dark:text-ink-200 max-w-[96px] truncate">
@@ -589,10 +592,10 @@ export default function Header({
                       <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
                       <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-2xl shadow-2xl z-50 py-2 animate-slide-in">
                         <div className="px-4 py-2.5 border-b border-ink-100 dark:border-ink-800">
-                          <p className="text-sm font-black text-ink-900 dark:text-white truncate">
+                          <p className="text-sm font-semibold text-ink-900 dark:text-white truncate">
                             {user.fullName}
                           </p>
-                          <p className="text-xs text-ink-500 font-mono truncate">
+                          <p className="text-xs text-ink-500 truncate">
                             {user.role.replace(/_/g, ' ').toLowerCase()}
                           </p>
                         </div>
@@ -667,7 +670,7 @@ export default function Header({
                     <div className="fixed inset-0 z-40" onClick={() => setShowThemeMenu(false)} />
                     <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-xl shadow-2xl z-50 py-1.5 animate-slide-in">
                       <div className="px-3 py-1.5 border-b border-ink-100 dark:border-ink-800 mb-1">
-                        <span className="text-xs font-bold text-ink-400 uppercase tracking-wider">Appearance Mode</span>
+                        <span className="text-xs font-semibold text-ink-400">Appearance mode</span>
                       </div>
                       
                       <button
@@ -756,8 +759,8 @@ export default function Header({
               className="absolute left-4 right-4 bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 rounded-2xl shadow-xl z-50 mt-1 py-3 overflow-hidden animate-slide-in"
               onMouseDown={(e) => e.preventDefault()}
             >
-              <div className="flex items-center justify-between px-4 pb-2 mb-1 border-b border-ink-50 dark:border-ink-800/50 text-xs font-bold text-ink-400 dark:text-ink-500 font-mono tracking-wider">
-                <span>RECENT SEARCHES</span>
+              <div className="flex items-center justify-between px-4 pb-2 mb-1 border-b border-ink-50 dark:border-ink-800/50 text-xs font-semibold text-ink-400 dark:text-ink-500">
+                <span>Recent searches</span>
                 <button 
                   onClick={handleClearAllRecent}
                   className="hover:text-ink-500 transition-colors flex items-center gap-0.5 cursor-pointer"

@@ -36,7 +36,7 @@ export default function Meter({
             <span className="text-xs font-bold tracking-wide text-ink-500">{label}</span>
           )}
           {showValue && (
-            <span className="font-mono text-xs font-black tabular-nums text-ink-800 dark:text-ink-200">
+            <span className="font-mono text-xs font-semibold tabular-nums text-ink-800 dark:text-ink-200">
               {Math.round(pct)}%
             </span>
           )}

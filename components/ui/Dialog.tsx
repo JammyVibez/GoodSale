@@ -57,7 +57,7 @@ export default function Dialog({
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
             {title && (
-              <h3 className="text-lg font-black tracking-tight text-ink-900 dark:text-white">
+              <h3 className="text-lg font-bold tracking-tight text-ink-900 dark:text-white">
                 {title}
               </h3>
             )}

@@ -68,7 +68,7 @@ export default function Toast({
         )}
       </span>
       <div className="min-w-0 pt-1">
-        {title && <p className="text-sm font-black tracking-tight">{title}</p>}
+        {title && <p className="text-sm font-bold tracking-tight">{title}</p>}
         <div className="text-xs font-medium leading-relaxed opacity-90">{children}</div>
       </div>
     </div>

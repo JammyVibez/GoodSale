@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { 
   Shield, Award, MapPin, CheckCircle, Package, Clock, AlertTriangle, 
   ChevronRight, Calendar, Star, ArrowLeft, Key, CreditCard, Lock,
-  Download, Check, Compass, Sliders, Truck, Store
+  Download, Check, Compass, Sliders, Truck, Store, Camera, Loader2
 } from 'lucide-react';
 import { useDBState, dbOperations, OrderStatus, Order, UserRole } from '../lib/store';
 import LiveSafeMeetMap from './LiveSafeMeetMap';
@@ -32,6 +32,19 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
     ? db.profiles.find(p => p.userId === currentUser.id) 
     : null;
 
+  // Buying is open to every signed-in role. Only seller / business accounts can
+  // list, so buyers are pointed at Settings to switch their account type.
+  const canSell = currentUser
+    ? [
+        UserRole.SELLER,
+        UserRole.VERIFIED_SELLER,
+        UserRole.BUSINESS,
+        UserRole.VERIFIED_BUSINESS,
+        UserRole.ADMIN,
+        UserRole.SUPER_ADMIN,
+      ].includes(currentUser.role)
+    : false;
+
   // Active orders made by this buyer
   const buyerOrders = currentUser 
     ? db.orders.filter(o => o.buyerId === currentUser.id) 
@@ -45,6 +58,26 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
   // Active PIN Verification Simulation State
   const [selectedOrderForPin, setSelectedOrderForPin] = useState<number | null>(null);
   const [typedPin, setTypedPin] = useState('');
+  const [uploadingCover, setUploadingCover] = useState(false);
+
+  /** Cover photo: image → /api/upload → store + Supabase, shown on the profile banner. */
+  const handleCoverFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploadingCover(true);
+    try {
+      const { uploadMedia } = await import('@/lib/upload');
+      const url = await uploadMedia(file, 'avatars');
+      const res = await dbOperations.updateCoverPhoto(url, 'USER');
+      if ('error' in res && res.error) throw new Error(res.error);
+      toast.success('Cover photo updated.');
+    } catch {
+      toast.error('Cover upload failed. Try a smaller image.');
+    } finally {
+      setUploadingCover(false);
+    }
+  };
   const [pinError, setPinError] = useState('');
   const [pinSuccess, setPinSuccess] = useState('');
 
@@ -190,7 +223,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
     };
     const entry = map[status] || { label: status.replace(/_/g, ' '), tone: 'outline' as const };
     return (
-      <Chip tone={entry.tone} className="uppercase tracking-wider">
+      <Chip tone={entry.tone} className="tracking-tight">
         {entry.label}
       </Chip>
     );
@@ -211,20 +244,20 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
         <div className="w-16 h-16 bg-ink-500/10 dark:bg-ink-500/5 rounded-full flex items-center justify-center mx-auto mb-6 border border-ink-500/20">
           <Key className="w-8 h-8 text-ink-500" />
         </div>
-        <h2 className="font-display font-black text-2xl text-ink-900 dark:text-white mb-2">Access Your Safe Escrow Hub</h2>
+        <h2 className="font-display font-bold text-2xl text-ink-900 dark:text-white mb-2">Access Your Safe Escrow Hub</h2>
         <p className="text-sm text-ink-500 dark:text-ink-400 mb-8 max-w-sm mx-auto leading-relaxed">
           Sign in or create a GoodSale account to view your purchase history, release escrow delivery funds, track loyalty GoodPoints, and check seller reviews.
         </p>
         <div className="space-y-3">
           <button
             onClick={onOpenAuth}
-            className="w-full py-3 bg-gradient-to-r from-jade-500 to-jade-600 hover:from-jade-600 hover:to-jade-700 text-white font-sans font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer shadow-md shadow-jade-500/10 transition-all"
+            className="w-full py-3 bg-gradient-to-r from-jade-500 to-jade-600 hover:from-jade-600 hover:to-jade-700 text-white font-sans font-bold text-xs tracking-tight rounded-xl cursor-pointer shadow-md shadow-jade-500/10 transition-all"
           >
             Sign In / Register Account
           </button>
           <button
             onClick={onBack}
-            className="w-full py-3 bg-ink-100 dark:bg-ink-900 hover:bg-ink-200 dark:hover:bg-ink-800 text-ink-700 dark:text-ink-300 font-sans font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer transition-all border border-ink-200/50 dark:border-ink-800"
+            className="w-full py-3 bg-ink-100 dark:bg-ink-900 hover:bg-ink-200 dark:hover:bg-ink-800 text-ink-700 dark:text-ink-300 font-sans font-bold text-xs tracking-tight rounded-xl cursor-pointer transition-all border border-ink-200/50 dark:border-ink-800"
           >
             Back to Marketplace
           </button>
@@ -249,13 +282,35 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
         {/* Profile Card Backdrop */}
         <Card className="overflow-hidden">
           
-          <div className="relative h-32 overflow-hidden bg-ink-900">
-            <div className="absolute inset-0 aurora-bg opacity-70" />
+          <div className="relative h-40 overflow-hidden bg-ink-900 sm:h-48">
+            {currentProfile?.coverUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={currentProfile.coverUrl}
+                alt="Profile cover"
+                className="absolute inset-0 h-full w-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div className="absolute inset-0 aurora-bg opacity-70" />
+            )}
             <div className="absolute inset-0 bg-gradient-to-t from-ink-950/80 to-transparent" />
+
             <div className="absolute right-4 top-4 flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-bold text-white backdrop-blur-md">
               <Calendar className="h-3.5 w-3.5" />
               Member since {new Date().getFullYear()}
             </div>
+
+            <label className="absolute left-4 top-4 inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-white/20 bg-white/90 px-3 py-1.5 text-xs font-bold text-ink-800 shadow-md backdrop-blur-md transition hover:bg-white dark:bg-ink-900/90 dark:text-ink-100">
+              {uploadingCover ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+              {uploadingCover ? 'Uploading…' : 'Change cover'}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={handleCoverFileChange}
+              />
+            </label>
           </div>
 
           <div className="p-6 sm:p-8 pt-0 relative flex flex-col sm:flex-row items-start sm:items-end justify-between gap-6">
@@ -273,8 +328,8 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
 
               <div className="pb-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="font-display text-2xl font-black leading-none tracking-tight text-ink-900 dark:text-white">{currentUser.fullName}</h1>
-                  <Chip tone="solid" className="uppercase tracking-wider" title={currentUser.role}>
+                  <h1 className="font-display text-2xl font-bold leading-none tracking-tight text-ink-900 dark:text-white">{currentUser.fullName}</h1>
+                  <Chip tone="solid" className="tracking-tight" title={currentUser.role}>
                     {(() => {
                       switch (currentUser.role) {
                         case UserRole.VERIFIED_BUSINESS:
@@ -341,10 +396,10 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
           ].map((stat) => (
             <Card key={stat.label} variant="muted" className="p-4">
               <stat.icon className="mb-2 h-4 w-4 text-jade-600 dark:text-jade-400" />
-              <p className="font-mono text-lg font-black leading-none text-ink-900 dark:text-white">
+              <p className="font-mono text-lg font-bold leading-none text-ink-900 dark:text-white">
                 {stat.value}
               </p>
-              <p className="mt-1 font-mono text-xs uppercase tracking-widest text-ink-500">
+              <p className="mt-1 font-mono text-xs tracking-tight text-ink-500">
                 {stat.label}
               </p>
             </Card>
@@ -355,7 +410,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
 
       {/* Quick portals */}
       <Card className="mb-8 space-y-4 p-5">
-        <h3 className="flex select-none items-center gap-2 font-mono text-xs font-bold uppercase tracking-widest text-ink-500">
+        <h3 className="flex select-none items-center gap-2 font-mono text-xs font-bold tracking-tight text-ink-500">
           <Compass className="h-4 w-4 text-jade-600 dark:text-jade-400" />
           Quick access
         </h3>
@@ -380,21 +435,21 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
             </div>
           </button>
 
-          {/* Seller Hub / Dashboard */}
+          {/* Seller Hub / Dashboard — buyers switch account type first */}
           <button
             type="button"
-            onClick={() => onNavigate?.('dashboard')}
-            className="flex items-center gap-3 p-3.5 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 hover:border-ink-500 dark:hover:border-ink-500 rounded-2xl shadow-xs text-left cursor-pointer transition-all group"
+            onClick={() => onNavigate?.(canSell ? 'dashboard' : 'settings')}
+            className="flex items-center gap-3 p-3.5 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 hover:border-jade-500 dark:hover:border-jade-500 rounded-2xl shadow-xs text-left cursor-pointer transition-all group"
           >
-            <div className="p-2.5 rounded-xl bg-ink-500/10 text-ink-600 dark:text-ink-400 group-hover:bg-ink-500 group-hover:text-white transition-all">
+            <div className="p-2.5 rounded-xl bg-jade-500/10 text-jade-600 dark:text-jade-400 group-hover:bg-jade-500 group-hover:text-white transition-all">
               <Store className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="text-xs font-bold text-ink-900 dark:text-white group-hover:text-ink-500 transition-colors">
-                Merchant Seller Hub
+              <h4 className="text-xs font-bold text-ink-900 dark:text-white group-hover:text-jade-500 transition-colors">
+                {canSell ? 'Seller Hub' : 'Become a seller'}
               </h4>
               <p className="text-xs text-ink-400 mt-0.5 leading-snug">
-                Manage your store and inventory.
+                {canSell ? 'Manage your store and inventory.' : 'Switch your account type in Settings.'}
               </p>
             </div>
           </button>
@@ -428,7 +483,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
           <Card className="p-6 sm:p-8">
             <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="flex items-center gap-2 font-display text-lg font-black tracking-tight text-ink-900 dark:text-white">
+                <h2 className="flex items-center gap-2 font-display text-lg font-bold tracking-tight text-ink-900 dark:text-white">
                   <Package className="h-5 w-5 text-jade-600 dark:text-jade-400" />
                   Escrow-protected purchases
                 </h2>
@@ -496,7 +551,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
 
                         <div className="min-w-0 flex-1">
                           <h4 className="truncate font-display text-sm font-bold text-ink-900 dark:text-white">{order.productTitle}</h4>
-                          <p className="mt-1 font-mono text-sm font-black text-ink-900 dark:text-white">
+                          <p className="mt-1 font-mono text-sm font-bold text-ink-900 dark:text-white">
                             ₦{order.totalAmount.toLocaleString()}
                           </p>
                           <p className="mt-1 line-clamp-1 text-xs text-ink-500">
@@ -508,7 +563,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                       {/* Escrow Progress Tracker */}
                       <div className="px-4 pb-4">
                         <div className="rounded-2xl border border-ink-100 bg-ink-50/70 p-4 dark:border-ink-800 dark:bg-ink-950/40">
-                          <div className="mb-4 flex items-center justify-between font-mono text-xs font-bold uppercase tracking-widest text-ink-400">
+                          <div className="mb-4 flex items-center justify-between font-mono text-xs font-bold tracking-tight text-ink-400">
                             <span>Escrow progress</span>
                             <span className="text-jade-600 dark:text-jade-400">Protected</span>
                           </div>
@@ -536,14 +591,14 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                               { label: 'Funds Released', active: isDelivered },
                             ].map((step, idx) => (
                               <div key={idx} className="flex flex-col items-center relative z-10">
-                                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black border-2 ${
+                                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold border-2 ${
                                   step.active 
                                     ? 'bg-jade-500 border-jade-500 text-white shadow-md shadow-jade-500/15' 
                                     : 'bg-white dark:bg-ink-900 border-ink-200 dark:border-ink-800 text-ink-400'
                                 }`}>
                                   {step.active ? <Check className="h-3.5 w-3.5" /> : idx + 1}
                                 </div>
-                                <span className={`text-[10px] font-bold mt-1.5 whitespace-nowrap ${step.active ? 'text-jade-600 dark:text-jade-400' : 'text-ink-400'}`}>
+                                <span className={`text-xs font-bold mt-1.5 whitespace-nowrap ${step.active ? 'text-jade-600 dark:text-jade-400' : 'text-ink-400'}`}>
                                   {step.label}
                                 </span>
                               </div>
@@ -582,7 +637,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                               window.dispatchEvent(new Event('goodsale_db_state_change'));
                               toast.success(`Escrow funded: ₦${order.totalAmount.toLocaleString()} locked in escrow.`, 'Deposit complete');
                             }}
-                            className="px-3.5 py-1.5 bg-jade-500 hover:bg-jade-600 text-white font-display font-black text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+                            className="px-3.5 py-1.5 bg-jade-500 hover:bg-jade-600 text-white font-display font-bold text-xs tracking-tight rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
                           >
                             <Shield className="w-3.5 h-3.5" />
                             Complete Escrow Deposit (Pay Now)
@@ -600,7 +655,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                                 setPinSuccess('');
                                 setActiveSafeMeetOrderId(null); // Close safemeet if open
                               }}
-                              className="px-3.5 py-1.5 bg-ink-500 hover:bg-ink-600 text-white font-display font-black text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                              className="px-3.5 py-1.5 bg-jade-500 hover:bg-jade-600 text-white font-display font-bold text-xs tracking-tight rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
                             >
                               <Key className="w-3.5 h-3.5" />
                               {isSelected ? 'Close Release Terminal' : 'View & Enter Delivery PIN'}
@@ -613,7 +668,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                                 setSelectedSafeMeetLocationId(1);
                                 setSafeMeetScheduledTime(new Date(Date.now() + 86400000).toISOString().slice(0, 16)); // tomorrow
                               }}
-                              className={`px-3.5 py-1.5 font-display font-black text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
+                              className={`px-3.5 py-1.5 font-display font-bold text-xs tracking-tight rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
                                 activeSafeMeetOrderId === order.id
                                   ? 'bg-jade-600 text-white hover:bg-jade-700'
                                   : 'bg-jade-50 hover:bg-jade-100 text-jade-600 dark:bg-jade-950/20 dark:text-jade-400 dark:hover:bg-jade-950/40'
@@ -630,7 +685,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => handleDownloadReceipt(order)}
-                              className="px-3 py-1.5 bg-ink-100 hover:bg-ink-200 dark:bg-ink-800 dark:hover:bg-ink-700 text-ink-700 dark:text-white font-sans font-bold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                              className="px-3 py-1.5 bg-ink-100 hover:bg-ink-200 dark:bg-ink-800 dark:hover:bg-ink-700 text-ink-700 dark:text-white font-sans font-bold text-xs tracking-tight rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
                               title="Download dynamic PDF transaction summary"
                             >
                               <Download className="w-3.5 h-3.5 text-ink-500 dark:text-ink-400" />
@@ -644,9 +699,9 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                                   setReviewRating(5);
                                   setReviewComment('');
                                 }}
-                                className="px-3.5 py-1.5 bg-jade-500 hover:bg-jade-600 text-white font-display font-black text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                                className="px-3.5 py-1.5 bg-jade-500 hover:bg-jade-600 text-white font-display font-bold text-xs tracking-tight rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
                               >
-                                <Star className="w-3.5 h-3.5 fill-white/20" />
+                                <Star className="star-filled h-3.5 w-3.5" />
                                 {reviewingOrderId === order.id ? 'Cancel' : 'Leave Review'}
                               </button>
                             ) : (
@@ -674,7 +729,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                                 onClick={() => setReviewRating(star)}
                                 className="p-1 hover:scale-110 transition-transform cursor-pointer focus:outline-none"
                               >
-                                <Star className={`w-5 h-5 transition-colors ${star <= reviewRating ? 'text-ink-400 fill-ink-400' : 'text-ink-200 dark:text-ink-700'}`} />
+                                <Star className={`w-5 h-5 transition-colors ${star <= reviewRating ? 'star-filled' : 'star-empty'}`} />
                               </button>
                             ))}
                           </div>
@@ -689,7 +744,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                             />
                             <button
                               onClick={() => handleReviewSubmit(order.id)}
-                              className="px-4 py-2 bg-jade-500 hover:bg-jade-600 text-white font-display font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-sm shadow-jade-500/10"
+                              className="px-4 py-2 bg-jade-500 hover:bg-jade-600 text-white font-display font-semibold text-xs tracking-tight rounded-xl transition-all cursor-pointer shadow-sm shadow-jade-500/10"
                             >
                               Submit
                             </button>
@@ -729,8 +784,8 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
 
                           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 bg-white dark:bg-ink-900 border border-ink-100 dark:border-ink-950 rounded-2xl">
                             <div>
-                              <span className="text-xs text-ink-400 uppercase tracking-widest font-mono font-bold block mb-0.5">My Delivery PIN Code</span>
-                              <span className="text-xl font-mono font-black tracking-widest text-ink-600 dark:text-ink-400">{order.deliveryPin}</span>
+                              <span className="text-xs text-ink-400 tracking-tight font-mono font-bold block mb-0.5">My Delivery PIN Code</span>
+                              <span className="text-xl font-mono font-bold tracking-widest text-ink-600 dark:text-ink-400">{order.deliveryPin}</span>
                             </div>
 
                             <p className="text-xs leading-relaxed text-ink-500 max-w-sm">
@@ -739,7 +794,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                           </div>
 
                           <div className="space-y-2">
-                            <label className="text-xs font-sans font-black text-ink-500 dark:text-ink-400 uppercase tracking-wider">Confirm delivery manually (Enter 6-digit PIN)</label>
+                            <label className="text-xs font-sans font-bold text-ink-500 dark:text-ink-400 tracking-tight">Confirm delivery manually (Enter 6-digit PIN)</label>
                             <div className="flex gap-2">
                               <input 
                                 type="text"
@@ -751,7 +806,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                               />
                               <button
                                 onClick={() => handleReleaseEscrow(order.id, order.deliveryPin)}
-                                className="px-4 py-2 bg-jade-500 hover:bg-jade-600 text-white font-display font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer"
+                                className="px-4 py-2 bg-jade-500 hover:bg-jade-600 text-white font-display font-semibold text-xs tracking-tight rounded-xl transition-all cursor-pointer"
                               >
                                 Match PIN & Release Funds
                               </button>
@@ -781,11 +836,11 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                         return (
                           <div className="border-t border-jade-200 dark:border-jade-50/20 p-5 bg-jade-500/[0.02] space-y-4">
                             <div className="flex items-center justify-between">
-                              <h4 className="font-display font-black text-xs text-ink-800 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+                              <h4 className="font-display font-bold text-xs text-ink-800 dark:text-white tracking-tight flex items-center gap-1.5">
                                 <Shield className="w-4 h-4 text-jade-500" />
                                 GoodSale SafeMeet™ Portal
                               </h4>
-                              <span className="text-xs font-bold text-jade-600 bg-jade-150/50 dark:bg-jade-950/40 px-2 py-0.5 rounded uppercase tracking-wider">
+                              <span className="text-xs font-bold text-jade-600 bg-jade-150/50 dark:bg-jade-950/40 px-2 py-0.5 rounded tracking-tight">
                                 Police-Verified Meetup Protocol
                               </span>
                             </div>
@@ -800,7 +855,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                                   <div className="space-y-1">
-                                    <label className="text-xs font-sans font-black text-ink-400 uppercase tracking-wider">Select Verified SafeZone</label>
+                                    <label className="text-xs font-sans font-bold text-ink-400 tracking-tight">Select Verified SafeZone</label>
                                     <select
                                       value={selectedSafeMeetLocationId}
                                       onChange={(e) => setSelectedSafeMeetLocationId(parseInt(e.target.value))}
@@ -815,7 +870,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                                   </div>
 
                                   <div className="space-y-1">
-                                    <label className="text-xs font-sans font-black text-ink-400 uppercase tracking-wider">Scheduled Date & Time</label>
+                                    <label className="text-xs font-sans font-bold text-ink-400 tracking-tight">Scheduled Date & Time</label>
                                     <input
                                       type="datetime-local"
                                       value={safeMeetScheduledTime}
@@ -827,7 +882,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
 
                                 {/* Selected Location Preview */}
                                 <div className="p-3 bg-jade-500/[0.02] border border-jade-100 dark:border-jade-950 rounded-xl text-xs space-y-1">
-                                  <p className="font-extrabold text-ink-800 dark:text-ink-200">{selectedLoc.name}</p>
+                                  <p className="font-semibold text-ink-800 dark:text-ink-200">{selectedLoc.name}</p>
                                   <p className="text-ink-400">{selectedLoc.address}</p>
                                   <div className="flex gap-4 text-xs text-jade-500 font-mono mt-1 pt-1 border-t border-ink-100 dark:border-ink-800">
                                     <span>Safety Rating: {selectedLoc.safetyRating} / 5</span>
@@ -845,7 +900,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                                     dbOperations.createSafeMeetMeetup(order.id, selectedSafeMeetLocationId, safeMeetScheduledTime);
                                     toast.success('SafeMeet™ proposal sent to the merchant. Awaiting confirmation!');
                                   }}
-                                  className="w-full py-2.5 bg-jade-600 hover:bg-jade-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider cursor-pointer"
+                                  className="w-full py-2.5 bg-jade-600 hover:bg-jade-700 text-white rounded-xl text-xs font-bold tracking-tight cursor-pointer"
                                 >
                                   Send Proposal to Seller
                                 </button>
@@ -857,10 +912,10 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                                 <div className="bg-white dark:bg-ink-900 border border-jade-100 dark:border-jade-950 p-4 rounded-2xl">
                                   <div className="flex justify-between items-start">
                                     <div>
-                                      <span className="text-[10px] font-mono font-black text-jade-600 bg-jade-100 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                      <span className="text-xs font-mono font-bold text-jade-600 bg-jade-100 px-1.5 py-0.5 rounded tracking-tight">
                                         Zone Coordinates
                                       </span>
-                                      <h5 className="font-black text-ink-850 dark:text-white mt-1 text-xs">{selectedLoc.name}</h5>
+                                      <h5 className="font-bold text-ink-850 dark:text-white mt-1 text-xs">{selectedLoc.name}</h5>
                                       <p className="text-xs text-ink-400 mt-0.5">{selectedLoc.address}</p>
                                     </div>
                                     <div className="text-right text-xs font-mono text-jade-500 font-bold">
@@ -908,7 +963,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                                         </p>
                                       )}
                                       {meetup.status === 'COMPLETED' && (
-                                        <p className="text-jade-600 dark:text-jade-400 font-extrabold">
+                                        <p className="text-jade-600 dark:text-jade-400 font-semibold">
                                           Meetup confirmed by both parties! Please inspect the item. Ready to exchange the PIN code to unlock escrow.
                                         </p>
                                       )}
@@ -926,7 +981,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                                             dbOperations.confirmArrival(meetup.id, true);
                                             toast.success('Arrival confirmed! You are checked-in at the SafeMeet™ zone.');
                                           }}
-                                          className={`flex-1 py-2 rounded-xl text-xs font-bold uppercase transition-all ${
+                                          className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
                                             meetup.buyerConfirmedArrival 
                                               ? 'bg-jade-100 text-jade-800 dark:bg-jade-950/20 dark:text-jade-400 cursor-not-allowed' 
                                               : 'bg-jade-600 hover:bg-jade-700 text-white cursor-pointer'
@@ -943,7 +998,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                                               toast.info('Meetup successfully canceled.');
                                             }
                                           }}
-                                          className="px-3 py-2 bg-ink-500/10 hover:bg-ink-500 text-ink-500 hover:text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                                          className="px-3 py-2 bg-jade-500/10 hover:bg-jade-500 text-jade-700 hover:text-white dark:text-jade-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                                         >
                                           Cancel
                                         </button>
@@ -972,17 +1027,17 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
           <Card className="relative overflow-hidden border-0 bg-ink-900 p-6 text-white dark:bg-ink-950">
             <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-jade-500/20 blur-3xl" />
 
-            <h3 className="relative mb-5 flex items-center gap-2 font-display text-base font-black tracking-tight">
+            <h3 className="relative mb-5 flex items-center gap-2 font-display text-base font-bold tracking-tight">
               <CreditCard className="h-5 w-5 text-jade-400" />
               Wallet &amp; escrow
             </h3>
 
             <div className="relative space-y-4">
               <div className="rounded-2xl border border-ink-800 bg-ink-950/60 p-4">
-                <span className="block font-mono text-xs uppercase tracking-widest text-ink-400">
+                <span className="block font-mono text-xs tracking-tight text-ink-400">
                   Currently held in escrow
                 </span>
-                <span className="mt-1 block font-mono text-3xl font-black text-jade-400">
+                <span className="mt-1 block font-mono text-3xl font-bold text-jade-400">
                   ₦{escrowHeldAsBuyer.toLocaleString()}
                 </span>
                 <span className="mt-1.5 block text-xs text-ink-400">
@@ -1028,8 +1083,8 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
 
           {/* Reviews written */}
           <Card className="p-6">
-            <h3 className="mb-4 flex items-center gap-2 font-display text-base font-black tracking-tight text-ink-900 dark:text-white">
-              <Star className="h-5 w-5 fill-jade-500/15 text-jade-600 dark:text-jade-400" />
+            <h3 className="mb-4 flex items-center gap-2 font-display text-base font-bold tracking-tight text-ink-900 dark:text-white">
+              <Star className="star-filled h-5 w-5" />
               Reviews you&apos;ve written
               <Chip tone="neutral">{buyerReviews.length}</Chip>
             </h3>
@@ -1045,7 +1100,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                         {[1, 2, 3, 4, 5].map((s) => (
                           <Star 
                             key={s} 
-                            className={`w-3.5 h-3.5 ${s <= review.rating ? 'text-ink-500 fill-ink-500' : 'text-ink-200'}`} 
+                            className={`h-3.5 w-3.5 ${s <= review.rating ? 'star-filled' : 'star-empty'}`} 
                           />
                         ))}
                       </div>

@@ -102,26 +102,26 @@ export default function LiveDispatchMap({
     <div className={`w-full space-y-3 rounded-3xl border border-ink-800 bg-ink-900 p-4 shadow-xl ${className}`}>
       <div className="grid grid-cols-3 gap-3 rounded-2xl border border-ink-800 bg-ink-950 p-3 text-xs">
         <div className="space-y-0.5">
-          <span className="block font-mono text-xs uppercase tracking-wider text-ink-500">
+          <span className="block font-mono text-xs tracking-wider text-ink-500">
             Distance
           </span>
-          <p className="font-mono text-sm font-extrabold text-jade-400">
+          <p className="font-mono text-sm font-semibold text-jade-400">
             {distanceKm != null ? formatDistanceKm(distanceKm) : '—'}
           </p>
         </div>
         <div className="space-y-0.5 border-l border-ink-800 pl-3">
-          <span className="block font-mono text-xs uppercase tracking-wider text-ink-500">
+          <span className="block font-mono text-xs tracking-wider text-ink-500">
             ETA
           </span>
-          <p className="font-mono text-sm font-extrabold text-jade-400">
+          <p className="font-mono text-sm font-semibold text-jade-400">
             {eta != null ? `${eta} mins` : '—'}
           </p>
         </div>
         <div className="space-y-0.5 border-l border-ink-800 pl-3">
-          <span className="block font-mono text-xs uppercase tracking-wider text-ink-500">
+          <span className="block font-mono text-xs tracking-wider text-ink-500">
             Speed
           </span>
-          <p className="font-mono text-sm font-extrabold text-ink-400">
+          <p className="font-mono text-sm font-semibold text-ink-400">
             {speedKmh != null ? `${Math.round(speedKmh)} km/h` : '—'}
           </p>
         </div>

@@ -49,7 +49,7 @@ export default function Sheet({ open, onClose, title, children, className = '' }
         <div className="sticky top-0 z-10 bg-white/90 backdrop-blur-xl dark:bg-ink-900/90">
           <div className="mx-auto mt-3 h-1.5 w-10 rounded-full bg-ink-200 dark:bg-ink-700" />
           <div className="flex items-center justify-between px-6 pt-3 pb-2">
-              <h3 className="text-base font-black tracking-tight text-ink-900 dark:text-white">
+              <h3 className="text-base font-bold tracking-tight text-ink-900 dark:text-white">
                 {title}
               </h3>
               <button

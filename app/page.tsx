@@ -3,6 +3,9 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import {
+  ShieldCheck, Facebook, Instagram, Twitter, Linkedin, Mail,
+} from 'lucide-react';
 import Header from '../components/Header';
 import MarketingLanding from '../components/MarketingLanding';
 import LandingView from '../components/LandingView';
@@ -25,6 +28,7 @@ import BottomNavigation from '../components/BottomNavigation';
 import SetupBanner from '../components/SetupBanner';
 import FeedbackHost from '../components/ui/FeedbackHost';
 import AnnouncementModal from '../components/AnnouncementModal';
+import CallHost from '../components/CallHost';
 import LottieAnimation from '../components/ui/LottieAnimation';
 import goodsaleLoader from '../lib/lottie/goodsale-loader.json';
 import { getDBState, useDBState } from '../lib/store';
@@ -43,11 +47,11 @@ function BootSplash() {
             <LottieAnimation animationData={goodsaleLoader} className="h-28 w-28" />
           </div>
         </div>
-        <p className="font-display font-black tracking-tight text-lg text-ink-900 dark:text-white">
+        <p className="font-display font-bold tracking-tight text-lg text-ink-900 dark:text-white">
           Good<span className="text-jade-600 dark:text-jade-400">Sale</span>
         </p>
-        <p className="font-mono text-xs uppercase tracking-[0.3em] text-ink-400">
-          Escrow secured
+        <p className="text-sm text-ink-400">
+          Securing your trade…
         </p>
       </div>
     </div>
@@ -265,7 +269,7 @@ export default function Home() {
         )}
 
         {currentView === 'dashboard' && (
-          <DashboardView onOpenAuth={() => setAuthModalOpen(true)} />
+          <DashboardView onOpenAuth={() => setAuthModalOpen(true)} onNavigate={handleNavigate} />
         )}
 
         {currentView === 'admin' && (
@@ -318,17 +322,107 @@ export default function Home() {
         )}
         </div>
 
-        {/* Visual simple footer */}
-        <footer className="bg-white dark:bg-ink-950 border-t border-ink-100 dark:border-ink-900 py-6 mt-auto">
-          <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-5 text-xs text-ink-400 font-mono tracking-wide">
-            <span>© {new Date().getFullYear()} GoodSale Inc. Premium Escrow Nigerian Commerce.</span>
-            <span className="flex items-center gap-4">
-              <Link href="/terms" className="hover:text-jade-600 dark:hover:text-jade-400 transition-colors">Terms of Service</Link>
-              <Link href="/privacy" className="hover:text-jade-600 dark:hover:text-jade-400 transition-colors">Privacy Policy</Link>
-            </span>
+        {/* Professional footer — suppressed inside the chat workspace, where a
+            full-height conversation pane is the whole screen. */}
+        {currentView !== 'chats' && (
+        <footer className="mt-auto border-t border-ink-200 bg-white dark:border-ink-800 dark:bg-ink-950">
+          <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+            <div className="grid grid-cols-2 gap-8 sm:grid-cols-3 lg:grid-cols-6">
+              {/* Brand */}
+              <div className="col-span-2 lg:col-span-2">
+                <p className="font-display text-xl font-bold tracking-tight text-ink-900 dark:text-white">
+                  Good<span className="text-jade-600 dark:text-jade-400">Sale</span>
+                </p>
+                <p className="mt-3 max-w-xs text-sm leading-relaxed text-ink-500 dark:text-ink-400">
+                  Nigeria&apos;s escrow-backed marketplace. Buy and sell with verified sellers,
+                  tracked delivery and money that moves only when goods do.
+                </p>
+                <div className="mt-5 flex items-center gap-2">
+                  {[
+                    { href: 'https://x.com/goodsale', label: 'GoodSale on X', Icon: Twitter },
+                    { href: 'https://instagram.com/goodsale', label: 'GoodSale on Instagram', Icon: Instagram },
+                    { href: 'https://facebook.com/goodsale', label: 'GoodSale on Facebook', Icon: Facebook },
+                    { href: 'https://linkedin.com/company/goodsale', label: 'GoodSale on LinkedIn', Icon: Linkedin },
+                  ].map(({ href, label, Icon }) => (
+                    <a
+                      key={label}
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={label}
+                      className="grid h-9 w-9 place-items-center rounded-xl border border-ink-200 text-ink-500 transition-colors hover:border-jade-500/40 hover:text-jade-600 dark:border-ink-800 dark:text-ink-400 dark:hover:text-jade-400"
+                    >
+                      <Icon className="h-4 w-4" />
+                    </a>
+                  ))}
+                </div>
+                <div className="mt-5 inline-flex items-center gap-2 rounded-xl bg-jade-500/5 px-3 py-2 text-xs font-medium text-jade-700 dark:bg-jade-500/10 dark:text-jade-300">
+                  <ShieldCheck className="h-3.5 w-3.5" /> Escrow protected on every order
+                </div>
+              </div>
+
+              {/* Marketplace */}
+              <div>
+                <p className="text-sm font-semibold text-ink-900 dark:text-white">Marketplace</p>
+                <ul className="mt-4 space-y-3 text-sm">
+                  <li><button onClick={() => handleNavigate('marketplace')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Browse listings</button></li>
+                  <li><button onClick={() => handleNavigate('marketplace')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Categories</button></li>
+                  <li><button onClick={() => handleNavigate('landing')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">How it works</button></li>
+                  <li><button onClick={() => handleNavigate('cart')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Your cart</button></li>
+                </ul>
+              </div>
+
+              {/* Selling */}
+              <div>
+                <p className="text-sm font-semibold text-ink-900 dark:text-white">Selling</p>
+                <ul className="mt-4 space-y-3 text-sm">
+                  <li><button onClick={() => handleNavigate('dashboard')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Start selling</button></li>
+                  <li><button onClick={() => handleNavigate('dashboard')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Seller hub</button></li>
+                  <li><button onClick={() => handleNavigate('settings')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Account type</button></li>
+                  <li><button onClick={() => handleNavigate('wallet')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Payouts &amp; wallet</button></li>
+                </ul>
+              </div>
+
+              {/* Support */}
+              <div>
+                <p className="text-sm font-semibold text-ink-900 dark:text-white">Support</p>
+                <ul className="mt-4 space-y-3 text-sm">
+                  <li><button onClick={() => handleNavigate('settings')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Help centre</button></li>
+                  <li><button onClick={() => handleNavigate('chats')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Chat with a seller</button></li>
+                  <li><button onClick={() => handleNavigate('settings')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Delivery &amp; tracking</button></li>
+                  <li>
+                    <a href="mailto:support@goodsale.ng" className="inline-flex items-center gap-1.5 text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">
+                      <Mail className="h-3.5 w-3.5" /> support@goodsale.ng
+                    </a>
+                  </li>
+                </ul>
+              </div>
+
+              {/* Legal */}
+              <div>
+                <p className="text-sm font-semibold text-ink-900 dark:text-white">Legal</p>
+                <ul className="mt-4 space-y-3 text-sm">
+                  <li><Link href="/terms" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Terms of Service</Link></li>
+                  <li><Link href="/privacy" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Privacy Policy</Link></li>
+                  <li><button onClick={() => handleNavigate('settings')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Escrow agreement</button></li>
+                  <li><button onClick={() => handleNavigate('settings')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Dispute policy</button></li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="mt-10 flex flex-col gap-3 border-t border-ink-200 pt-6 sm:flex-row sm:items-center sm:justify-between dark:border-ink-800">
+              <p className="text-sm text-ink-400">
+                © {new Date().getFullYear()} GoodSale. Escrow-secured commerce for Nigeria.
+              </p>
+              <p className="text-sm text-ink-400">Built in Nigeria · Payments by Paystack</p>
+            </div>
           </div>
         </footer>
+        )}
       </main>
+
+      {/* App-wide real-time call overlay */}
+      <CallHost />
 
       {/* Persistent Secure Auth Modal Portal */}
       <AuthModal isOpen={isAuthModalOpen} initialMode={authModalMode} onClose={() => setAuthModalOpen(false)} />

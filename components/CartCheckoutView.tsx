@@ -14,6 +14,7 @@ import {
 import PaystackPayment from './PaystackPayment';
 import { toast } from '@/lib/feedback';
 import EmptyState from './ui/EmptyState';
+import { SmartImage } from './ui/SmartImage';
 import LiveDispatchMap from './LiveDispatchMap';
 import { useLiveLocation } from '@/lib/hooks/useLiveLocation';
 import {
@@ -188,20 +189,20 @@ export default function CartCheckoutView({
         <div className="w-16 h-16 bg-jade-500/10 dark:bg-jade-500/5 rounded-full flex items-center justify-center mx-auto mb-6 border border-jade-500/20">
           <Shield className="w-8 h-8 text-jade-500" />
         </div>
-        <h2 className="font-display font-black text-2xl text-ink-900 dark:text-white mb-2">Create an account to use your cart</h2>
+        <h2 className="font-display font-bold text-2xl text-ink-900 dark:text-white mb-2">Create an account to use your cart</h2>
         <p className="text-sm text-ink-500 dark:text-ink-400 mb-8 max-w-sm mx-auto leading-relaxed">
           Guests can browse the GoodSale catalog freely. Sign up or sign in to save items, checkout with escrow, and track deliveries.
         </p>
         <div className="space-y-3">
           <button
             onClick={onOpenAuth}
-            className="w-full py-3 bg-gradient-to-r from-jade-500 to-jade-600 hover:from-jade-600 hover:to-jade-700 text-white font-sans font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer shadow-md shadow-jade-500/10 transition-all"
+            className="w-full py-3 bg-gradient-to-r from-jade-500 to-jade-600 hover:from-jade-600 hover:to-jade-700 text-white font-sans font-bold text-xs tracking-tight rounded-xl cursor-pointer shadow-md shadow-jade-500/10 transition-all"
           >
             Create Account / Sign In
           </button>
           <button
             onClick={onBack}
-            className="w-full py-2.5 bg-transparent border border-ink-200 dark:border-ink-800 hover:bg-ink-100 dark:hover:bg-ink-900 text-ink-700 dark:text-ink-300 font-sans font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer transition-all"
+            className="w-full py-2.5 bg-transparent border border-ink-200 dark:border-ink-800 hover:bg-ink-100 dark:hover:bg-ink-900 text-ink-700 dark:text-ink-300 font-sans font-bold text-xs tracking-tight rounded-xl cursor-pointer transition-all"
           >
             Go Back to Catalog
           </button>
@@ -371,7 +372,7 @@ export default function CartCheckoutView({
             
             {/* Cart products item list */}
             <div className="lg:col-span-8 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-6 shadow-sm space-y-4">
-              <h3 className="font-sans font-extrabold text-sm text-ink-900 dark:text-white flex items-center gap-2">
+              <h3 className="font-sans font-semibold text-sm text-ink-900 dark:text-white flex items-center gap-2">
                 <ShoppingCart className="w-5 h-5 text-jade-500" />
                 Shopping Bag Items
               </h3>
@@ -387,7 +388,7 @@ export default function CartCheckoutView({
                     <button
                       type="button"
                       onClick={() => onNavigate('landing')}
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-jade-500 hover:bg-jade-600 text-white text-xs font-extrabold uppercase tracking-wide rounded-xl transition-all cursor-pointer press-scale focus-ring"
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-jade-500 hover:bg-jade-600 text-white text-xs font-semibold tracking-tight rounded-xl transition-all cursor-pointer press-scale focus-ring"
                     >
                       Browse marketplace
                     </button>
@@ -399,8 +400,7 @@ export default function CartCheckoutView({
                     <div key={item.id} className="py-4 first:pt-0 last:pb-0 flex gap-4 items-center justify-between text-xs">
                       <div className="flex items-center gap-3">
                         <div className="w-14 h-14 rounded-lg bg-ink-100 dark:bg-ink-800 overflow-hidden shrink-0">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={item.images[0]} alt="" className="w-full h-full object-cover" />
+                          <SmartImage src={item.images?.[0]} alt={item.title} seed={`cart-${item.id}`} className="h-full w-full" />
                         </div>
                         <div>
                           <h4 className="font-bold text-ink-950 dark:text-white">{item.title}</h4>
@@ -409,7 +409,7 @@ export default function CartCheckoutView({
                       </div>
 
                       <div className="flex items-center gap-4">
-                        <span className="font-sans font-extrabold text-sm text-ink-950 dark:text-white">₦{item.price.toLocaleString()}</span>
+                        <span className="font-sans font-semibold text-sm text-ink-950 dark:text-white">₦{item.price.toLocaleString()}</span>
                         {!preselectedProductId && (
                           <button
                             onClick={() => onRemoveFromCart(item.id)}
@@ -427,7 +427,7 @@ export default function CartCheckoutView({
 
             {/* Price calculations summary sidebar */}
             <div className="lg:col-span-4 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-6 shadow-sm space-y-4">
-              <h4 className="font-sans font-bold text-xs uppercase tracking-wider text-ink-500 dark:text-ink-400">Order Pricing Summary</h4>
+              <h4 className="font-sans font-bold text-xs tracking-tight text-ink-500 dark:text-ink-400">Order Pricing Summary</h4>
               
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between">
@@ -455,7 +455,7 @@ export default function CartCheckoutView({
               <button
                 onClick={() => setActiveStep('checkout')}
                 disabled={cartItems.length === 0}
-                className="w-full py-3 bg-jade-500 hover:bg-jade-600 text-white font-sans font-extrabold text-xs rounded-xl transition-all shadow-md shadow-jade-500/10 cursor-pointer flex items-center justify-center gap-1 disabled:opacity-50"
+                className="w-full py-3 bg-jade-500 hover:bg-jade-600 text-white font-sans font-semibold text-xs rounded-xl transition-all shadow-md shadow-jade-500/10 cursor-pointer flex items-center justify-center gap-1 disabled:opacity-50"
               >
                 Proceed to Escrow Checkout
                 <ChevronRight className="w-4 h-4" />
@@ -471,14 +471,14 @@ export default function CartCheckoutView({
             
             {/* Core checkout form */}
             <div className="lg:col-span-8 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-6 shadow-sm space-y-6">
-              <h3 className="font-sans font-extrabold text-sm text-ink-900 dark:text-white pb-3 border-b border-ink-100 dark:border-ink-800 flex items-center gap-1.5">
+              <h3 className="font-sans font-semibold text-sm text-ink-900 dark:text-white pb-3 border-b border-ink-100 dark:border-ink-800 flex items-center gap-1.5">
                 <CreditCard className="w-5 h-5 text-jade-500" />
                 Nigerian Delivery & Escrow Payout Rules
               </h3>
 
               {/* Preset selectors */}
               <div className="p-4 bg-ink-50 dark:bg-ink-800/40 rounded-2xl space-y-3">
-                <span className="text-xs font-bold text-ink-400 uppercase tracking-widest block">Delivery Location</span>
+                <span className="text-xs font-bold text-ink-400 tracking-tight block">Delivery Location</span>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
@@ -569,7 +569,7 @@ export default function CartCheckoutView({
 
               {/* DELIVERY AND LOGISTICS OPTIONS */}
               <div className="space-y-4 pt-4 border-t border-ink-100 dark:border-ink-800">
-                <span className="text-xs font-bold text-ink-400 uppercase tracking-widest block">Delivery & Logistics Carrier</span>
+                <span className="text-xs font-bold text-ink-400 tracking-tight block">Delivery & Logistics Carrier</span>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {/* Option 1: GoodDispatch Network */}
                   <button
@@ -587,7 +587,7 @@ export default function CartCheckoutView({
                   >
                     <div className="flex items-center gap-2 mb-1.5">
                       <Truck className="w-5 h-5 text-jade-500" />
-                      <span className="font-sans font-extrabold text-xs text-ink-900 dark:text-white">GoodDispatch™</span>
+                      <span className="font-sans font-semibold text-xs text-ink-900 dark:text-white">GoodDispatch™</span>
                     </div>
                     <p className="text-xs text-ink-500 dark:text-ink-400 leading-normal">
                       Verified dispatch riders with real-time GPS & secure PIN release.
@@ -613,7 +613,7 @@ export default function CartCheckoutView({
                   >
                     <div className="flex items-center gap-2 mb-1.5">
                       <ExternalLink className="w-5 h-5 text-jade-500" />
-                      <span className="font-sans font-extrabold text-xs text-ink-900 dark:text-white">Third-Party Courier</span>
+                      <span className="font-sans font-semibold text-xs text-ink-900 dark:text-white">Third-Party Courier</span>
                     </div>
                     <p className="text-xs text-ink-500 dark:text-ink-400 leading-normal">
                       Coordinate your own delivery with DHL, FedEx, GIGM, or others.
@@ -640,7 +640,7 @@ export default function CartCheckoutView({
                   >
                     <div className="flex items-center gap-2 mb-1.5">
                       <MapPin className="w-5 h-5 text-ink-500" />
-                      <span className="font-sans font-extrabold text-xs text-ink-900 dark:text-white">Store Self-Pickup</span>
+                      <span className="font-sans font-semibold text-xs text-ink-900 dark:text-white">Store Self-Pickup</span>
                     </div>
                     <p className="text-xs text-ink-500 dark:text-ink-400 leading-normal">
                       Pick up directly from the merchant&apos;s physical shop or SafeMeet hub.
@@ -657,7 +657,7 @@ export default function CartCheckoutView({
                 <div className="p-5 bg-ink-50 dark:bg-ink-800/20 border border-ink-200 dark:border-ink-800 rounded-3xl space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-ink-200/60 dark:border-ink-800 pb-3">
                     <div>
-                      <h4 className="font-sans font-extrabold text-xs text-ink-900 dark:text-white flex items-center gap-1.5">
+                      <h4 className="font-sans font-semibold text-xs text-ink-900 dark:text-white flex items-center gap-1.5">
                         <Truck className="w-4 h-4 text-jade-500" />
                         GoodDispatch™ Delivery Marketplace
                       </h4>
@@ -677,7 +677,7 @@ export default function CartCheckoutView({
 
                   {/* Service speed selection */}
                   <div className="space-y-1.5">
-                    <span className="text-xs font-bold text-ink-400 uppercase tracking-widest block">Select Service Tier</span>
+                    <span className="text-xs font-bold text-ink-400 tracking-tight block">Select Service Tier</span>
                     <div className="grid grid-cols-3 gap-2">
                       {[
                         { type: 'ECONOMY', label: 'Economy', price: '₦3,500', desc: 'Est. 24 Hours' },
@@ -727,7 +727,7 @@ export default function CartCheckoutView({
                   {/* Courier grid list */}
                   {!smartMatchingActive && (
                     <div className="space-y-2.5">
-                      <span className="text-xs font-bold text-ink-400 uppercase tracking-widest block">Available Couriers Marketplace</span>
+                      <span className="text-xs font-bold text-ink-400 tracking-tight block">Available Couriers Marketplace</span>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[220px] overflow-y-auto pr-1">
                         {rankedCouriers.map(({ partner: courier, distanceKm: distance, etaMinutes, score }) => {
                             const isSelected = selectedPartnerId === courier.id;
@@ -781,7 +781,7 @@ export default function CartCheckoutView({
                                 {/* Courier details */}
                                 <div className="flex-1 min-w-0 space-y-1">
                                   <div className="flex items-center gap-1">
-                                    <span className="font-sans font-extrabold text-xs text-ink-900 dark:text-white truncate">
+                                    <span className="font-sans font-semibold text-xs text-ink-900 dark:text-white truncate">
                                       {courier.fullName}
                                     </span>
                                     <ShieldAlert className="w-3.5 h-3.5 text-ink-500 fill-ink-100 dark:fill-none" />
@@ -825,7 +825,7 @@ export default function CartCheckoutView({
                   {/* MERCHANT PAYMENT CHANNELS SELECTOR */}
                   <div className="border-t border-ink-100 dark:border-ink-800 pt-5 mt-4 space-y-4">
                     <div>
-                      <span className="text-xs font-bold text-ink-400 uppercase tracking-widest block mb-1">Select Checkout Payment Channel</span>
+                      <span className="text-xs font-bold text-ink-400 tracking-tight block mb-1">Select Checkout Payment Channel</span>
                       <p className="text-xs text-ink-400">The merchant has configured specific payment options for this item. Please select your preferred mode:</p>
                     </div>
 
@@ -908,7 +908,7 @@ export default function CartCheckoutView({
                           </div>
                           <div>
                             <span className="text-ink-400 block">Account Number</span>
-                            <span className="font-extrabold text-ink-950 dark:text-white font-mono tracking-wider">1023847586</span>
+                            <span className="font-semibold text-ink-950 dark:text-white font-mono tracking-wider">1023847586</span>
                           </div>
                           <div className="col-span-2 border-t border-ink-100 dark:border-ink-800 pt-1.5 mt-0.5">
                             <span className="text-ink-400 block">Account Name</span>
@@ -917,7 +917,7 @@ export default function CartCheckoutView({
                         </div>
 
                         <div className="space-y-2 pt-1">
-                          <label className="text-xs font-bold text-ink-500 dark:text-ink-400 uppercase tracking-wider block">
+                          <label className="text-xs font-bold text-ink-500 dark:text-ink-400 tracking-tight block">
                             Upload Payment Transaction Screenshot Receipt (Mandatory for Review)
                           </label>
                           <div className="flex items-center gap-3">
@@ -971,7 +971,7 @@ export default function CartCheckoutView({
                         </div>
 
                         <div>
-                          <label className="text-xs font-bold text-ink-500 uppercase tracking-wider block mb-1">Select Net Billing Terms</label>
+                          <label className="text-xs font-bold text-ink-500 tracking-tight block mb-1">Select Net Billing Terms</label>
                           <select
                             value={invoiceTerms}
                             onChange={(e) => setInvoiceTerms(e.target.value)}
@@ -1046,10 +1046,10 @@ export default function CartCheckoutView({
                   <div className="flex items-center gap-2">
                     <ShieldCheck className="w-5 h-5 text-jade-500 shrink-0" />
                     <div>
-                      <span className="text-[10px] bg-ink-500/10 text-ink-600 font-mono font-extrabold tracking-widest uppercase px-2 py-0.5 rounded-full">
+                      <span className="text-[10px] bg-ink-500/10 text-ink-600 font-mono font-semibold tracking-tight px-2 py-0.5 rounded-full">
                         RECOMMENDED PROTECTION
                       </span>
-                      <h4 className="font-sans font-extrabold text-xs text-ink-950 dark:text-white mt-1">
+                      <h4 className="font-sans font-semibold text-xs text-ink-950 dark:text-white mt-1">
                         GoodSale Protect™ Premium Coverage
                       </h4>
                     </div>
@@ -1091,7 +1091,7 @@ export default function CartCheckoutView({
 
                 <div className="flex items-center justify-between pt-2 mt-1 border-t border-ink-100 dark:border-ink-800">
                   <span className="text-xs font-sans font-bold text-ink-700 dark:text-ink-300">Coverage Premium Fee</span>
-                  <span className="text-xs font-mono font-extrabold text-ink-900 dark:text-white">
+                  <span className="text-xs font-mono font-semibold text-ink-900 dark:text-white">
                     +₦{(db.revenueSettings?.goodSaleProtectFee || 1500).toLocaleString()}
                   </span>
                 </div>
@@ -1113,7 +1113,7 @@ export default function CartCheckoutView({
 
             {/* Checkout Pricing checkout button sidebar */}
             <div className="lg:col-span-4 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-6 shadow-sm space-y-4 font-sans">
-              <h4 className="font-sans font-bold text-xs uppercase tracking-wider text-ink-500 dark:text-ink-400">Final Payout Ledger</h4>
+              <h4 className="font-sans font-bold text-xs tracking-tight text-ink-500 dark:text-ink-400">Final Payout Ledger</h4>
               
               <div className="space-y-2 text-xs border-b border-ink-100 dark:border-ink-800 pb-3">
                 <div className="flex justify-between">
@@ -1138,7 +1138,7 @@ export default function CartCheckoutView({
                     <span>₦{protectFee.toLocaleString()}</span>
                   </div>
                 )}
-                <div className="flex justify-between font-extrabold text-sm text-ink-950 dark:text-white pt-2 border-t border-ink-50 dark:border-ink-800">
+                <div className="flex justify-between font-semibold text-sm text-ink-950 dark:text-white pt-2 border-t border-ink-50 dark:border-ink-800">
                   <span>Grand Total (₦)</span>
                   <span>₦{totalDue.toLocaleString()}</span>
                 </div>
@@ -1186,7 +1186,7 @@ export default function CartCheckoutView({
                               : 'escrow'
                   );
                 }}
-                className="w-full py-3 bg-jade-500 hover:bg-jade-600 text-white font-sans font-extrabold text-xs rounded-xl transition-all shadow-lg shadow-jade-500/20 cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-45 disabled:cursor-not-allowed"
+                className="w-full py-3 bg-jade-500 hover:bg-jade-600 text-white font-sans font-semibold text-xs rounded-xl transition-all shadow-lg shadow-jade-500/20 cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-45 disabled:cursor-not-allowed"
               >
                 <Shield className="w-4 h-4 text-ink-300" />
                 {deliveryMethod === 'GOODSALE_PARTNER' && !selectedPartnerId ? (
@@ -1238,13 +1238,13 @@ export default function CartCheckoutView({
                       {/* Order Title Header */}
                       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-ink-100 dark:border-ink-800 pb-3">
                         <div>
-                          <span className="text-xs text-ink-400 uppercase tracking-widest font-mono">Order SKU: {order.id}</span>
+                          <span className="text-xs text-ink-400 tracking-tight font-mono">Order SKU: {order.id}</span>
                           <h4 className="font-bold text-sm text-ink-900 dark:text-white mt-0.5">{product?.title}</h4>
                         </div>
                         
                         <div className="flex items-center gap-2">
-                          <span className="font-sans font-extrabold text-sm text-ink-950 dark:text-white">₦{order.totalAmount.toLocaleString()}</span>
-                          <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${order.status === OrderStatus.DELIVERED_SUCCESS ? 'bg-jade-100 text-jade-800 dark:bg-jade-500/10 dark:text-jade-400' : order.status === OrderStatus.PAID_ESCROW ? 'bg-ink-100 text-ink-800 dark:bg-ink-500/10' : 'bg-ink-100 text-ink-800 dark:bg-ink-500/10'}`}>
+                          <span className="font-sans font-semibold text-sm text-ink-950 dark:text-white">₦{order.totalAmount.toLocaleString()}</span>
+                          <span className={`px-2 py-0.5 rounded text-xs font-bold tracking-tight ${order.status === OrderStatus.DELIVERED_SUCCESS ? 'bg-jade-100 text-jade-800 dark:bg-jade-500/10 dark:text-jade-400' : order.status === OrderStatus.PAID_ESCROW ? 'bg-ink-100 text-ink-800 dark:bg-ink-500/10' : 'bg-ink-100 text-ink-800 dark:bg-ink-500/10'}`}>
                             {order.status.replace('_', ' ')}
                           </span>
                         </div>
@@ -1256,12 +1256,12 @@ export default function CartCheckoutView({
                         {/* Shipping address details */}
                         <div className="space-y-1.5">
                           <div>
-                            <span className="text-ink-400 block text-xs uppercase">Destination Address</span>
+                            <span className="text-ink-400 block text-xs">Destination Address</span>
                             <span className="font-bold text-ink-800 dark:text-ink-300">{order.deliveryAddress}</span>
                           </div>
                           <div className="grid grid-cols-2 gap-2">
                             <div>
-                              <span className="text-ink-400 block text-xs uppercase">Carrier & Speed</span>
+                              <span className="text-ink-400 block text-xs">Carrier & Speed</span>
                               <span className="font-semibold text-ink-800 dark:text-ink-300 block">
                                 {order.deliveryMethod === 'GOODSALE_PARTNER' 
                                   ? `GoodDispatch (${order.serviceType || 'STANDARD'})` 
@@ -1272,7 +1272,7 @@ export default function CartCheckoutView({
                               </span>
                             </div>
                             <div>
-                              <span className="text-ink-400 block text-xs uppercase">Ledger Mode</span>
+                              <span className="text-ink-400 block text-xs">Ledger Mode</span>
                               <span className="font-semibold text-ink-800 dark:text-ink-300 block">PIN Verification</span>
                             </div>
                           </div>
@@ -1337,10 +1337,10 @@ export default function CartCheckoutView({
                           {isBuyer ? (
                             // Buyer sees PIN code to hand over to courier
                             <div>
-                              <span className="text-xs text-jade-500 uppercase font-bold tracking-widest block mb-1">Your Secret Delivery Verification PIN</span>
+                              <span className="text-xs text-jade-500 font-semibold tracking-tight block mb-1">Your Secret Delivery Verification PIN</span>
                               <div className="flex items-center gap-2.5">
                                 <KeyRound className="w-4 h-4 text-jade-500 animate-pulse" />
-                                <span className="font-mono text-lg font-extrabold text-ink-900 dark:text-white tracking-widest bg-white dark:bg-ink-900 px-3.5 py-1 rounded-lg border border-ink-100 dark:border-ink-800">
+                                <span className="font-mono text-lg font-semibold text-ink-900 dark:text-white tracking-widest bg-white dark:bg-ink-900 px-3.5 py-1 rounded-lg border border-ink-100 dark:border-ink-800">
                                   {order.deliveryPin}
                                 </span>
                               </div>
@@ -1356,7 +1356,7 @@ export default function CartCheckoutView({
                               </div>
                             ) : (
                               <div className="space-y-2">
-                                <span className="text-xs text-ink-500 uppercase font-bold tracking-widest block">Input Buyer PIN to Release Escrow Payout</span>
+                                <span className="text-xs text-ink-500 font-semibold tracking-tight block">Input Buyer PIN to Release Escrow Payout</span>
                                 <div className="flex gap-2">
                                   <input
                                     type="text"
@@ -1386,8 +1386,8 @@ export default function CartCheckoutView({
                       {/* Escrow Dispute Status and File Dispute form */}
                       {order.status === OrderStatus.DISPUTED ? (
                         <div className="p-4 bg-ink-500/10 border border-ink-500/20 rounded-2xl text-xs space-y-1.5 animate-fade-in">
-                          <div className="flex items-center gap-1.5 text-ink-600 dark:text-ink-400 font-extrabold uppercase tracking-wider text-xs">
-                            <span className="w-2 h-2 bg-ink-500 rounded-full animate-ping shrink-0" />
+                          <div className="flex items-center gap-1.5 text-ink-600 dark:text-ink-400 font-semibold tracking-tight text-xs">
+                            <span className="w-2 h-2 bg-jade-500 rounded-full animate-ping shrink-0" />
                             <span>Escrow Payout Frozen & Disputed</span>
                           </div>
                           <p className="text-ink-700 dark:text-ink-300">
@@ -1402,7 +1402,7 @@ export default function CartCheckoutView({
                           <div className="mt-4 border-t border-ink-100 dark:border-ink-800/60 pt-3">
                             {showDisputeFormOrderId === order.id ? (
                               <div className="space-y-3 bg-ink-500/5 border border-ink-500/10 rounded-2xl p-4 animate-slide-up">
-                                <label className="text-xs text-ink-500 dark:text-ink-400 font-extrabold uppercase tracking-widest block">Explain the Dispute (Merchant Fraud, Broken Spec, Delayed Shipment)</label>
+                                <label className="text-xs text-ink-500 dark:text-ink-400 font-semibold tracking-tight block">Explain the Dispute (Merchant Fraud, Broken Spec, Delayed Shipment)</label>
                                 <textarea
                                   required
                                   rows={3}
@@ -1429,7 +1429,7 @@ export default function CartCheckoutView({
                                         toast.success('Escrow dispute submitted — funds are now frozen pending review.');
                                       })();
                                     }}
-                                    className="px-4 py-2 bg-ink-500 hover:bg-ink-600 text-white font-bold text-xs rounded-xl transition-all cursor-pointer"
+                                    className="px-4 py-2 bg-jade-500 hover:bg-jade-600 text-white font-bold text-xs rounded-xl transition-all cursor-pointer"
                                   >
                                     Freeze Funds & Dispute
                                   </button>
@@ -1471,8 +1471,8 @@ export default function CartCheckoutView({
                 <div className="bg-white text-ink-900 p-6 rounded-3xl max-w-md w-full shadow-2xl relative space-y-4">
                   <div className="text-center border-b border-ink-100 pb-3">
                     <QrCode className="w-10 h-10 text-jade-500 mx-auto mb-1" />
-                    <h3 className="font-sans font-extrabold text-base tracking-tight text-ink-950">GoodSale Payout Escrow Receipt</h3>
-                    <p className="text-xs font-mono uppercase tracking-widest text-ink-400">Neutral Ledger Certificate</p>
+                    <h3 className="font-sans font-semibold text-base tracking-tight text-ink-950">GoodSale Payout Escrow Receipt</h3>
+                    <p className="text-xs font-mono tracking-tight text-ink-400">Neutral Ledger Certificate</p>
                   </div>
 
                   <div className="text-xs space-y-2 font-sans text-ink-700">
@@ -1490,11 +1490,11 @@ export default function CartCheckoutView({
                     </div>
                     <div className="flex justify-between border-b border-ink-50 pb-1">
                       <span>Escrow Capital held:</span>
-                      <span className="font-mono font-extrabold text-ink-950">₦{selectedReceiptOrder.totalAmount.toLocaleString()}</span>
+                      <span className="font-mono font-semibold text-ink-950">₦{selectedReceiptOrder.totalAmount.toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between pt-1 border-t border-dashed border-ink-200 text-sm font-bold text-ink-950">
                       <span>Status:</span>
-                      <span className="text-jade-500 font-mono font-extrabold">{selectedReceiptOrder.status}</span>
+                      <span className="text-jade-500 font-mono font-semibold">{selectedReceiptOrder.status}</span>
                     </div>
                   </div>
 

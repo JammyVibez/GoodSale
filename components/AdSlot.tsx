@@ -132,7 +132,7 @@ export default function AdSlot({ placement, onNavigate, variant = 'banner', clas
               <img src={mediaUrl} alt={ad.title} className="h-full w-full object-cover" loading="lazy" />
             )}
             {isVideo && !videoError && (
-              <span className="absolute bottom-2 left-2 flex items-center gap-1 rounded-md bg-black/55 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-white">
+              <span className="absolute bottom-2 left-2 flex items-center gap-1 rounded-md bg-black/55 px-1.5 py-0.5 text-[10px] font-bold tracking-widest text-white">
                 <Play className="w-3 h-3 fill-white" /> Video
               </span>
             )}
@@ -140,7 +140,7 @@ export default function AdSlot({ placement, onNavigate, variant = 'banner', clas
         )}
 
         <div className="flex min-w-0 flex-1 flex-col justify-center gap-2 p-4">
-          <span className="flex w-fit items-center gap-1 rounded-full bg-jade-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-jade-600 dark:text-jade-400">
+          <span className="flex w-fit items-center gap-1 rounded-full bg-jade-500/10 px-2 py-0.5 text-[10px] font-bold tracking-widest text-jade-600 dark:text-jade-400">
             <Sparkles className="w-3 h-3" /> Sponsored
           </span>
           <div className="min-w-0">
@@ -157,7 +157,7 @@ export default function AdSlot({ placement, onNavigate, variant = 'banner', clas
             >
               Learn more
             </button>
-            <span className="text-[10px] font-mono uppercase tracking-widest text-ink-400">Ad</span>
+            <span className="text-[10px] font-mono tracking-widest text-ink-400">Ad</span>
           </div>
         </div>
       </div>

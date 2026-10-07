@@ -6,17 +6,41 @@ import {
   ShieldAlert, ShieldCheck, FileCheck, CheckCircle2, XCircle, Scale, DollarSign,
   Wallet, ClipboardList, Settings, Award, Sparkles, Percent, Activity, Shield,
   CreditCard, Truck, FileText, Coins, Users, Package, Search, Ban, RotateCcw,
-  ExternalLink, AlertTriangle,
+  ExternalLink, AlertTriangle, Flag, MapPin, Plus, Trash2, ChevronDown, ChevronUp,
+  Building2, Image as ImageIcon, MapPinned,
 } from 'lucide-react';
 import {
-  dbOperations, UserRole, VerificationStatus, OrderStatus, useDBState,
+  dbOperations, UserRole, VerificationStatus, OrderStatus, useDBState, ReportStatus,
 } from '../lib/store';
 import { createClient } from '@/lib/supabase/client';
 import { confirmDialog } from '@/lib/feedback';
 import AdStudio from './AdStudio';
 import AnnouncementStudio from './AnnouncementStudio';
 
-type Tab = 'verifications' | 'users' | 'products' | 'orders_escrow' | 'disputes' | 'dispatch' | 'settings';
+type Tab =
+  | 'verifications'
+  | 'users'
+  | 'products'
+  | 'orders_escrow'
+  | 'disputes'
+  | 'dispatch'
+  | 'reports'
+  | 'coverage'
+  | 'settings';
+
+const REPORT_STATUSES: ReportStatus[] = ['OPEN', 'REVIEWING', 'RESOLVED', 'DISMISSED'];
+
+/** Nigerian states offered when an admin adds a new coverage area. */
+const NG_STATES = [
+  'Abia State', 'Adamawa State', 'Akwa Ibom State', 'Anambra State', 'Bauchi State',
+  'Bayelsa State', 'Benue State', 'Borno State', 'Cross River State', 'Delta State',
+  'Ebonyi State', 'Edo State', 'Ekiti State', 'Enugu State', 'FCT Abuja',
+  'Gombe State', 'Imo State', 'Jigawa State', 'Kaduna State', 'Kano State',
+  'Katsina State', 'Kebbi State', 'Kogi State', 'Kwara State', 'Lagos State',
+  'Nasarawa State', 'Niger State', 'Ogun State', 'Ondo State', 'Osun State',
+  'Oyo State', 'Plateau State', 'Rivers State', 'Sokoto State', 'Taraba State',
+  'Yobe State', 'Zamfara State',
+];
 
 const ALL_ROLES = Object.values(UserRole);
 const PAY_METHODS = [
@@ -58,6 +82,22 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
   const [userSearch, setUserSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
   const [productDrafts, setProductDrafts] = useState<Record<number, { price: string; stockStatus: string }>>({});
+
+  // Document review (verification applications & rider files)
+  const [expandedVer, setExpandedVer] = useState<number | null>(null);
+  const [expandedPartner, setExpandedPartner] = useState<number | null>(null);
+  const [partnerReasons, setPartnerReasons] = useState<Record<number, string>>({});
+
+  // Reports
+  const [reportFilter, setReportFilter] = useState<'ALL' | ReportStatus>('ALL');
+  const [reportNotes, setReportNotes] = useState<Record<number, string>>({});
+
+  // Coverage / service areas
+  const [areaState, setAreaState] = useState(NG_STATES[NG_STATES.indexOf('Lagos State')]);
+  const [areaCity, setAreaCity] = useState('');
+  const [areaSales, setAreaSales] = useState(true);
+  const [areaDelivery, setAreaDelivery] = useState(true);
+  const [areaQuery, setAreaQuery] = useState('');
   const [escrowNotes, setEscrowNotes] = useState<Record<number, string>>({});
   const [disputeNotes, setDisputeNotes] = useState<Record<number, string>>({});
 
@@ -143,15 +183,31 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
     return p.title.toLowerCase().includes(q) || p.category.toLowerCase().includes(q) || String(p.id).includes(q);
   });
 
+  const openReports = (db.reports || []).filter((r) => r.status === 'OPEN' || r.status === 'REVIEWING');
+  const filteredReports = (db.reports || [])
+    .filter((r) => reportFilter === 'ALL' || r.status === reportFilter)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  const serviceAreas = [...(db.serviceAreas || [])].sort(
+    (a, b) => a.state.localeCompare(b.state) || a.city.localeCompare(b.city)
+  );
+  const filteredAreas = serviceAreas.filter((a) => {
+    const q = areaQuery.trim().toLowerCase();
+    if (!q) return true;
+    return a.state.toLowerCase().includes(q) || a.city.toLowerCase().includes(q);
+  });
+  const salesAreaCount = serviceAreas.filter((a) => a.salesEnabled).length;
+  const deliveryAreaCount = serviceAreas.filter((a) => a.deliveryEnabled).length;
+
   if (!currentUser) {
     return (
       <div className="max-w-md mx-auto px-4 py-16 text-center select-none">
         <div className="w-16 h-16 bg-ink-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-ink-500/20">
           <Scale className="w-8 h-8 text-ink-500" />
         </div>
-        <h2 className="font-display font-black text-2xl text-ink-900 dark:text-white mb-2">Admin Control Room</h2>
+        <h2 className="font-display font-bold text-2xl text-ink-900 dark:text-white mb-2">Admin Control Room</h2>
         <p className="text-sm text-ink-500 dark:text-ink-400 mb-8">Sign in as an authorized administrator to continue.</p>
-        <button onClick={onOpenAuth} className="w-full py-3 bg-gradient-to-r from-jade-500 to-jade-600 text-white font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer">
+        <button onClick={onOpenAuth} className="w-full py-3 bg-gradient-to-r from-jade-500 to-jade-600 text-white font-bold text-xs tracking-wider rounded-xl cursor-pointer">
           Sign In / Register Account
         </button>
       </div>
@@ -164,7 +220,7 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
         <div className="w-16 h-16 bg-ink-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-ink-500/20">
           <ShieldAlert className="w-8 h-8 text-ink-500" />
         </div>
-        <h2 className="font-display font-black text-2xl text-ink-900 dark:text-white mb-2">Access Strictly Restricted</h2>
+        <h2 className="font-display font-bold text-2xl text-ink-900 dark:text-white mb-2">Access Strictly Restricted</h2>
         <p className="text-sm text-ink-500 dark:text-ink-400">Reserved for platform administrators only.</p>
       </div>
     );
@@ -177,6 +233,8 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
     { id: 'orders_escrow', label: 'Orders / Escrow' },
     { id: 'disputes', label: 'Disputes', count: openDisputes.length },
     { id: 'dispatch', label: 'Dispatch', count: pendingPartners.length },
+    { id: 'reports', label: 'Reports', count: openReports.length },
+    { id: 'coverage', label: 'Coverage' },
     { id: 'settings', label: 'Settings' },
   ];
 
@@ -187,6 +245,8 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
     { label: 'Pending Verifications', value: String(pendingVerifications.length), Icon: ClipboardList, color: 'text-ink-500 bg-ink-500/10' },
     { label: 'Open Disputes', value: String(openDisputes.length), Icon: Scale, color: 'text-ink-500 bg-ink-500/10' },
     { label: 'Pending Partners', value: String(pendingPartners.length), Icon: Truck, color: 'text-jade-500 bg-jade-500/10' },
+    { label: 'Open Reports', value: String(openReports.length), Icon: Flag, color: 'text-ink-500 bg-ink-500/10' },
+    { label: 'Active Areas', value: `${salesAreaCount} / ${serviceAreas.length}`, Icon: MapPinned, color: 'text-jade-500 bg-jade-500/10' },
   ];
 
   const statusBadge = (status: string) => {
@@ -205,7 +265,7 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
       <div className="max-w-7xl mx-auto">
         <div className="mb-6 flex flex-col gap-4 border-b border-ink-200 dark:border-ink-800 pb-4">
           <div>
-            <h1 className="font-sans font-extrabold text-2xl text-ink-900 dark:text-white flex items-center gap-2">
+            <h1 className="font-sans font-semibold text-2xl text-ink-900 dark:text-white flex items-center gap-2">
               <ShieldAlert className="w-6 h-6 text-jade-500" /> GoodSale Admin Control Room
             </h1>
             <p className="text-xs text-ink-500 dark:text-ink-400 mt-1">
@@ -238,8 +298,8 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
           {metrics.map((m) => (
             <div key={m.label} className={`${card} p-4 flex items-center justify-between gap-2`}>
               <div className="min-w-0">
-                <span className="text-xs text-ink-400 uppercase font-bold tracking-wider block truncate">{m.label}</span>
-                <span className="font-sans font-extrabold text-sm sm:text-base text-ink-950 dark:text-white block mt-0.5 truncate">{m.value}</span>
+                <span className="text-xs text-ink-400 font-bold tracking-wider block truncate">{m.label}</span>
+                <span className="font-sans font-semibold text-sm sm:text-base text-ink-950 dark:text-white block mt-0.5 truncate">{m.value}</span>
               </div>
               <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${m.color}`}>
                 <m.Icon className="w-4 h-4" />
@@ -283,13 +343,93 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
                           <span className="px-1.5 py-0.5 bg-ink-100 dark:bg-ink-800 text-ink-500 rounded text-xs font-bold">@{applicant?.username || 'user'}</span>
                           <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${statusBadge(v.status)}`}>{v.status}</span>
                         </div>
-                        <p className="text-ink-400 font-mono">#{v.id} · User {v.userId} · {v.documentType} ({v.documentNumber})</p>
-                        {v.documentImageUrl ? (
-                          <a href={v.documentImageUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-jade-500 font-bold hover:underline">
-                            <ExternalLink className="w-3 h-3" /> View document
-                          </a>
-                        ) : <span className="text-ink-400">No document image</span>}
-                        {v.adminNotes && <p className="text-ink-500 italic">Notes: {v.adminNotes}</p>}
+                        <p className="text-ink-400 font-mono">#{v.id} · {v.documentType} ({v.documentNumber})</p>
+
+                        {v.applicationKind && (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-jade-500/10 px-1.5 py-0.5 text-xs font-bold text-jade-600 dark:text-jade-400">
+                            {v.applicationKind === 'BUSINESS' ? <Building2 className="w-3 h-3" /> : <FileCheck className="w-3 h-3" />}
+                            {v.applicationKind} application
+                          </span>
+                        )}
+
+                        <button
+                          onClick={() => setExpandedVer(expandedVer === v.id ? null : v.id)}
+                          className="flex items-center gap-1 text-xs font-bold text-jade-500 hover:underline cursor-pointer"
+                        >
+                          {expandedVer === v.id ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                          {expandedVer === v.id ? 'Hide full file' : 'View full file & documents'}
+                        </button>
+
+                        {expandedVer === v.id && (
+                          <div className="mt-2 space-y-3 rounded-xl border border-ink-200 bg-ink-50/60 p-3 dark:border-ink-800 dark:bg-ink-950/40">
+                            <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                              {[
+                                ['Applicant', applicant?.fullName || `User ${v.userId}`],
+                                ['Email', applicant?.email || '—'],
+                                ['Phone', applicant?.phoneNumber || '—'],
+                                ['Current role', applicant?.role || '—'],
+                                ['Legal name', v.fullName],
+                                ['Document', `${v.documentType} · ${v.documentNumber}`],
+                                ...(v.businessName ? [['Business name', v.businessName]] : []),
+                                ...(v.businessAddress ? [['Business address', v.businessAddress]] : []),
+                                ['Submitted', new Date(v.createdAt).toLocaleString()],
+                                ...(v.reviewedAt
+                                  ? [['Reviewed', `${new Date(v.reviewedAt).toLocaleString()} by admin #${v.reviewedBy ?? '—'}`]]
+                                  : []),
+                              ].map(([label, value]) => (
+                                <div key={label} className="min-w-0">
+                                  <dt className="text-xs font-bold text-ink-400">{label}</dt>
+                                  <dd className="truncate text-xs text-ink-800 dark:text-ink-200">{String(value)}</dd>
+                                </div>
+                              ))}
+                            </dl>
+
+                            {/* Every uploaded file, previewable before approval */}
+                            <div className="space-y-2">
+                              <p className="text-xs font-bold text-ink-500">Uploaded documents</p>
+                              {(() => {
+                                const docs = [
+                                  ...(v.documentImageUrl ? [{ label: `${v.documentType} document`, url: v.documentImageUrl }] : []),
+                                  ...(v.selfieImageUrl ? [{ label: 'Selfie / passport photo', url: v.selfieImageUrl }] : []),
+                                  ...(v.proofOfAddressUrl ? [{ label: 'Proof of address', url: v.proofOfAddressUrl }] : []),
+                                  ...(v.documents || []),
+                                ];
+                                return docs.length === 0 ? (
+                                  <p className="text-xs text-ink-400">No files were uploaded with this application.</p>
+                                ) : (
+                                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                                    {docs.map((doc, i) => (
+                                      <a
+                                        key={`${doc.label}-${i}`}
+                                        href={doc.url || undefined}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="group overflow-hidden rounded-lg border border-ink-200 bg-white dark:border-ink-800 dark:bg-ink-900"
+                                      >
+                                        {doc.url ? (
+                                          // eslint-disable-next-line @next/next/no-img-element
+                                          <img src={doc.url} alt={doc.label} className="h-24 w-full object-cover transition-transform group-hover:scale-105" />
+                                        ) : (
+                                          <div className="grid h-24 place-items-center bg-ink-100 text-ink-400 dark:bg-ink-800">
+                                            <ImageIcon className="w-5 h-5" />
+                                          </div>
+                                        )}
+                                        <span className="block truncate px-2 py-1.5 text-xs font-semibold text-ink-600 dark:text-ink-300">
+                                          {doc.label}
+                                        </span>
+                                      </a>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
+                            </div>
+
+                            {v.adminNotes && <p className="text-xs italic text-ink-500">Prev. notes: {v.adminNotes}</p>}
+                            {v.rejectionReason && (
+                              <p className="text-xs italic text-ink-500">Rejection reason: {v.rejectionReason}</p>
+                            )}
+                          </div>
+                        )}
                       </div>
                       {v.status === VerificationStatus.PENDING && (
                         <div className="flex flex-col gap-2 min-w-[220px]">
@@ -531,38 +671,376 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
             ) : (
               <div className="divide-y divide-ink-100 dark:divide-ink-800">
                 {(db.deliveryPartners || []).map((p) => (
-                  <div key={p.id} className="p-4 flex flex-col sm:flex-row justify-between gap-3 text-xs">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="font-bold text-sm text-ink-950 dark:text-white">{p.fullName}</span>
-                        <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${statusBadge(p.status)}`}>{p.status}</span>
-                      </div>
-                      <p className="text-ink-400 font-mono mt-1">{p.email} · {p.phone} · {p.vehicleType} · {p.city}, {p.state}</p>
-                    </div>
-                    {p.status === 'PENDING' && (
-                      <div className="flex gap-2 items-start">
-                        <button disabled={busy} className={btnOk} onClick={() => run(async () => {
-                          dbOperations.approveDeliveryPartner(p.id);
-                          const client = createClient();
-                          if (!client) throw new Error('Supabase is not configured.');
-                          const { error } = await client
-                            .from('delivery_partners')
-                            .update({ status: 'APPROVED', is_available: true })
-                            .eq('id', p.id);
-                          if (error) throw new Error(error.message);
-                        }, 'Partner approved')}>
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Approve
+                  <div key={p.id} className="flex flex-col gap-3 p-4 text-xs">
+                    <div className="flex flex-col justify-between gap-3 sm:flex-row">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-bold text-sm text-ink-950 dark:text-white">{p.fullName}</span>
+                          <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${statusBadge(p.status)}`}>{p.status}</span>
+                        </div>
+                        <p className="text-ink-400 font-mono mt-1">{p.email} · {p.phone} · {p.vehicleType} · {p.city}, {p.state}</p>
+                        <button
+                          onClick={() => setExpandedPartner(expandedPartner === p.id ? null : p.id)}
+                          className="mt-1.5 flex items-center gap-1 text-xs font-bold text-jade-500 hover:underline cursor-pointer"
+                        >
+                          {expandedPartner === p.id ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                          {expandedPartner === p.id ? 'Hide rider file' : 'View rider file & documents'}
                         </button>
-                        <button disabled={busy} className={btnNo} onClick={() => run(async () => {
-                          const res = await dbOperations.adminRejectDeliveryPartner(p.id);
-                          if (res && 'error' in res && res.error) throw new Error(res.error);
-                        }, 'Partner rejected')}>Reject</button>
+                      </div>
+                      {p.status === 'PENDING' && (
+                        <div className="flex flex-col gap-2 sm:min-w-[220px]">
+                          <input
+                            placeholder="Rejection reason (optional)"
+                            value={partnerReasons[p.id] ?? ''}
+                            onChange={(e) => setPartnerReasons((s) => ({ ...s, [p.id]: e.target.value }))}
+                            className={inp}
+                          />
+                          <div className="flex items-start gap-2">
+                            <button disabled={busy} className={btnOk} onClick={() => run(async () => {
+                              const res = await dbOperations.approveDeliveryPartner(p.id);
+                              if (!res) throw new Error('Partner not found');
+                            }, 'Partner approved')}>
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Approve
+                            </button>
+                            <button disabled={busy} className={btnNo} onClick={() => run(async () => {
+                              const res = await dbOperations.adminRejectDeliveryPartner(p.id, partnerReasons[p.id]);
+                              if (res && 'error' in res && res.error) throw new Error(res.error);
+                            }, 'Partner rejected')}>Reject</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {expandedPartner === p.id && (
+                      <div className="space-y-3 rounded-xl border border-ink-200 bg-ink-50/60 p-3 dark:border-ink-800 dark:bg-ink-950/40">
+                        <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                          {[
+                            ['Legal name', p.fullName],
+                            ['Email', p.email],
+                            ['Phone', p.phone],
+                            ['NIN', p.nin || '—'],
+                            ['Vehicle', `${p.brand || '—'} ${p.model || ''} · ${p.vehicleType}`],
+                            ['Plate number', p.plateNumber || '—'],
+                            ['Colour / year', `${p.color || '—'} · ${p.year || '—'}`],
+                            ['Capacity', p.capacity || '—'],
+                            ['Address', p.address || '—'],
+                            ['City / state', `${p.city}, ${p.state}`],
+                            ['Trust score', `${p.trustScore}%`],
+                            ['Deliveries', String(p.completedDeliveries)],
+                            ['Applied', new Date(p.createdAt).toLocaleString()],
+                            ...(p.reviewedAt
+                              ? [['Reviewed', `${new Date(p.reviewedAt).toLocaleString()} by admin #${p.reviewedBy ?? '—'}`]]
+                              : []),
+                          ].map(([label, value]) => (
+                            <div key={label} className="min-w-0">
+                              <dt className="text-xs font-bold text-ink-400">{label}</dt>
+                              <dd className="truncate text-xs text-ink-800 dark:text-ink-200">{String(value)}</dd>
+                            </div>
+                          ))}
+                        </dl>
+
+                        <div className="space-y-2">
+                          <p className="text-xs font-bold text-ink-500">Uploaded documents</p>
+                          {(() => {
+                            const docs = [
+                              ...(p.photoUrl ? [{ label: 'Profile photo', url: p.photoUrl }] : []),
+                              ...(p.selfieUrl ? [{ label: 'Selfie verification', url: p.selfieUrl }] : []),
+                              ...(p.licenseUrl ? [{ label: "Driver's licence", url: p.licenseUrl }] : []),
+                              ...(p.documents || []),
+                            ];
+                            return docs.length === 0 ? (
+                              <p className="text-xs text-ink-400">No files were uploaded with this application.</p>
+                            ) : (
+                              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                                {docs.map((doc: any, i: number) => (
+                                  <a
+                                    key={`${doc.label}-${i}`}
+                                    href={doc.url || undefined}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="group overflow-hidden rounded-lg border border-ink-200 bg-white dark:border-ink-800 dark:bg-ink-900"
+                                  >
+                                    {doc.url ? (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img src={doc.url} alt={doc.label} className="h-24 w-full object-cover transition-transform group-hover:scale-105" />
+                                    ) : (
+                                      <div className="grid h-24 place-items-center bg-ink-100 text-ink-400 dark:bg-ink-800">
+                                        <ImageIcon className="w-5 h-5" />
+                                      </div>
+                                    )}
+                                    <span className="block truncate px-2 py-1.5 text-xs font-semibold text-ink-600 dark:text-ink-300">
+                                      {doc.label}
+                                    </span>
+                                  </a>
+                                ))}
+                              </div>
+                            );
+                          })()}
+                        </div>
+
+                        {p.rejectionReason && (
+                          <p className="text-xs italic text-ink-500">Rejection reason: {p.rejectionReason}</p>
+                        )}
                       </div>
                     )}
                   </div>
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Reports — user-submitted flags on users, listings, messages, orders */}
+        {activeTab === 'reports' && (
+          <div className={`${card} overflow-hidden`}>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-200 p-4 dark:border-ink-800">
+              <span className="flex items-center gap-2 font-sans font-bold text-sm text-ink-900 dark:text-white">
+                <Flag className="w-4 h-4 text-jade-500" /> Reports ({filteredReports.length})
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {(['ALL', ...REPORT_STATUSES] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setReportFilter(f)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer ${
+                      reportFilter === f ? 'bg-jade-500 text-white' : 'bg-ink-100 dark:bg-ink-800 text-ink-500'
+                    }`}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {filteredReports.length === 0 ? (
+              <div className="p-12 text-center text-xs text-ink-400">No reports in this filter.</div>
+            ) : (
+              <div className="divide-y divide-ink-100 dark:divide-ink-800">
+                {filteredReports.map((r) => {
+                  const reporter = (db.users || []).find((u) => u.id === r.reporterId);
+                  const notes = reportNotes[r.id] ?? r.adminNotes ?? '';
+                  return (
+                    <div key={r.id} className="flex flex-col justify-between gap-4 p-4 text-xs lg:flex-row">
+                      <div className="min-w-0 space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="px-1.5 py-0.5 rounded bg-ink-100 text-ink-600 text-xs font-bold dark:bg-ink-800 dark:text-ink-300">
+                            {r.targetType}
+                          </span>
+                          <span className="font-bold text-sm text-ink-950 dark:text-white">{r.reason}</span>
+                          <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${statusBadge(r.status)}`}>{r.status}</span>
+                        </div>
+                        <p className="break-words text-ink-600 dark:text-ink-300">
+                          <strong className="text-ink-700 dark:text-ink-200">Target:</strong> {r.targetLabel || `#${r.targetId}`}
+                        </p>
+                        {r.details && (
+                          <p className="max-w-2xl whitespace-pre-wrap text-ink-500">{r.details}</p>
+                        )}
+                        <p className="text-ink-400">
+                          Filed by {reporter?.fullName || `User ${r.reporterId ?? '—'}`} ·{' '}
+                          {new Date(r.createdAt).toLocaleString()}
+                          {r.resolvedAt ? ` · Resolved ${new Date(r.resolvedAt).toLocaleString()}` : ''}
+                        </p>
+                        {r.evidenceUrl && (
+                          <a href={r.evidenceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-bold text-jade-500 hover:underline">
+                            <ExternalLink className="w-3 h-3" /> View evidence
+                          </a>
+                        )}
+                      </div>
+
+                      <div className="flex min-w-[240px] flex-col gap-2">
+                        <input
+                          placeholder="Admin notes"
+                          value={notes}
+                          onChange={(e) => setReportNotes((s) => ({ ...s, [r.id]: e.target.value }))}
+                          className={inp}
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          {REPORT_STATUSES.filter((s) => s !== r.status).map((s) => (
+                            <button
+                              key={s}
+                              disabled={busy}
+                              className={s === 'DISMISSED' ? btnNo : btnOk}
+                              onClick={() => run(async () => {
+                                const res = await dbOperations.adminUpdateReport(r.id, { status: s, adminNotes: notes });
+                                if (res && 'error' in res && res.error) throw new Error(res.error);
+                              }, `Report marked ${s}`)}
+                            >
+                              Mark {s}
+                            </button>
+                          ))}
+                          <button
+                            disabled={busy}
+                            className={btnNo}
+                            onClick={() => run(async () => {
+                              const ok = await confirmDialog({
+                                title: 'Delete report',
+                                message: 'Remove this report permanently?',
+                                confirmText: 'Delete',
+                                danger: true,
+                              });
+                              if (!ok) return;
+                              const res = await dbOperations.adminDeleteReport(r.id);
+                              if (res && 'error' in res && res.error) throw new Error(res.error);
+                            }, 'Report deleted')}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" /> Delete
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Coverage — the states & cities GoodSale sells in and delivers to */}
+        {activeTab === 'coverage' && (
+          <div className="space-y-6">
+            <div className={`${card} p-5`}>
+              <h3 className="flex items-center gap-2 font-sans font-bold text-lg text-ink-900 dark:text-white">
+                <MapPinned className="w-5 h-5 text-jade-500" /> Service coverage
+              </h3>
+              <p className="mt-1 text-xs text-ink-500">
+                Choose where GoodSale is active. Sellers can only list in sales areas, riders only
+                accept deliveries in delivery areas, and the whole app reads these lists for its
+                state and city pickers. {salesAreaCount} of {serviceAreas.length} areas are open for
+                sales and {deliveryAreaCount} for delivery.
+              </p>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                <div className="lg:col-span-2">
+                  <label className="mb-1 block text-xs font-bold text-ink-500">State</label>
+                  <select value={areaState} onChange={(e) => { setAreaState(e.target.value); setAreaCity(''); }} className={inp}>
+                    {NG_STATES.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="lg:col-span-2">
+                  <label className="mb-1 block text-xs font-bold text-ink-500">City / area</label>
+                  <input
+                    value={areaCity}
+                    onChange={(e) => setAreaCity(e.target.value)}
+                    list="goodsale-known-cities"
+                    placeholder="e.g. Lekki"
+                    className={inp}
+                  />
+                  <datalist id="goodsale-known-cities">
+                    {dbOperations.serviceCities(areaState).map((c) => (
+                      <option key={c} value={c} />
+                    ))}
+                  </datalist>
+                </div>
+                <div className="flex items-end">
+                  <button
+                    disabled={busy || !areaCity.trim()}
+                    className={`${btnOk} w-full justify-center py-2.5`}
+                    onClick={() => run(async () => {
+                      const res = await dbOperations.adminUpsertServiceArea({
+                        state: areaState,
+                        city: areaCity.trim(),
+                        salesEnabled: areaSales,
+                        deliveryEnabled: areaDelivery,
+                      });
+                      if (res && 'error' in res && res.error) throw new Error(res.error);
+                      setAreaCity('');
+                    }, 'Coverage saved')}
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add / update
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-4">
+                <label className="flex items-center gap-2 text-xs font-semibold text-ink-600 dark:text-ink-300">
+                  <input type="checkbox" checked={areaSales} onChange={(e) => setAreaSales(e.target.checked)} className="h-4 w-4 accent-jade-500" />
+                  Selling allowed here
+                </label>
+                <label className="flex items-center gap-2 text-xs font-semibold text-ink-600 dark:text-ink-300">
+                  <input type="checkbox" checked={areaDelivery} onChange={(e) => setAreaDelivery(e.target.checked)} className="h-4 w-4 accent-jade-500" />
+                  Delivery accepted here
+                </label>
+              </div>
+            </div>
+
+            <div className={`${card} overflow-hidden`}>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-200 p-4 dark:border-ink-800">
+                <span className="flex items-center gap-2 font-sans font-bold text-sm text-ink-900 dark:text-white">
+                  <MapPin className="w-4 h-4 text-jade-500" /> Areas ({filteredAreas.length})
+                </span>
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-ink-400" />
+                  <input
+                    value={areaQuery}
+                    onChange={(e) => setAreaQuery(e.target.value)}
+                    placeholder="Search state or city…"
+                    className={`${inp} w-56 pl-8`}
+                  />
+                </div>
+              </div>
+
+              {filteredAreas.length === 0 ? (
+                <div className="p-12 text-center text-xs text-ink-400">No coverage areas yet.</div>
+              ) : (
+                <div className="divide-y divide-ink-100 dark:divide-ink-800">
+                  {filteredAreas.map((a) => (
+                    <div key={a.id} className="flex flex-wrap items-center justify-between gap-3 p-3.5 text-xs">
+                      <div className="min-w-0">
+                        <p className="font-bold text-sm text-ink-950 dark:text-white">{a.city}</p>
+                        <p className="text-ink-400">{a.state}</p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          disabled={busy}
+                          onClick={() => run(async () => {
+                            const res = await dbOperations.adminToggleServiceArea(a.id, { salesEnabled: !a.salesEnabled });
+                            if (res && 'error' in res && res.error) throw new Error(res.error);
+                          }, 'Coverage updated')}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer ${
+                            a.salesEnabled ? 'bg-jade-500/15 text-jade-700 dark:text-jade-300' : 'bg-ink-100 text-ink-400 dark:bg-ink-800'
+                          }`}
+                          title="Toggle selling in this city"
+                        >
+                          {a.salesEnabled ? 'Selling on' : 'Selling off'}
+                        </button>
+                        <button
+                          disabled={busy}
+                          onClick={() => run(async () => {
+                            const res = await dbOperations.adminToggleServiceArea(a.id, { deliveryEnabled: !a.deliveryEnabled });
+                            if (res && 'error' in res && res.error) throw new Error(res.error);
+                          }, 'Coverage updated')}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer ${
+                            a.deliveryEnabled ? 'bg-jade-500/15 text-jade-700 dark:text-jade-300' : 'bg-ink-100 text-ink-400 dark:bg-ink-800'
+                          }`}
+                          title="Toggle delivery in this city"
+                        >
+                          {a.deliveryEnabled ? 'Delivery on' : 'Delivery off'}
+                        </button>
+                        <button
+                          disabled={busy}
+                          className={btnNo}
+                          onClick={() => run(async () => {
+                            const ok = await confirmDialog({
+                              title: 'Remove area',
+                              message: `Stop operating in ${a.city}, ${a.state}?`,
+                              confirmText: 'Remove',
+                              danger: true,
+                            });
+                            if (!ok) return;
+                            const res = await dbOperations.adminDeleteServiceArea(a.id);
+                            if (res && 'error' in res && res.error) throw new Error(res.error);
+                          }, 'Area removed')}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 

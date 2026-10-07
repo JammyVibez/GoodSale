@@ -14,6 +14,8 @@ import * as M from './mappers';
 const DEFAULT_ROW_LIMIT = Number(process.env.NEXT_PUBLIC_MARKET_FEED_LIMIT) || 1000;
 const ROW_LIMITS: Record<string, number> = {
   messages: 500,
+  message_reactions: 2000,
+  calls: 400,
   notifications: 200,
   delivery_jobs: 500,
   chat_rooms: 300,
@@ -50,6 +52,10 @@ export async function loadMarketplaceState(
     disputes,
     chatRooms,
     messages,
+    messageReactions,
+    calls,
+    reports,
+    serviceAreas,
     reviews,
     verifications,
     goodPoints,
@@ -87,6 +93,10 @@ export async function loadMarketplaceState(
     selectAll(client, 'disputes'),
     selectAll(client, 'chat_rooms'),
     selectAll(client, 'messages'),
+    selectAll(client, 'message_reactions'),
+    selectAll(client, 'calls'),
+    selectAll(client, 'reports'),
+    selectAll(client, 'service_areas'),
     selectAll(client, 'reviews'),
     selectAll(client, 'identity_verifications'),
     selectAll(client, 'good_points_transactions'),
@@ -126,6 +136,10 @@ export async function loadMarketplaceState(
   state.disputes = disputes.map(M.mapDispute);
   state.chatRooms = chatRooms.map(M.mapChatRoom);
   state.messages = messages.map(M.mapMessage);
+  state.messageReactions = messageReactions.map(M.mapMessageReaction);
+  state.calls = calls.map(M.mapCall);
+  state.reports = reports.map(M.mapReport);
+  state.serviceAreas = serviceAreas.map(M.mapServiceArea);
   state.reviews = reviews.map(M.mapReview);
   state.verifications = verifications.map(M.mapVerification);
   state.goodPoints = goodPoints.map(M.mapGoodPoints);
@@ -196,6 +210,10 @@ export function subscribeMarketplaceRealtime(
   const channel: RealtimeChannel = client
     .channel('goodsale-marketplace')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, handlers.onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'message_reactions' }, handlers.onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'calls' }, handlers.onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'reports' }, handlers.onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'service_areas' }, handlers.onChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, handlers.onChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, handlers.onChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_jobs' }, handlers.onChange)
@@ -260,6 +278,7 @@ export async function insertMessage(
     offerDetails?: unknown;
     productDetails?: unknown;
     receiptDetails?: unknown;
+    replyToId?: number;
   }
 ) {
   const { data, error } = await client
@@ -273,6 +292,7 @@ export async function insertMessage(
       offer_details: message.offerDetails ?? null,
       product_details: message.productDetails ?? null,
       receipt_details: message.receiptDetails ?? null,
+      reply_to_id: message.replyToId ?? null,
     })
     .select('*')
     .single();

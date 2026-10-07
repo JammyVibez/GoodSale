@@ -89,10 +89,10 @@ export default function TermsPage() {
           ← Back to GoodSale
         </Link>
 
-        <p className="text-xs font-mono uppercase tracking-widest text-jade-600 dark:text-jade-400 font-bold">
+        <p className="text-xs font-mono tracking-tight text-jade-600 dark:text-jade-400 font-bold">
           Legal
         </p>
-        <h1 className="font-display font-black text-3xl sm:text-4xl mt-2 text-ink-900 dark:text-white">
+        <h1 className="font-display font-bold text-3xl sm:text-4xl mt-2 text-ink-900 dark:text-white">
           Terms of Service
         </h1>
         <p className="text-sm text-ink-500 dark:text-ink-400 mt-3">
@@ -103,7 +103,7 @@ export default function TermsPage() {
         <div className="mt-10 space-y-8">
           {SECTIONS.map((section) => (
             <section key={section.heading}>
-              <h2 className="font-display font-black text-lg text-ink-900 dark:text-white">
+              <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white">
                 {section.heading}
               </h2>
               {section.body.map((paragraph, i) => (
