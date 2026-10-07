@@ -11,7 +11,7 @@ import {
 import { 
   Product, UserRole, getDBState, saveDBState, dbOperations, OrderStatus 
 } from '../lib/store';
-import { SmartAvatar } from './ui/SmartImage';
+import { SmartAvatar, SmartImage } from './ui/SmartImage';
 import { toast } from '@/lib/feedback';
 import AdSlot from './AdSlot';
 
@@ -413,19 +413,24 @@ export default function ProductDetailView({
               onMouseMove={handleMouseMove}
               className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl overflow-hidden shadow-sm relative h-96 flex items-center justify-center cursor-zoom-in group"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img 
-                src={product.images[activeImageIndex]} 
-                alt={product.title} 
-                className="w-full h-full object-cover transition-transform duration-100 ease-out" 
-                style={isZooming ? {
-                  transform: 'scale(1.8)',
-                  transformOrigin: `${zoomCoords.x}% ${zoomCoords.y}%`
-                } : undefined}
-              />
+              <div
+                className="absolute inset-0 transition-transform duration-100 ease-out"
+                style={
+                  isZooming
+                    ? { transform: 'scale(1.8)', transformOrigin: `${zoomCoords.x}% ${zoomCoords.y}%` }
+                    : undefined
+                }
+              >
+                <SmartImage
+                  src={product.images[activeImageIndex]}
+                  alt={product.title}
+                  seed={`product-${product.id}`}
+                  className="h-full w-full"
+                />
+              </div>
               
               {product.isAuction && (
-                <div className="absolute top-4 left-4 px-3 py-1 bg-ink-500 text-white text-xs font-bold uppercase rounded-lg tracking-wider flex items-center gap-1 shadow-lg shadow-ink-500/15 pointer-events-none">
+                <div className="absolute top-4 left-4 px-3 py-1 bg-jade-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1 shadow-lg shadow-jade-500/25 pointer-events-none">
                   <Zap className="w-3.5 h-3.5 text-white fill-white" />
                   Live Auction Event
                 </div>
@@ -441,8 +446,12 @@ export default function ProductDetailView({
                     onClick={() => setActiveImageIndex(idx)}
                     className={`w-20 h-20 rounded-xl border overflow-hidden relative cursor-pointer ${activeImageIndex === idx ? 'border-jade-500 ring-2 ring-jade-500/20' : 'border-ink-200 dark:border-ink-800'}`}
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={img} alt={`Preview ${idx}`} className="w-full h-full object-cover" />
+                    <SmartImage
+                      src={img}
+                      alt={`Preview ${idx + 1}`}
+                      seed={`preview-${product.id}-${idx}`}
+                      className="absolute inset-0"
+                    />
                   </button>
                 ))}
               </div>
@@ -469,12 +478,12 @@ export default function ProductDetailView({
               {/* Product Header Row */}
               <div>
                 <div className="flex items-center gap-2 mb-1.5">
-                  <span className="px-2.5 py-0.5 bg-ink-100 dark:bg-ink-800 text-ink-800 dark:text-ink-300 text-xs font-extrabold rounded uppercase tracking-wider">
+                  <span className="px-2.5 py-0.5 bg-ink-100 dark:bg-ink-800 text-ink-800 dark:text-ink-300 text-xs font-semibold rounded tracking-tight">
                     {product.condition.replace('_', ' ')}
                   </span>
-                  <span className="text-xs font-semibold text-jade-500 uppercase tracking-widest">{product.category}</span>
+                  <span className="text-xs font-semibold text-jade-500 tracking-tight">{product.category}</span>
                 </div>
-                <h1 className="font-sans font-extrabold text-2xl text-ink-900 dark:text-white leading-snug">
+                <h1 className="font-sans font-semibold text-2xl text-ink-900 dark:text-white leading-snug">
                   {product.title}
                 </h1>
                 
@@ -490,8 +499,8 @@ export default function ProductDetailView({
                 <div className="space-y-3">
                   <div className="p-4 bg-ink-50 dark:bg-ink-800/40 rounded-2xl flex items-center justify-between">
                     <div>
-                      <span className="text-xs text-ink-400 uppercase tracking-widest block font-medium">Escrow Purchase Price</span>
-                      <span className="font-sans font-extrabold text-2xl text-ink-900 dark:text-white">₦{product.price.toLocaleString()}</span>
+                      <span className="text-xs text-ink-400 tracking-tight block font-medium">Escrow Purchase Price</span>
+                      <span className="font-sans font-semibold text-2xl text-ink-900 dark:text-white">₦{product.price.toLocaleString()}</span>
                     </div>
                     {product.isNegotiable && (
                       <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-ink-500/10 border border-ink-500/20 rounded-lg text-xs font-bold text-ink-600 dark:text-ink-400">
@@ -526,7 +535,7 @@ export default function ProductDetailView({
                             setShowThresholdForm(!showThresholdForm);
                           }
                         }}
-                        className={`px-3 py-1.5 font-bold text-xs rounded-lg transition-all cursor-pointer select-none shrink-0 ${isAlertSubscribed ? 'bg-ink-500/10 hover:bg-ink-500/20 text-ink-500 border border-ink-500/15' : 'bg-jade-500 hover:bg-jade-600 text-white shadow-sm shadow-jade-500/10'}`}
+                        className={`px-3 py-1.5 font-bold text-xs rounded-lg transition-all cursor-pointer select-none shrink-0 ${isAlertSubscribed ? 'bg-jade-500/10 hover:bg-jade-500/20 text-ink-500 border border-ink-500/15' : 'bg-jade-500 hover:bg-jade-600 text-white shadow-sm shadow-jade-500/10'}`}
                       >
                         {isAlertSubscribed ? 'Unsubscribe' : 'Notify Me'}
                       </button>
@@ -571,26 +580,26 @@ export default function ProductDetailView({
                   <div className="flex items-center justify-between p-3 bg-ink-900 text-white rounded-xl border border-ink-500/30 shadow-md">
                     <div className="flex items-center gap-2">
                       <Clock className="w-4 h-4 text-ink-500 animate-pulse" />
-                      <span className="text-xs font-mono tracking-widest uppercase font-extrabold text-ink-400">
+                      <span className="text-xs font-medium text-ink-400">
                         {auction?.isActive ? 'AUCTION COUNTDOWN' : 'AUCTION STATUS'}
                       </span>
                     </div>
-                    <div className="font-mono text-xs font-black tracking-widest text-ink-400">
+                    <div className="font-mono text-xs font-bold tracking-widest text-ink-400">
                       {auction?.isActive ? (timeLeft || 'Calculating...') : 'CLOSED'}
                     </div>
                   </div>
 
                   <div className="flex justify-between items-center">
                     <div>
-                      <span className="text-xs text-ink-500 uppercase tracking-widest font-bold flex items-center gap-1">
+                      <span className="text-xs text-ink-500 tracking-tight font-bold flex items-center gap-1">
                         <Zap className="w-3.5 h-3.5" /> {auction?.isActive ? 'Current Top Bid' : 'Winning Bid'}
                       </span>
-                      <span className="font-sans font-extrabold text-2xl text-ink-900 dark:text-white block mt-1">
+                      <span className="font-sans font-semibold text-2xl text-ink-900 dark:text-white block mt-1">
                         ₦{currentHighestBid.toLocaleString()}
                       </span>
                     </div>
                     <div className="text-right">
-                      <span className="text-xs text-ink-400 block uppercase">Starting Bid</span>
+                      <span className="text-xs text-ink-400 block">Starting Bid</span>
                       <span className="font-sans font-semibold text-xs text-ink-500 dark:text-ink-400">₦{auction?.startingBid.toLocaleString()}</span>
                     </div>
                   </div>
@@ -609,7 +618,7 @@ export default function ProductDetailView({
                           />
                           <button
                             onClick={handlePlaceBid}
-                            className="px-5 py-2 bg-ink-500 hover:bg-ink-600 text-white font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer shrink-0"
+                            className="px-5 py-2 bg-jade-500 hover:bg-jade-600 text-white font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer shrink-0"
                           >
                             Place Bid
                           </button>
@@ -630,7 +639,7 @@ export default function ProductDetailView({
                               }
                             }
                           }}
-                          className="px-2 py-1 bg-ink-500/10 hover:bg-ink-500/20 text-ink-500 text-xs font-mono uppercase tracking-widest border border-ink-500/25 rounded-lg cursor-pointer"
+                          className="px-2 py-1 bg-jade-500/10 hover:bg-jade-500/20 text-ink-500 text-xs font-mono tracking-tight border border-ink-500/25 rounded-lg cursor-pointer"
                           title="Simulate timer hitting 0 immediately"
                         >
                           Simulate Fast-Forward End
@@ -639,7 +648,7 @@ export default function ProductDetailView({
                     </>
                   ) : (
                     <div className="p-3 bg-jade-500/10 border border-jade-500/20 rounded-xl text-center">
-                      <span className="text-xs text-jade-600 dark:text-jade-400 font-extrabold uppercase tracking-widest block mb-1">
+                      <span className="text-xs text-jade-600 dark:text-jade-400 font-semibold tracking-tight block mb-1">
                         Auction Concluded
                       </span>
                       {bids.length > 0 ? (
@@ -653,7 +662,7 @@ export default function ProductDetailView({
                           {db.currentUser?.id === bids[0].userId && (
                             <button
                               onClick={() => onNavigate('profile')}
-                              className="mt-1.5 px-3 py-1.5 bg-jade-500 hover:bg-jade-600 text-white text-xs font-black uppercase tracking-wider rounded-lg cursor-pointer inline-block"
+                              className="mt-1.5 px-3 py-1.5 bg-jade-500 hover:bg-jade-600 text-white text-xs font-bold tracking-tight rounded-lg cursor-pointer inline-block"
                             >
                               Go to My Purchases & Pay
                             </button>
@@ -673,7 +682,7 @@ export default function ProductDetailView({
                   <>
                     <button
                       onClick={handleBuyNow}
-                      className="w-full py-3 bg-jade-500 hover:bg-jade-600 text-white font-sans font-extrabold text-sm rounded-xl transition-all shadow-lg shadow-jade-500/10 cursor-pointer"
+                      className="w-full py-3 bg-jade-500 hover:bg-jade-600 text-white font-sans font-semibold text-sm rounded-xl transition-all shadow-lg shadow-jade-500/10 cursor-pointer"
                     >
                       Buy Now (Escrow)
                     </button>
@@ -688,7 +697,7 @@ export default function ProductDetailView({
                   </>
                 ) : (
                   <div className="sm:col-span-2 p-3 bg-ink-50 dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-2xl">
-                    <span className="text-xs font-extrabold text-ink-400 uppercase tracking-widest block mb-2">Bid History Log ({bids.length})</span>
+                    <span className="text-xs font-semibold text-ink-400 tracking-tight block mb-2">Bid History Log ({bids.length})</span>
                     {bids.length === 0 ? (
                       <p className="text-xs text-ink-400 italic">No bids placed yet. Be the first!</p>
                     ) : (
@@ -696,8 +705,7 @@ export default function ProductDetailView({
                         {bids.map((b) => (
                           <div key={b.id} className="flex justify-between items-center text-xs pt-1.5 first:pt-0 font-sans text-ink-700 dark:text-ink-300">
                             <span className="font-bold flex items-center gap-1.5">
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={b.userAvatar} alt="" className="w-4 h-4 rounded-full" />
+                              <SmartAvatar src={b.userAvatar} name={b.username} className="h-4 w-4" />
                               @{b.username}
                             </span>
                             <span className="font-mono font-bold text-ink-950 dark:text-white">₦{b.amount.toLocaleString()}</span>
@@ -714,7 +722,7 @@ export default function ProductDetailView({
                 <div className="pt-2">
                   <button
                     onClick={() => setShowNegotiateDrawer(!showNegotiateDrawer)}
-                    className="w-full py-2 bg-ink-500/10 hover:bg-ink-500/20 text-ink-500 border border-ink-500/20 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                    className="w-full py-2 bg-jade-500/10 hover:bg-jade-500/20 text-ink-500 border border-ink-500/20 font-bold text-xs rounded-xl transition-all cursor-pointer"
                   >
                     Submit Negotiation Custom Offer Price
                   </button>
@@ -730,7 +738,7 @@ export default function ProductDetailView({
                       />
                       <button
                         onClick={handleSendOffer}
-                        className="px-4 bg-ink-500 hover:bg-ink-600 text-white font-bold text-xs rounded-xl flex items-center gap-1 cursor-pointer"
+                        className="px-4 bg-jade-500 hover:bg-jade-600 text-white font-bold text-xs rounded-xl flex items-center gap-1 cursor-pointer"
                       >
                         <Send className="w-3.5 h-3.5" />
                         Send Offer
@@ -764,7 +772,7 @@ export default function ProductDetailView({
                 <div>
                   <div className="flex items-center gap-1">
                     <span className="font-sans font-bold text-sm text-ink-950 dark:text-white group-hover:text-jade-500 transition-colors">{seller?.fullName || 'GoodSale Seller'}</span>
-                    {isSellerVerified && <CheckCircle className="w-4 h-4 text-ink-500 fill-ink-500/10" />}
+                    {isSellerVerified && <CheckCircle className="h-4 w-4 text-jade-500" />}
                   </div>
                   <span className="text-xs text-ink-400 font-mono">Level: {seller?.sellerLevel} • Trust Score: {seller?.trustScore}% • View Storefront</span>
                 </div>
@@ -772,11 +780,11 @@ export default function ProductDetailView({
 
               {business ? (
                 <div className="text-right border-l border-ink-100 dark:border-ink-800 pl-4 hidden sm:block">
-                  <span className="text-xs text-jade-500 uppercase tracking-widest font-bold block">Business Merchant</span>
+                  <span className="text-xs text-jade-500 tracking-tight font-bold block">Business Merchant</span>
                   <span className="font-sans font-bold text-xs text-ink-800 dark:text-ink-300 group-hover:text-jade-500 transition-colors">{business.name}</span>
                 </div>
               ) : (
-                <span className="text-xs text-jade-500 font-bold group-hover:underline flex items-center gap-1 font-mono uppercase tracking-wider">
+                <span className="text-xs text-jade-500 font-bold group-hover:underline flex items-center gap-1 font-mono tracking-tight">
                   View Store
                 </span>
               )}
@@ -836,7 +844,7 @@ export default function ProductDetailView({
         <div id="product-reviews-section" className="mt-12 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-6 sm:p-8 shadow-sm space-y-8">
           
           <div className="border-b border-ink-100 dark:border-ink-800 pb-5">
-            <h2 className="font-sans font-extrabold text-xl text-ink-900 dark:text-white flex items-center gap-2">
+            <h2 className="font-sans font-semibold text-xl text-ink-900 dark:text-white flex items-center gap-2">
               <MessageSquare className="w-5 h-5 text-jade-500" />
               Customer Reviews & Verified Merchant QA
             </h2>
@@ -848,16 +856,16 @@ export default function ProductDetailView({
           {/* Metrics summary widget */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center bg-ink-50 dark:bg-ink-900/50 p-6 rounded-3xl border border-ink-100 dark:border-ink-800/80">
             <div className="md:col-span-4 text-center md:text-left space-y-1 border-r border-ink-100 dark:border-ink-800 pr-0 md:pr-6">
-              <span className="text-xs text-ink-400 uppercase tracking-widest font-bold">Overall Rating</span>
+              <span className="text-xs text-ink-400 tracking-tight font-bold">Overall Rating</span>
               <div className="flex items-baseline justify-center md:justify-start gap-2">
-                <span className="font-sans font-extrabold text-4xl text-ink-950 dark:text-white">{averageRating}</span>
+                <span className="font-sans font-semibold text-4xl text-ink-950 dark:text-white">{averageRating}</span>
                 <span className="text-xs text-ink-400">out of 5</span>
               </div>
               <div className="flex items-center justify-center md:justify-start gap-1 text-ink-500 my-1">
                 {Array.from({ length: 5 }).map((_, i) => (
                   <Star 
                     key={i} 
-                    className={`w-4 h-4 ${i < Math.round(Number(averageRating)) ? 'fill-ink-500' : 'text-ink-200 dark:text-ink-800'}`} 
+                    className={`h-4 w-4 ${i < Math.round(Number(averageRating)) ? 'star-filled' : 'star-empty'}`} 
                   />
                 ))}
               </div>
@@ -872,9 +880,9 @@ export default function ProductDetailView({
                 return (
                   <div key={stars} className="flex items-center gap-3 text-xs">
                     <span className="font-bold w-3 font-mono">{stars}</span>
-                    <Star className="w-3.5 h-3.5 text-ink-500 fill-ink-500 shrink-0" />
+                    <Star className="star-filled w-3.5 h-3.5 shrink-0" />
                     <div className="flex-1 h-2 bg-ink-200 dark:bg-ink-800 rounded-full overflow-hidden">
-                      <div className="h-full bg-ink-500 rounded-full" style={{ width: `${percent}%` }}></div>
+                      <div className="h-full bg-jade-500 rounded-full" style={{ width: `${percent}%` }}></div>
                     </div>
                     <span className="text-ink-400 font-mono w-8 text-right">{count}</span>
                   </div>
@@ -985,8 +993,11 @@ export default function ProductDetailView({
                     <div className="flex justify-between items-start gap-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-ink-100 dark:bg-ink-800 overflow-hidden relative border border-ink-200/50 dark:border-ink-700/50">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={rev.reviewerPhoto} alt={rev.reviewerName} className="w-full h-full object-cover" />
+                          <SmartAvatar
+                            src={rev.reviewerPhoto}
+                            name={rev.reviewerName}
+                            className="h-full w-full"
+                          />
                         </div>
                         <div>
                           <div className="flex items-center gap-1.5 flex-wrap">
@@ -994,11 +1005,11 @@ export default function ProductDetailView({
                               {rev.reviewerName}
                             </span>
                             {isVerifiedPurchase ? (
-                              <span className="px-1.5 py-0.5 bg-ink-500/10 border border-ink-500/20 text-xs font-extrabold text-ink-600 dark:text-ink-400 rounded uppercase tracking-wider flex items-center gap-0.5">
+                              <span className="px-1.5 py-0.5 bg-ink-500/10 border border-ink-500/20 text-xs font-semibold text-ink-600 dark:text-ink-400 rounded tracking-tight flex items-center gap-0.5">
                                 <Check className="w-2.5 h-2.5" /> Verified Buyer
                               </span>
                             ) : (
-                              <span className="px-1.5 py-0.5 bg-ink-100 dark:bg-ink-800 text-xs font-semibold text-ink-500 rounded uppercase tracking-wider">
+                              <span className="px-1.5 py-0.5 bg-ink-100 dark:bg-ink-800 text-xs font-semibold text-ink-500 rounded tracking-tight">
                                 Community
                               </span>
                             )}
@@ -1013,7 +1024,7 @@ export default function ProductDetailView({
                           {Array.from({ length: 5 }).map((_, i) => (
                             <Star 
                               key={i} 
-                              className={`w-3.5 h-3.5 ${i < rev.rating ? 'fill-ink-500' : 'text-ink-200 dark:text-ink-800'}`} 
+                              className={`h-3.5 w-3.5 ${i < rev.rating ? 'star-filled' : 'star-empty'}`} 
                             />
                           ))}
                         </div>
@@ -1075,23 +1086,22 @@ export default function ProductDetailView({
                             <div className="flex justify-between items-start gap-4">
                               <div className="flex items-center gap-2">
                                 <div className="w-7 h-7 rounded-full bg-ink-100 overflow-hidden relative border border-ink-200/50">
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={rep.authorPhoto} alt={rep.authorName} className="w-full h-full object-cover" />
+                                  <SmartAvatar src={rep.authorPhoto} name={rep.authorName} className="h-full w-full" />
                                 </div>
                                 <div>
                                   <div className="flex items-center gap-1.5">
                                     <span className="font-bold text-xs text-ink-800 dark:text-ink-200">{rep.authorName}</span>
                                     
                                     {rep.authorRole === 'SELLER' ? (
-                                      <span className="px-1.5 py-0.2 bg-jade-500/10 border border-jade-500/20 text-[10px] font-extrabold text-jade-600 dark:text-jade-400 rounded uppercase tracking-wider">
+                                      <span className="px-1.5 py-0.2 bg-jade-500/10 border border-jade-500/20 text-[10px] font-semibold text-jade-600 dark:text-jade-400 rounded tracking-tight">
                                         Vendor Merchant
                                       </span>
                                     ) : rep.authorRole === 'ADMIN' ? (
-                                      <span className="px-1.5 py-0.2 bg-jade-500/10 border border-jade-500/20 text-[10px] font-extrabold text-jade-600 rounded uppercase tracking-wider">
+                                      <span className="px-1.5 py-0.2 bg-jade-500/10 border border-jade-500/20 text-[10px] font-semibold text-jade-600 rounded tracking-tight">
                                         Moderator
                                       </span>
                                     ) : (
-                                      <span className="px-1.5 py-0.2 bg-ink-100 dark:bg-ink-800 text-[10px] font-semibold text-ink-500 rounded uppercase tracking-wider">
+                                      <span className="px-1.5 py-0.2 bg-ink-100 dark:bg-ink-800 text-[10px] font-semibold text-ink-500 rounded tracking-tight">
                                         Buyer
                                       </span>
                                     )}
@@ -1139,7 +1149,7 @@ export default function ProductDetailView({
                   <span className="font-sans font-bold text-sm tracking-tight text-ink-800 dark:text-white">
                     {loadingTip ? 'Consulting Gemini Trust Engine...' : (securityTip?.badgeTitle || 'Smart Verification Guide')}
                   </span>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-extrabold uppercase tracking-wider ${
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold tracking-tight ${
                     loadingTip ? 'bg-jade-500/10 text-jade-500 animate-pulse' :
                     securityTip?.threatLevel === 'HIGH' ? 'bg-jade-500/10 text-jade-500 border border-jade-500/20' :
                     securityTip?.threatLevel === 'MEDIUM' ? 'bg-ink-500/10 text-ink-500 border border-ink-500/20' :

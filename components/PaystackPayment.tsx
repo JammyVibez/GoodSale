@@ -183,7 +183,7 @@ export default function PaystackPayment({
               <Shield className="w-4 h-4 text-[#1fb377]" />
             </div>
             <div>
-              <p className="font-sans font-black text-xs text-white uppercase tracking-wider">Paystack Secured</p>
+              <p className="font-sans font-bold text-xs text-white tracking-wider">Paystack Secured</p>
               <p className="text-xs text-ink-400 font-mono">
                 Order #{orderId} · {publicKey ? 'Live Inline' : demo ? 'Demo Mode' : 'Not Configured'}
               </p>
@@ -200,8 +200,8 @@ export default function PaystackPayment({
         </div>
 
         <div className="bg-[#171c1a] p-6 text-center space-y-1">
-          <p className="text-ink-400 text-xs uppercase tracking-widest font-mono">Paying GoodSale Escrow Ltd</p>
-          <p className="font-mono text-3xl font-black text-[#1fb377]">₦{amount.toLocaleString()}</p>
+          <p className="text-ink-400 text-xs tracking-widest font-mono">Paying GoodSale Escrow Ltd</p>
+          <p className="font-mono text-3xl font-bold text-[#1fb377]">₦{amount.toLocaleString()}</p>
           <p className="text-ink-500 text-xs">{email}</p>
         </div>
 
@@ -229,7 +229,7 @@ export default function PaystackPayment({
               <button
                 type="button"
                 onClick={() => void handlePaystackInline()}
-                className="w-full py-3.5 bg-[#1fb377] hover:bg-[#26cc84] text-white font-sans font-extrabold text-xs uppercase tracking-wider rounded-xl cursor-pointer shadow-lg shadow-[#1fb377]/20 flex items-center justify-center gap-2 transition-all"
+                className="w-full py-3.5 bg-[#1fb377] hover:bg-[#26cc84] text-white font-sans font-semibold text-xs tracking-wider rounded-xl cursor-pointer shadow-lg shadow-[#1fb377]/20 flex items-center justify-center gap-2 transition-all"
               >
                 <CreditCard className="w-4 h-4" />
                 {publicKey ? 'Pay with Paystack' : 'Simulate Escrow Hold (Demo)'}
@@ -240,7 +240,7 @@ export default function PaystackPayment({
                   type="button"
                   disabled={demoTransfer}
                   onClick={() => void handleDemoBankTransfer()}
-                  className="w-full py-3.5 bg-[#0b0f0d] border border-[#29302d] hover:border-[#1fb377]/40 text-ink-200 font-sans font-extrabold text-xs uppercase tracking-wider rounded-xl cursor-pointer flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                  className="w-full py-3.5 bg-[#0b0f0d] border border-[#29302d] hover:border-[#1fb377]/40 text-ink-200 font-sans font-semibold text-xs tracking-wider rounded-xl cursor-pointer flex items-center justify-center gap-2 transition-all disabled:opacity-50"
                 >
                   <Landmark className="w-4 h-4" />
                   {demoTransfer ? 'Verifying…' : 'Demo Bank Transfer'}
@@ -253,7 +253,7 @@ export default function PaystackPayment({
             <div className="flex-1 flex flex-col items-center justify-center text-center space-y-4 py-12">
               <div className="w-12 h-12 rounded-full border-4 border-ink-700 border-t-[#1fb377] animate-spin" />
               <div className="space-y-1">
-                <p className="font-sans font-black text-xs text-white uppercase tracking-widest">Verifying Payment</p>
+                <p className="font-sans font-bold text-xs text-white tracking-widest">Verifying Payment</p>
                 <p className="text-xs text-ink-400">Confirming transaction with Paystack…</p>
               </div>
             </div>
@@ -265,7 +265,7 @@ export default function PaystackPayment({
                 <CheckCircle2 className="w-8 h-8 text-jade-400" />
               </div>
               <div className="space-y-1">
-                <p className="font-sans font-black text-sm text-jade-400 uppercase tracking-widest">Escrow Hold Secure</p>
+                <p className="font-sans font-bold text-sm text-jade-400 tracking-widest">Escrow Hold Secure</p>
                 <p className="text-xs text-ink-400">Payment verified. Funds locked in escrow ledger.</p>
               </div>
             </div>

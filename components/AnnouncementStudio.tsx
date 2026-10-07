@@ -65,7 +65,7 @@ export default function AnnouncementStudio() {
       <div className="flex items-center gap-2 border-b border-ink-100 px-5 py-4 dark:border-ink-800">
         <Megaphone className="w-4 h-4 text-jade-500" />
         <h4 className="font-bold text-sm text-ink-900 dark:text-white">Announcements</h4>
-        <span className="ml-auto text-[10px] font-mono uppercase tracking-widest text-ink-400">
+        <span className="ml-auto text-xs font-mono tracking-widest text-ink-400">
           Pops up on app entry
         </span>
       </div>
@@ -134,7 +134,7 @@ export default function AnnouncementStudio() {
                 <div className="flex items-center gap-2">
                   <span className="truncate text-xs font-bold text-ink-800 dark:text-ink-200">{a.title}</span>
                   <span
-                    className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-black uppercase tracking-widest ${
+                    className={`shrink-0 rounded-md px-1.5 py-0.5 text-xs font-bold tracking-widest ${
                       a.isActive
                         ? 'bg-jade-500/10 text-jade-600 dark:text-jade-400'
                         : 'bg-ink-100 text-ink-400 dark:bg-ink-800'
@@ -144,7 +144,7 @@ export default function AnnouncementStudio() {
                   </span>
                 </div>
                 <p className="mt-0.5 line-clamp-2 text-xs text-ink-400">{a.body}</p>
-                <span className="mt-1 inline-block rounded bg-ink-100 px-1.5 py-0.5 text-[10px] text-ink-400 dark:bg-ink-800">
+                <span className="mt-1 inline-block rounded bg-ink-100 px-1.5 py-0.5 text-xs text-ink-400 dark:bg-ink-800">
                   {AUDIENCES.find((x) => x.value === a.audience)?.label || a.audience}
                 </span>
               </div>

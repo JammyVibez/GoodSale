@@ -449,16 +449,16 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
       <div className="relative w-full max-w-xl bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-[36px] shadow-2xl overflow-hidden transition-all duration-300 max-h-[92vh] flex flex-col">
         
         {/* Modern Top Gradient Accent */}
-        <div className="h-2.5 bg-gradient-to-r from-jade-500 via-jade-500 to-jade-600 shrink-0" />
+        <div className="h-1.5 bg-jade-500 shrink-0" />
         
         {/* Header */}
         <div className="px-6 pt-5 pb-4 border-b border-ink-100 dark:border-ink-800 flex justify-between items-center shrink-0">
           <div>
-            <h3 className="font-display font-black text-lg text-ink-900 dark:text-white flex items-center gap-2">
+            <h3 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-jade-500" />
-              GoodSale Secure Identity Portal
+              Welcome to GoodSale
             </h3>
-            <p className="text-xs text-ink-400 mt-0.5">Escrow, Commerce & Logistics Platform in Nigeria</p>
+            <p className="text-sm text-ink-400 mt-0.5">Buy and sell safely with escrow protection</p>
           </div>
           <button 
             onClick={onClose}
@@ -470,9 +470,9 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
 
         {/* Dynamic OTP notification alert if generated */}
         {generatedOtp && (mode === 'otp_verify' || mode === 'reset_password_otp') && (
-          <div className="bg-jade-500 text-white px-6 py-2.5 flex items-center justify-between text-xs font-bold font-mono shadow-md animate-pulse">
-            <span>SIMULATED OTP DISPATCHED:</span>
-            <span className="bg-white text-jade-600 px-3 py-1 rounded-lg text-sm font-black tracking-widest">
+          <div className="bg-jade-500 text-white px-6 py-2.5 flex items-center justify-between text-xs font-semibold shadow-md animate-pulse">
+            <span>Demo verification code</span>
+            <span className="bg-white text-jade-600 px-3 py-1 rounded-lg text-sm font-bold">
               {generatedOtp}
             </span>
           </div>
@@ -503,13 +503,13 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
               <div className="flex bg-ink-50 dark:bg-ink-950 p-1.5 rounded-2xl border border-ink-150 dark:border-ink-850 shrink-0">
                 <button
                   onClick={() => { setMode('login'); setErrorMsg(''); }}
-                  className="flex-1 py-2 text-xs font-bold rounded-xl bg-white dark:bg-ink-800 text-jade-500 dark:text-jade-400 shadow-sm"
+                  className="flex-1 py-2 text-sm font-semibold rounded-xl bg-white dark:bg-ink-800 text-jade-500 dark:text-jade-400 shadow-sm"
                 >
                   Sign In
                 </button>
                 <button
                   onClick={() => { setMode('register'); setErrorMsg(''); }}
-                  className="flex-1 py-2 text-xs font-bold rounded-xl text-ink-500 hover:text-ink-700 dark:hover:text-ink-300"
+                  className="flex-1 py-2 text-sm font-semibold rounded-xl text-ink-500 hover:text-ink-700 dark:hover:text-ink-300"
                 >
                   Create Account
                 </button>
@@ -518,7 +518,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
               {/* Standard Password Login Form */}
               <form onSubmit={handleCustomLoginSubmit} className="space-y-4">
                 <div>
-                  <label className="text-xs font-bold text-ink-400 dark:text-ink-500 uppercase tracking-widest block mb-1 font-mono">Email Address or Phone Number</label>
+                  <label className="text-sm font-medium text-ink-600 dark:text-ink-300 block mb-1 font-mono">Email Address or Phone Number</label>
                   <div className="relative">
                     <User className="absolute left-3.5 top-3 w-4 h-4 text-ink-400" />
                     <input
@@ -534,7 +534,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
 
                 <div>
                   <div className="flex justify-between items-center mb-1">
-                    <label className="text-xs font-bold text-ink-400 dark:text-ink-500 uppercase tracking-widest block font-mono">Secure Password</label>
+                    <label className="text-sm font-medium text-ink-600 dark:text-ink-300 block font-mono">Secure Password</label>
                     <button 
                       type="button" 
                       onClick={() => setMode('forgot_password')} 
@@ -572,64 +572,43 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                       onChange={(e) => setRememberMe(e.target.checked)}
                       className="w-4 h-4 rounded text-jade-500 border-ink-300 focus:ring-jade-500"
                     />
-                    <span>Remember My Session</span>
+                    <span>Remember me</span>
                   </label>
-                  <span className="text-xs text-ink-400 font-mono">15m JWT Session</span>
+                  <span className="text-xs text-ink-400">Secure sign-in</span>
                 </div>
 
                 {/* Login Button */}
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full py-3 bg-gradient-to-r from-jade-500 to-jade-600 hover:from-jade-600 hover:to-jade-700 text-white font-sans font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer shadow-md shadow-jade-500/10 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                  className="w-full py-3 bg-jade-500 hover:bg-jade-600 text-white font-semibold text-sm rounded-xl cursor-pointer shadow-md shadow-jade-500/15 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
                 >
                   {isSubmitting ? (
                     <RefreshCw className="w-4 h-4 animate-spin" />
                   ) : (
                     <>
                       <LogIn className="w-4 h-4" />
-                      <span>Authenticate Account</span>
+                      <span>Sign in securely</span>
                     </>
                   )}
                 </button>
               </form>
 
-              <div className="relative flex py-2 items-center">
-                <div className="flex-grow border-t border-ink-150 dark:border-ink-800"></div>
-                <span className="flex-shrink mx-4 text-xs font-bold text-ink-400 dark:text-ink-500 uppercase font-mono tracking-widest">Or hop in directly</span>
-                <div className="flex-grow border-t border-ink-150 dark:border-ink-800"></div>
-              </div>
-
-              {/* Guest login removed — Supabase Auth only */}
-
-              {/* JWT Session Manager Panel */}
+              {/* Session security note */}
               <div className="bg-ink-50 dark:bg-ink-950 rounded-2xl p-4 border border-ink-150 dark:border-ink-850 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
-                    <Cpu className="w-4 h-4 text-jade-500" />
-                    <span className="text-xs font-bold text-ink-700 dark:text-ink-300 uppercase tracking-widest font-mono">JWT Session Auditor</span>
+                    <Shield className="w-4 h-4 text-jade-500" />
+                    <span className="text-sm font-semibold text-ink-700 dark:text-ink-300">Session protection</span>
                   </div>
-                  <span className="px-2 py-0.5 bg-jade-500/10 border border-jade-500/20 text-jade-600 dark:text-jade-400 text-[10px] font-mono rounded font-bold uppercase tracking-wider">
-                    Secured
+                  <span className="px-2 py-0.5 bg-jade-500/10 border border-jade-500/20 text-jade-600 dark:text-jade-400 text-[11px] rounded-full font-semibold">
+                    Secure
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 text-xs font-mono text-ink-500 dark:text-ink-400 leading-normal">
-                  <div>
-                    <span className="font-sans font-bold text-ink-400 block">ACCESS TOKEN EXPIRY</span>
-                    <span className="text-ink-800 dark:text-ink-200 font-extrabold">{Math.floor(jwtExpiry / 60)}m {jwtExpiry % 60}s</span>
-                  </div>
-                  <div>
-                    <span className="font-sans font-bold text-ink-400 block">IP ADDRESS</span>
-                    <span className="text-ink-800 dark:text-ink-200">{sessionIp} ({sessionLocation})</span>
-                  </div>
-                  <div className="col-span-2">
-                    <span className="font-sans font-bold text-ink-400 block">JWT DECODED HEADER & CLAIM</span>
-                    <span className="text-xs block text-ink-700 dark:text-ink-300 bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-850 p-1.5 rounded font-mono truncate">
-                      {activeJwtToken}
-                    </span>
-                  </div>
-                </div>
+                <p className="text-sm text-ink-500 dark:text-ink-400">
+                  Your password is never stored. Sessions are protected by Supabase Auth and can be ended from any device.
+                </p>
 
                 <div className="flex gap-2 pt-1.5">
                   <button 
@@ -637,7 +616,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                     className="flex-1 py-1.5 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 hover:border-jade-500 text-xs font-bold text-ink-600 dark:text-ink-300 hover:text-jade-500 rounded-lg transition-colors flex items-center justify-center gap-1 cursor-pointer"
                   >
                     <RefreshCw className="w-3 h-3" />
-                    Rotate Session Refresh Token
+                    Refresh session
                   </button>
                   {db.currentUser && (
                     <button 
@@ -650,9 +629,9 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                           setSuccessMsg('');
                         }, 1200);
                       }}
-                      className="py-1.5 px-3 bg-ink-500/10 hover:bg-ink-500 text-ink-600 hover:text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                      className="py-1.5 px-3 bg-jade-500/10 hover:bg-jade-500 text-jade-700 hover:text-white dark:text-jade-300 text-xs font-bold rounded-lg transition-colors cursor-pointer"
                     >
-                      Revoke JWT
+                      End this session
                     </button>
                   )}
                 </div>
@@ -686,7 +665,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                 {/* Full Name */}
                 <div>
                   <div className="flex justify-between items-center mb-1">
-                    <label className="text-xs font-bold text-ink-400 dark:text-ink-500 uppercase tracking-widest block font-mono">Full Name</label>
+                    <label className="text-sm font-medium text-ink-600 dark:text-ink-300 block font-mono">Full Name</label>
                     {fullName.trim().length > 0 && (
                       <span className={`text-xs font-bold font-mono ${fullName.trim().length >= 3 ? 'text-jade-500' : 'text-ink-500'}`}>
                         {fullName.trim().length >= 3 ? 'Format looks good' : 'Too short'}
@@ -709,7 +688,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                 {/* Username */}
                 <div>
                   <div className="flex justify-between items-center mb-1">
-                    <label className="text-xs font-bold text-ink-400 dark:text-ink-500 uppercase tracking-widest block font-mono">Unique Username</label>
+                    <label className="text-sm font-medium text-ink-600 dark:text-ink-300 block font-mono">Unique Username</label>
                     {username.trim().length > 0 && (
                       <span className={`text-xs font-bold font-mono ${
                         username.includes(' ') ? 'text-ink-500' :
@@ -739,7 +718,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <div className="flex justify-between items-center mb-1">
-                      <label className="text-xs font-bold text-ink-400 dark:text-ink-500 uppercase tracking-widest block font-mono">Email Address</label>
+                      <label className="text-sm font-medium text-ink-600 dark:text-ink-300 block font-mono">Email Address</label>
                       {email.trim().length > 0 && (
                         <span className={`text-xs font-bold font-mono ${email.includes('@') && email.includes('.') ? 'text-jade-500' : 'text-ink-500'}`}>
                           {email.includes('@') && email.includes('.') ? 'Format looks good' : 'Invalid email'}
@@ -761,7 +740,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
 
                   <div>
                     <div className="flex justify-between items-center mb-1">
-                      <label className="text-xs font-bold text-ink-400 dark:text-ink-500 uppercase tracking-widest block font-mono">Phone Number</label>
+                      <label className="text-sm font-medium text-ink-600 dark:text-ink-300 block font-mono">Phone Number</label>
                       {phoneNumber.trim().length > 0 && (
                         <span className={`text-xs font-bold font-mono ${phoneNumber.startsWith('+234') || phoneNumber.length >= 10 ? 'text-jade-500' : 'text-ink-500'}`}>
                           {phoneNumber.startsWith('+234') || phoneNumber.length >= 10 ? 'Validated' : '+234... pattern'}
@@ -785,7 +764,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                 {/* Password & Confirm Password side-by-side */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-bold text-ink-400 dark:text-ink-500 uppercase tracking-widest block mb-1 font-mono">Choose Password</label>
+                    <label className="text-sm font-medium text-ink-600 dark:text-ink-300 block mb-1 font-mono">Choose Password</label>
                     <div className="relative">
                       <Lock className="absolute left-3.5 top-3 w-4 h-4 text-ink-400" />
                       <input
@@ -808,7 +787,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
 
                   <div>
                     <div className="flex justify-between items-center mb-1">
-                      <label className="text-xs font-bold text-ink-400 dark:text-ink-500 uppercase tracking-widest block font-mono">Confirm Password</label>
+                      <label className="text-sm font-medium text-ink-600 dark:text-ink-300 block font-mono">Confirm Password</label>
                       {confirmPassword && (
                         <span className={`text-xs font-bold font-mono ${password === confirmPassword ? 'text-jade-500' : 'text-ink-500'}`}>
                           {password === confirmPassword ? 'Matches' : 'Mismatch'}
@@ -840,8 +819,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                 {password && (
                   <div className="p-3 bg-ink-50 dark:bg-ink-950 rounded-xl border border-ink-150 dark:border-ink-850 space-y-2">
                     <div className="flex justify-between items-center text-xs">
-                      <span className="font-bold text-ink-400 font-sans">PASSWORD STRENGTH STATS</span>
-                      <span className={`font-extrabold font-mono ${strength.score > 70 ? 'text-jade-500' : strength.score > 40 ? 'text-ink-500' : 'text-ink-500'}`}>
+                      <span className="font-bold text-ink-400 font-sans">Password strength</span>
+                      <span className={`font-semibold font-mono ${strength.score > 70 ? 'text-jade-500' : strength.score > 40 ? 'text-ink-500' : 'text-ink-500'}`}>
                         {strength.text} ({strength.score}%)
                       </span>
                     </div>
@@ -860,7 +839,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
 
                 {/* Account role */}
                 <div>
-                  <label className="text-xs font-bold text-ink-400 dark:text-ink-500 uppercase tracking-widest block mb-1.5 font-mono">Marketplace Account Role</label>
+                  <label className="text-sm font-medium text-ink-600 dark:text-ink-300 block mb-1.5 font-mono">Marketplace Account Role</label>
                   <div className="grid grid-cols-3 gap-2">
                     {[
                       { role: UserRole.BUYER, label: 'Buyer', desc: 'Secure purchases' },
@@ -882,7 +861,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
 
                 {/* Referral Code */}
                 <div>
-                  <label className="text-xs font-bold text-ink-400 dark:text-ink-500 uppercase tracking-widest block mb-1 font-mono">Referral Code (Optional - Earn 100 GP!)</label>
+                  <label className="text-sm font-medium text-ink-600 dark:text-ink-300 block mb-1 font-mono">Referral Code (Optional - Earn 100 GP!)</label>
                   <div className="relative">
                     <Gift className="absolute left-3 top-2.5 w-4 h-4 text-ink-500" />
                     <input
@@ -900,7 +879,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full py-3 bg-jade-500 hover:bg-jade-600 text-white font-sans font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer shadow-md shadow-jade-500/10 text-center flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                  className="w-full py-3 bg-jade-500 hover:bg-jade-600 text-white font-semibold text-sm rounded-xl cursor-pointer shadow-md shadow-jade-500/10 text-center flex items-center justify-center gap-2 transition-all disabled:opacity-50"
                 >
                   {isSubmitting ? (
                     <RefreshCw className="w-4 h-4 animate-spin" />
@@ -923,14 +902,14 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                 <div className="w-12 h-12 bg-jade-500/10 text-jade-500 rounded-full flex items-center justify-center mx-auto border border-jade-500/20">
                   <Shield className="w-6 h-6" />
                 </div>
-                <h4 className="font-display font-black text-ink-900 dark:text-white text-base">Verify Your Identity</h4>
+                <h4 className="font-display font-bold text-ink-900 dark:text-white text-base">Verify Your Identity</h4>
                 <p className="text-xs text-ink-500 dark:text-ink-400 max-w-sm mx-auto leading-relaxed">
                   Enter the 6-digit verification code sent to <strong className="text-ink-800 dark:text-ink-200">{otpPurpose === 'REGISTER' ? email : forgotIdentifier}</strong>.
                 </p>
               </div>
 
               <div>
-                <label className="text-xs font-bold text-ink-400 dark:text-ink-500 uppercase tracking-widest block mb-2 text-center font-mono">6-Digit Verification PIN (OTP)</label>
+                <label className="text-sm font-medium text-ink-600 dark:text-ink-300 block mb-2 text-center font-mono">6-Digit Verification PIN (OTP)</label>
                 <input
                   type="text"
                   required
@@ -938,7 +917,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                   value={otpCode}
                   onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
                   placeholder="3 9 2 0 1 0"
-                  className="w-full text-center tracking-[0.8em] font-mono text-lg font-black px-4 py-3 bg-ink-50 dark:bg-ink-950 border border-ink-200 dark:border-ink-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-jade-500 text-ink-800 dark:text-white"
+                  className="w-full text-center tracking-[0.8em] font-mono text-lg font-bold px-4 py-3 bg-ink-50 dark:bg-ink-950 border border-ink-200 dark:border-ink-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-jade-500 text-ink-800 dark:text-white"
                 />
               </div>
 
@@ -971,14 +950,14 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                 <button
                   type="button"
                   onClick={() => setMode(otpPurpose === 'REGISTER' ? 'register' : 'forgot_password')}
-                  className="flex-1 py-3 bg-ink-100 hover:bg-ink-200 dark:bg-ink-800 dark:hover:bg-ink-700 text-ink-700 dark:text-ink-300 font-sans font-bold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer text-center"
+                  className="flex-1 py-3 bg-ink-100 hover:bg-ink-200 dark:bg-ink-800 dark:hover:bg-ink-700 text-ink-700 dark:text-ink-300 font-semibold text-sm rounded-xl transition-all cursor-pointer text-center"
                 >
                   Back
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting || otpCode.length !== 6}
-                  className="flex-1 py-3 bg-jade-500 hover:bg-jade-600 text-white font-sans font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer transition-all disabled:opacity-50 text-center flex items-center justify-center gap-2"
+                  className="flex-1 py-3 bg-jade-500 hover:bg-jade-600 text-white font-semibold text-sm rounded-xl cursor-pointer transition-all disabled:opacity-50 text-center flex items-center justify-center gap-2"
                 >
                   {isSubmitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Confirm Code'}
                 </button>
@@ -993,14 +972,14 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                 <div className="w-12 h-12 bg-ink-500/10 text-ink-500 rounded-full flex items-center justify-center mx-auto border border-ink-500/20">
                   <Key className="w-6 h-6" />
                 </div>
-                <h4 className="font-display font-black text-ink-900 dark:text-white text-base">Recover Secure Password</h4>
+                <h4 className="font-display font-bold text-ink-900 dark:text-white text-base">Recover Secure Password</h4>
                 <p className="text-xs text-ink-500 dark:text-ink-400 max-w-sm mx-auto leading-relaxed">
                   Enter your registered Email or Nigerian Phone Number. GoodSale will issue a secure recovery OTP verification token.
                 </p>
               </div>
 
               <div>
-                <label className="text-xs font-bold text-ink-400 dark:text-ink-500 uppercase tracking-widest block mb-1 font-mono">Email or Phone Number</label>
+                <label className="text-sm font-medium text-ink-600 dark:text-ink-300 block mb-1 font-mono">Email or Phone Number</label>
                 <div className="relative">
                   <Mail className="absolute left-3.5 top-3 w-4 h-4 text-ink-400" />
                   <input
@@ -1018,14 +997,14 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                 <button
                   type="button"
                   onClick={() => setMode('login')}
-                  className="flex-1 py-3 bg-ink-100 hover:bg-ink-200 dark:bg-ink-800 dark:hover:bg-ink-700 text-ink-700 dark:text-ink-300 font-sans font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer text-center"
+                  className="flex-1 py-3 bg-ink-100 hover:bg-ink-200 dark:bg-ink-800 dark:hover:bg-ink-700 text-ink-700 dark:text-ink-300 font-semibold text-sm rounded-xl cursor-pointer text-center"
                 >
                   Back to Login
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="flex-1 py-3 bg-jade-500 hover:bg-jade-600 text-white font-sans font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer transition-all disabled:opacity-50 text-center flex items-center justify-center"
+                  className="flex-1 py-3 bg-jade-500 hover:bg-jade-600 text-white font-semibold text-sm rounded-xl cursor-pointer transition-all disabled:opacity-50 text-center flex items-center justify-center"
                 >
                   {isSubmitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Issue Recovery Code'}
                 </button>
@@ -1037,14 +1016,14 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
           {mode === 'new_password' && (
             <form onSubmit={handleNewPasswordSubmit} className="space-y-4 py-3">
               <div className="text-center space-y-1">
-                <h4 className="font-display font-black text-ink-900 dark:text-white text-base">Setup New Secure Password</h4>
+                <h4 className="font-display font-bold text-ink-900 dark:text-white text-base">Setup New Secure Password</h4>
                 <p className="text-xs text-ink-500 dark:text-ink-400">
                   Create a highly secure, fresh password credential.
                 </p>
               </div>
 
               <div>
-                <label className="text-xs font-bold text-ink-400 dark:text-ink-500 uppercase tracking-widest block mb-1 font-mono">New Secure Password</label>
+                <label className="text-sm font-medium text-ink-600 dark:text-ink-300 block mb-1 font-mono">New Secure Password</label>
                 <div className="relative">
                   <Lock className="absolute left-3.5 top-3 w-4 h-4 text-ink-400" />
                   <input
@@ -1066,7 +1045,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
               </div>
 
               <div>
-                <label className="text-xs font-bold text-ink-400 dark:text-ink-500 uppercase tracking-widest block mb-1 font-mono">Confirm New Password</label>
+                <label className="text-sm font-medium text-ink-600 dark:text-ink-300 block mb-1 font-mono">Confirm New Password</label>
                 <div className="relative">
                   <Lock className="absolute left-3.5 top-3 w-4 h-4 text-ink-400" />
                   <input
@@ -1090,7 +1069,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
               <button
                 type="submit"
                 disabled={isSubmitting || !newPassword || newPassword !== newConfirmPassword}
-                className="w-full py-3 bg-jade-500 hover:bg-jade-600 text-white font-sans font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer transition-all disabled:opacity-50 text-center flex items-center justify-center"
+                className="w-full py-3 bg-jade-500 hover:bg-jade-600 text-white font-semibold text-sm rounded-xl cursor-pointer transition-all disabled:opacity-50 text-center flex items-center justify-center"
               >
                 {isSubmitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Set Password & Save'}
               </button>
@@ -1102,7 +1081,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
             <form onSubmit={handleOnboardingSubmit} className="space-y-4">
               <div className="text-center space-y-1 border-b border-ink-100 dark:border-ink-800 pb-3">
                 <Sparkles className="w-8 h-8 text-ink-500 mx-auto mb-1 animate-bounce" />
-                <h4 className="font-display font-black text-ink-900 dark:text-white text-base">Fulfill Onboarding Profile</h4>
+                <h4 className="font-display font-bold text-ink-900 dark:text-white text-base">Fulfill Onboarding Profile</h4>
                 <p className="text-xs text-ink-500 dark:text-ink-400">
                   Setup geographical parameters to enjoy safe escrow shipping & pickup across Nigeria.
                 </p>
@@ -1110,7 +1089,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
 
               {/* Profile Avatar Selection */}
               <div>
-                <label className="text-xs font-bold text-ink-400 dark:text-ink-500 uppercase tracking-widest block mb-1.5 font-mono">Upload Profile Photo ID Avatar</label>
+                <label className="text-sm font-medium text-ink-600 dark:text-ink-300 block mb-1.5 font-mono">Upload Profile Photo ID Avatar</label>
                 <div className="flex items-center gap-4 bg-ink-50 dark:bg-ink-950 p-3 rounded-2xl border border-ink-150 dark:border-ink-850">
                   <div className="relative">
                     <SmartImage
@@ -1149,7 +1128,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
               {/* State & City selectors */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-bold text-ink-400 dark:text-ink-500 uppercase tracking-widest block mb-1 font-mono">State of Residence</label>
+                  <label className="text-sm font-medium text-ink-600 dark:text-ink-300 block mb-1 font-mono">State of Residence</label>
                   <select
                     value={onboardingState}
                     onChange={(e) => handleStateChangeGeo(e.target.value)}
@@ -1162,7 +1141,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-ink-400 dark:text-ink-500 uppercase tracking-widest block mb-1 font-mono">City / Area</label>
+                  <label className="text-sm font-medium text-ink-600 dark:text-ink-300 block mb-1 font-mono">City / Area</label>
                   <select
                     value={onboardingCity}
                     onChange={(e) => setOnboardingCity(e.target.value)}
@@ -1177,7 +1156,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
 
               {/* Detailed Physical Fulfill Address */}
               <div>
-                <label className="text-xs font-bold text-ink-400 dark:text-ink-500 uppercase tracking-widest block mb-1 font-mono">Street Fulfillment Address</label>
+                <label className="text-sm font-medium text-ink-600 dark:text-ink-300 block mb-1 font-mono">Street Fulfillment Address</label>
                 <div className="relative">
                   <MapPin className="absolute left-3.5 top-3 w-4 h-4 text-ink-400" />
                   <input
@@ -1194,7 +1173,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
               {/* Preferred Language & Delivery preference */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-bold text-ink-400 dark:text-ink-500 uppercase tracking-widest block mb-1 font-mono">Preferred Language</label>
+                  <label className="text-sm font-medium text-ink-600 dark:text-ink-300 block mb-1 font-mono">Preferred Language</label>
                   <select
                     value={onboardingLanguage}
                     onChange={(e) => setOnboardingLanguage(e.target.value)}
@@ -1209,7 +1188,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-ink-400 dark:text-ink-500 uppercase tracking-widest block mb-1 font-mono">Logistics Preference</label>
+                  <label className="text-sm font-medium text-ink-600 dark:text-ink-300 block mb-1 font-mono">Logistics Preference</label>
                   <select
                     value={onboardingDeliveryPref}
                     onChange={(e) => setOnboardingDeliveryPref(e.target.value)}
@@ -1226,7 +1205,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
               <button
                 type="submit"
                 disabled={isSubmitting || !onboardingAddress.trim()}
-                className="w-full py-3 bg-gradient-to-r from-jade-500 to-jade-500 hover:from-jade-600 hover:to-jade-600 text-white font-sans font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer shadow-md shadow-jade-500/10 text-center flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                className="w-full py-3 bg-gradient-to-r from-jade-500 to-jade-500 hover:from-jade-600 hover:to-jade-600 text-white font-semibold text-sm rounded-xl cursor-pointer shadow-md shadow-jade-500/10 text-center flex items-center justify-center gap-2 transition-all disabled:opacity-50"
               >
                 {isSubmitting ? (
                   <RefreshCw className="w-4 h-4 animate-spin" />

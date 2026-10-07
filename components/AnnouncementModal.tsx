@@ -106,10 +106,10 @@ export default function AnnouncementModal() {
           >
             <X className="w-4 h-4" />
           </button>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-2.5 py-1 text-[10px] font-bold tracking-widest">
             <Icon className="w-3 h-3" /> {meta.label}
           </span>
-          <h2 className="mt-2 pr-8 font-sans text-lg font-extrabold leading-snug">{item.title}</h2>
+          <h2 className="mt-2 pr-8 font-sans text-lg font-semibold leading-snug">{item.title}</h2>
         </div>
 
         <div className="max-h-[60vh] overflow-y-auto px-5 py-4">
@@ -128,13 +128,13 @@ export default function AnnouncementModal() {
         </div>
 
         <div className="flex items-center justify-between gap-3 border-t border-ink-100 px-5 py-4 dark:border-ink-800">
-          <span className="text-[10px] font-mono uppercase tracking-widest text-ink-400">
+          <span className="text-[10px] font-mono tracking-widest text-ink-400">
             From the GoodSale team
           </span>
           <button
             type="button"
             onClick={dismiss}
-            className="rounded-xl bg-jade-500 px-5 py-2.5 text-xs font-extrabold uppercase tracking-wide text-white transition-colors hover:bg-jade-600 cursor-pointer"
+            className="rounded-xl bg-jade-500 px-5 py-2.5 text-xs font-semibold tracking-wide text-white transition-colors hover:bg-jade-600 cursor-pointer"
           >
             Got it
           </button>

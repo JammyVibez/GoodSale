@@ -9,7 +9,8 @@
 @theme static {
   --font-sans: var(--font-sans), system-ui, -apple-system, sans-serif;
   --font-display: var(--font-display), var(--font-sans), sans-serif;
-  --font-mono: var(--font-mono), monospace;
+  /* Numbers and labels render in the same clean sans — no terminal mono look. */
+  --font-mono: var(--font-sans), system-ui, sans-serif;
 
   /* ── jade: the single green hue (H≈150) ── */
   --color-jade-50: #edfcf3;
@@ -25,6 +26,20 @@
   --color-jade-800: #064728;
   --color-jade-900: #053720;
   --color-jade-950: #032214;
+
+  /* ── gold: the one deliberate accent, reserved for ratings & trust ──
+     Used ONLY for review stars / trust ratings so a 5-star score reads
+     instantly. Never used for surfaces, buttons or chrome. */
+  --color-gold-50: #fffbeb;
+  --color-gold-100: #fdf3c7;
+  --color-gold-200: #fbe58a;
+  --color-gold-300: #f7d34d;
+  --color-gold-400: #eab308;
+  --color-gold-500: #d09b06;
+  --color-gold-600: #a97b05;
+  --color-gold-700: #805d04;
+  --color-gold-800: #5c4303;
+  --color-gold-900: #3d2d02;
 
   /* ── ink: the single neutral ramp (white → black) ── */
   --color-ink-50: #f6faf8;
@@ -100,8 +115,8 @@
   }
 
   html {
-    /* App-wide comfortable type scale: everything rem-based grows with this */
-    font-size: 17px;
+    /* Comfortable, readable type scale for the whole app */
+    font-size: 16px;
     scroll-behavior: smooth;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -110,6 +125,14 @@
   ::selection {
     @apply bg-jade-500/20 text-jade-900 dark:text-jade-100;
   }
+}
+
+/* ─── Review stars: the one place gold is used ─── */
+.star-filled {
+  @apply text-gold-400 fill-gold-400;
+}
+.star-empty {
+  @apply text-ink-250 dark:text-ink-700;
 }
 
 /* ─── Scrollbar styling (ink only) ─── */

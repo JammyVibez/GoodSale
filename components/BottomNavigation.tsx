@@ -182,7 +182,7 @@ export default function BottomNavigation({
                   }`}
                 />
                 {showBadge && (
-                  <span className="absolute -top-1.5 -right-2 min-w-[18px] h-[18px] px-1 bg-jade-500 text-white text-[10px] font-extrabold rounded-full flex items-center justify-center border-2 border-white dark:border-ink-900 leading-none">
+                  <span className="absolute -top-1.5 -right-2 min-w-[18px] h-[18px] px-1 bg-jade-500 text-white text-[10px] font-semibold rounded-full flex items-center justify-center border-2 border-white dark:border-ink-900 leading-none">
                     {tab.badge! > 99 ? '99+' : tab.badge}
                   </span>
                 )}

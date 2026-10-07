@@ -72,23 +72,23 @@ export default function LiveSafeMeetMap({
     <div className="w-full space-y-4 overflow-hidden rounded-3xl border border-ink-800 bg-ink-900 p-4 shadow-xl">
       <div className="grid grid-cols-3 gap-3 rounded-2xl border border-ink-800 bg-ink-950 p-3 text-xs">
         <div className="space-y-0.5">
-          <span className="block font-mono text-xs uppercase tracking-wider text-ink-500">
+          <span className="block font-mono text-xs tracking-wider text-ink-500">
             My Distance
           </span>
-          <p className="font-mono text-sm font-extrabold text-jade-400">
+          <p className="font-mono text-sm font-semibold text-jade-400">
             {distanceKm != null ? formatDistanceKm(distanceKm) : 'Calculating...'}
           </p>
         </div>
         <div className="space-y-0.5 border-l border-ink-800 pl-3">
-          <span className="block font-mono text-xs uppercase tracking-wider text-ink-500">
+          <span className="block font-mono text-xs tracking-wider text-ink-500">
             Transit ETA
           </span>
-          <p className="font-mono text-sm font-extrabold text-jade-400">
+          <p className="font-mono text-sm font-semibold text-jade-400">
             {etaMinutes != null ? `${etaMinutes} mins` : 'Estimating...'}
           </p>
         </div>
         <div className="space-y-0.5 border-l border-ink-800 pl-3">
-          <span className="block font-mono text-xs uppercase tracking-wider text-ink-500">
+          <span className="block font-mono text-xs tracking-wider text-ink-500">
             Target
           </span>
           <p

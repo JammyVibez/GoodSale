@@ -8,13 +8,14 @@ import {
   Sun, Moon, Monitor, Eye, EyeOff, Lock, Users, CreditCard, ShoppingBag, Gift,
   Share2, Phone, Building, Info, FileText, Download, Trash2, ShieldAlert,
   Grid, Copy, Check, Menu, AlertTriangle, Play, HelpCircle as HelpIcon, Calendar, Clock, Wallet, ChevronRight,
-  LogOut
+  LogOut, Store
 } from 'lucide-react';
 import { useDBState, dbOperations, getDBState, saveDBState, reloadFromSupabase, UserRole } from '../lib/store';
 import { SmartImage } from './ui/SmartImage';
 import Card from './ui/Card';
 import { toast, confirmDialog } from '@/lib/feedback';
 import { useUserSettings, type SavedAddress, type StaffMember } from '@/lib/userSettings';
+import { salesStates, salesCitiesFor } from '@/lib/serviceAreas';
 
 /** Human-readable description of the current browser/OS for the session list. */
 function describeDevice(): string {
@@ -756,20 +757,20 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
         <div className="w-16 h-16 bg-jade-500/10 dark:bg-jade-500/5 rounded-full flex items-center justify-center mx-auto mb-6 border border-jade-500/20">
           <Key className="w-8 h-8 text-jade-500" />
         </div>
-        <h2 className="font-display font-black text-2xl text-ink-900 dark:text-white mb-2">Configure Settings</h2>
+        <h2 className="font-display font-bold text-2xl text-ink-900 dark:text-white mb-2">Configure Settings</h2>
         <p className="text-sm text-ink-500 dark:text-ink-400 mb-8 max-w-sm mx-auto leading-relaxed">
           Please sign in or register to customize your security preferences, payment limits, notifications, and profile details in the Control Center.
         </p>
         <div className="space-y-3">
           <button
             onClick={onOpenAuth}
-            className="w-full py-3 bg-gradient-to-r from-jade-500 to-jade-600 hover:from-jade-600 hover:to-jade-700 text-white font-sans font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer shadow-md shadow-jade-500/10 transition-all"
+            className="w-full py-3 bg-gradient-to-r from-jade-500 to-jade-600 hover:from-jade-600 hover:to-jade-700 text-white font-sans font-bold text-xs tracking-wider rounded-xl cursor-pointer shadow-md shadow-jade-500/10 transition-all"
           >
             Sign In / Register Account
           </button>
           <button
             onClick={onBack}
-            className="w-full py-3 bg-ink-100 dark:bg-ink-900 hover:bg-ink-200 dark:hover:bg-ink-800 text-ink-700 dark:text-ink-300 font-sans font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer transition-all border border-ink-200/50 dark:border-ink-800"
+            className="w-full py-3 bg-ink-100 dark:bg-ink-900 hover:bg-ink-200 dark:hover:bg-ink-800 text-ink-700 dark:text-ink-300 font-sans font-bold text-xs tracking-wider rounded-xl cursor-pointer transition-all border border-ink-200/50 dark:border-ink-800"
           >
             Back to Marketplace
           </button>
@@ -819,7 +820,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
               <Settings className="h-6 w-6" />
             </div>
             <div>
-              <h1 className="font-display text-2xl font-black tracking-tight sm:text-3xl">
+              <h1 className="font-display text-2xl font-bold tracking-tight sm:text-3xl">
                 Settings
               </h1>
               <p className="mt-1 text-sm text-ink-300">
@@ -846,7 +847,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
           </div>
 
           <div className={`bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 p-4 rounded-[32px] shadow-sm space-y-1 ${isMobileMenuOpen ? 'block' : 'hidden lg:block'}`}>
-            <p className="text-xs font-sans font-black text-ink-400 uppercase tracking-widest px-3 mb-3">Settings Categories</p>
+            <p className="text-xs font-sans font-bold text-ink-400 tracking-widest px-3 mb-3">Settings Categories</p>
             {categories.map((cat) => {
               const Icon = cat.icon;
               return (
@@ -872,10 +873,10 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
           {/* Wallet shortcut + session info */}
           <Card variant="muted" className="space-y-4 p-5">
             <div>
-              <p className="font-mono text-xs font-bold uppercase tracking-widest text-ink-500">
+              <p className="font-mono text-xs font-bold tracking-widest text-ink-500">
                 Wallet balance
               </p>
-              <p className="mt-1 font-mono text-2xl font-black text-ink-900 dark:text-white">
+              <p className="mt-1 font-mono text-2xl font-bold text-ink-900 dark:text-white">
                 ₦{(wallet?.balance ?? 0).toLocaleString()}
               </p>
               <p className="mt-1 text-xs text-ink-500">
@@ -896,7 +897,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
           </Card>
 
           <Card variant="muted" className="space-y-3 p-5">
-            <h4 className="font-mono text-xs font-bold uppercase tracking-widest text-ink-500">
+            <h4 className="font-mono text-xs font-bold tracking-widest text-ink-500">
               Signed in as
             </h4>
             <div className="flex items-center gap-2.5">
@@ -920,7 +921,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
               <div className="bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 p-6 sm:p-8 rounded-[32px] shadow-sm space-y-6">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <h2 className="font-display font-black text-lg text-ink-900 dark:text-white flex items-center gap-2">
+                    <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
                       <User className="w-5 h-5 text-ink-500" />
                       Account Specifications
                     </h2>
@@ -948,7 +949,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
                 {/* Profile Media Settings */}
                 <div className="space-y-4">
-                  <span className="text-xs font-sans font-black text-ink-400 uppercase tracking-wider block">Profile Branding Assets</span>
+                  <span className="text-xs font-sans font-bold text-ink-400 tracking-wider block">Profile Branding Assets</span>
                   <div className="relative h-36 rounded-2xl bg-ink-100 overflow-hidden border border-ink-200 dark:border-ink-800">
                     <SmartImage src={coverPic} className="w-full h-full" />
                     <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
@@ -967,7 +968,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                         <button
                           type="button"
                           onClick={() => handleImageUpload('avatar')}
-                          className="text-[10px] text-white font-extrabold cursor-pointer"
+                          className="text-xs text-white font-semibold cursor-pointer"
                         >
                           {uploadingAsset === 'avatar' ? '…' : 'Edit'}
                         </button>
@@ -979,7 +980,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 {/* Contact forms */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-xs font-sans font-black text-ink-500 dark:text-ink-400 uppercase tracking-wider">Full Legal Name</label>
+                    <label className="text-xs font-sans font-bold text-ink-500 dark:text-ink-400 tracking-wider">Full Legal Name</label>
                     <input 
                       type="text" 
                       value={fullName}
@@ -990,7 +991,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-sans font-black text-ink-500 dark:text-ink-400 uppercase tracking-wider">Display Nickname</label>
+                    <label className="text-xs font-sans font-bold text-ink-500 dark:text-ink-400 tracking-wider">Display Nickname</label>
                     <input 
                       type="text" 
                       value={displayName}
@@ -1000,7 +1001,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-sans font-black text-ink-500 dark:text-ink-400 uppercase tracking-wider">Email Address</label>
+                    <label className="text-xs font-sans font-bold text-ink-500 dark:text-ink-400 tracking-wider">Email Address</label>
                     <input 
                       type="email" 
                       value={email}
@@ -1011,7 +1012,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-sans font-black text-ink-500 dark:text-ink-400 uppercase tracking-wider">Phone Connection</label>
+                    <label className="text-xs font-sans font-bold text-ink-500 dark:text-ink-400 tracking-wider">Phone Connection</label>
                     <input 
                       type="tel" 
                       value={phoneNumber}
@@ -1023,7 +1024,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-sans font-black text-ink-500 dark:text-ink-400 uppercase tracking-wider">Public Bio Statement</label>
+                  <label className="text-xs font-sans font-bold text-ink-500 dark:text-ink-400 tracking-wider">Public Bio Statement</label>
                   <textarea 
                     value={bio}
                     onChange={(e) => setBio(e.target.value)}
@@ -1035,14 +1036,14 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
                 {/* Default Delivery Location */}
                 <div className="border-t border-ink-100 dark:border-ink-850 pt-5 space-y-4">
-                  <h3 className="font-display font-black text-sm text-ink-800 dark:text-white flex items-center gap-2">
+                  <h3 className="font-display font-bold text-sm text-ink-800 dark:text-white flex items-center gap-2">
                     <MapPin className="w-4 h-4 text-jade-500" />
                     Primary Dispatch Address
                   </h3>
                   
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div className="sm:col-span-2 space-y-1">
-                      <label className="text-xs font-sans font-black text-ink-400 uppercase tracking-wider">Street Address</label>
+                      <label className="text-xs font-sans font-bold text-ink-400 tracking-wider">Street Address</label>
                       <input 
                         type="text" 
                         value={address}
@@ -1052,29 +1053,43 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs font-sans font-black text-ink-400 uppercase tracking-wider">City</label>
+                      <label className="text-xs font-sans font-bold text-ink-400 tracking-wider">City</label>
                       <input 
                         type="text" 
                         value={city}
                         onChange={(e) => setCity(e.target.value)}
+                        list="settings-coverage-cities"
+                        placeholder="Pick a city GoodSale is live in"
                         className="w-full px-4 py-2.5 bg-ink-50 dark:bg-ink-800/50 border border-ink-200 dark:border-ink-800 rounded-xl text-xs font-bold focus:outline-none focus:border-ink-500 text-ink-800 dark:text-ink-200 transition-all"
                       />
+                      <datalist id="settings-coverage-cities">
+                        {salesCitiesFor(stateName).map((c) => (
+                          <option key={c} value={c} />
+                        ))}
+                      </datalist>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <label className="text-xs font-sans font-black text-ink-400 uppercase tracking-wider">State Region</label>
+                      <label className="text-xs font-sans font-bold text-ink-400 tracking-wider">State Region</label>
                       <input 
                         type="text" 
                         value={stateName}
                         onChange={(e) => setStateName(e.target.value)}
+                        list="settings-coverage-states"
+                        placeholder="Pick a state GoodSale is live in"
                         className="w-full px-4 py-2.5 bg-ink-50 dark:bg-ink-800/50 border border-ink-200 dark:border-ink-800 rounded-xl text-xs font-bold focus:outline-none focus:border-ink-500 text-ink-800 dark:text-ink-200 transition-all"
                       />
+                      <datalist id="settings-coverage-states">
+                        {salesStates().map((s) => (
+                          <option key={s} value={s} />
+                        ))}
+                      </datalist>
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs font-sans font-black text-ink-400 uppercase tracking-wider">Default Delivery Channel</label>
+                      <label className="text-xs font-sans font-bold text-ink-400 tracking-wider">Default Delivery Channel</label>
                       <select 
                         value={defaultDeliveryMethod}
                         onChange={(e) => setDefaultDeliveryMethod(e.target.value)}
@@ -1092,7 +1107,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
               {/* Form Bottom Save */}
               <div className="flex items-center justify-between bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 p-4 rounded-2xl">
                 {saveSuccess ? (
-                  <span className="text-xs font-extrabold text-jade-600 bg-jade-50 dark:bg-jade-950/20 px-3 py-1.5 rounded-lg border border-jade-100">
+                  <span className="text-xs font-semibold text-jade-600 bg-jade-50 dark:bg-jade-950/20 px-3 py-1.5 rounded-lg border border-jade-100">
                     Profile specifications successfully synchronized.
                   </span>
                 ) : (
@@ -1101,7 +1116,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-6 py-2 bg-ink-500 text-white hover:bg-ink-600 text-xs font-bold uppercase rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                  className="px-6 py-2 bg-jade-500 text-white hover:bg-jade-600 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
                 >
                   {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                   Save Account Profile
@@ -1115,7 +1130,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
             <div className="space-y-6 animate-fade-in">
               <div className="bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 p-6 sm:p-8 rounded-[32px] shadow-sm space-y-6">
                 <div>
-                  <h2 className="font-display font-black text-lg text-ink-900 dark:text-white flex items-center gap-2">
+                  <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
                     <Shield className="w-5 h-5 text-jade-500" />
                     Security, Encryption & Auth
                   </h2>
@@ -1124,7 +1139,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
                 {/* Password Change Simulator */}
                 <div className="border-b border-ink-100 dark:border-ink-850 pb-6 space-y-4">
-                  <h3 className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Change Account Password</h3>
+                  <h3 className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Change Account Password</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <input 
                       type="password" 
@@ -1201,7 +1216,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 <div className="border-b border-ink-100 dark:border-ink-850 pb-6 space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Two-Factor Authenticator (2FA)</h3>
+                      <h3 className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Two-Factor Authenticator (2FA)</h3>
                       <p className="text-xs text-ink-400 mt-1">Secure escrow releases with external authenticator codes.</p>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
@@ -1222,7 +1237,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                   {/* Biometric Login */}
                   <div className="flex items-center justify-between pt-2">
                     <div>
-                      <h3 className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Biometric Passkey Access</h3>
+                      <h3 className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Biometric Passkey Access</h3>
                       <p className="text-xs text-ink-400 mt-1">Unlock browser dashboard using local FaceID or Fingerprint reader.</p>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
@@ -1248,7 +1263,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 {/* Login History */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Active Secure Sessions</h3>
+                    <h3 className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Active Secure Sessions</h3>
                     <button 
                       onClick={() => void handleSignOutOthers()}
                       disabled={signingOutOthers}
@@ -1264,12 +1279,12 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                         <div className="flex items-center gap-3">
                           <Smartphone className="w-4 h-4 text-jade-500 shrink-0" />
                           <div>
-                            <p className="font-extrabold text-ink-800 dark:text-white">{sess.device}</p>
+                            <p className="font-semibold text-ink-800 dark:text-white">{sess.device}</p>
                             <p className="text-xs text-ink-400">{sess.location} • {sess.ip}</p>
                           </div>
                         </div>
                         {sess.isCurrent ? (
-                          <span className="px-2 py-0.5 bg-jade-100 text-jade-800 text-[10px] font-black tracking-widest uppercase rounded">Current</span>
+                          <span className="px-2 py-0.5 bg-jade-100 text-jade-800 text-xs font-bold tracking-widest rounded">Current</span>
                         ) : (
                           <button 
                             onClick={() => {
@@ -1291,7 +1306,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
                   <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 p-6 rounded-[32px] max-w-sm w-full shadow-2xl space-y-4">
                     <div>
-                      <h3 className="font-display font-black text-base text-ink-900 dark:text-white">Configure Two-Factor Auth</h3>
+                      <h3 className="font-display font-bold text-base text-ink-900 dark:text-white">Configure Two-Factor Auth</h3>
                       <p className="text-xs text-ink-500 mt-1 font-sans">Scan the QR code with Google Authenticator or enter the manual code below.</p>
                     </div>
 
@@ -1317,7 +1332,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs font-sans font-black text-ink-400 block uppercase">Enter 6-Digit Authenticator Code</label>
+                      <label className="text-xs font-sans font-bold text-ink-400 block">Enter 6-Digit Authenticator Code</label>
                       <input 
                         type="text"
                         maxLength={6}
@@ -1371,7 +1386,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
             <div className="space-y-6 animate-fade-in">
               <div className="bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 p-6 sm:p-8 rounded-[32px] shadow-sm space-y-6">
                 <div>
-                  <h2 className="font-display font-black text-lg text-ink-900 dark:text-white flex items-center gap-2">
+                  <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
                     <Bell className="w-5 h-5 text-jade-500" />
                     Granular Notification Matrix
                   </h2>
@@ -1381,7 +1396,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-left">
                     <thead>
-                      <tr className="border-b border-ink-150 dark:border-ink-800 text-xs font-sans font-black text-ink-400 uppercase tracking-wider">
+                      <tr className="border-b border-ink-150 dark:border-ink-800 text-xs font-sans font-bold text-ink-400 tracking-wider">
                         <th className="py-3">Notification Trigger</th>
                         <th className="py-3 text-center">In-App Push</th>
                         <th className="py-3 text-center">Email Alert</th>
@@ -1454,7 +1469,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                       toast.error('Could not save notification preferences.');
                     }
                   }}
-                  className="px-5 py-2.5 bg-ink-500 hover:bg-ink-600 text-white rounded-xl text-xs font-bold transition-all"
+                  className="px-5 py-2.5 bg-jade-500 hover:bg-jade-600 text-white rounded-xl text-xs font-bold transition-all"
                 >
                   Save Notification Toggles
                 </button>
@@ -1467,7 +1482,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
             <div className="space-y-6 animate-fade-in">
               <div className="bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 p-6 sm:p-8 rounded-[32px] shadow-sm space-y-6">
                 <div>
-                  <h2 className="font-display font-black text-lg text-ink-900 dark:text-white flex items-center gap-2">
+                  <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
                     <Sun className="w-5 h-5 text-ink-500" />
                     Appearance Settings
                   </h2>
@@ -1476,7 +1491,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
                 {/* Theme Mode Toggles */}
                 <div className="space-y-3">
-                  <label className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider block">Visual Theme</label>
+                  <label className="text-xs font-bold text-ink-800 dark:text-white tracking-wider block">Visual Theme</label>
                   <div className="grid grid-cols-3 gap-3">
                     {[
                       { id: 'light', label: 'Light Clean', icon: Sun },
@@ -1519,7 +1534,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
                 {/* Display Density */}
                 <div className="space-y-3">
-                  <label className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider block">Display Density</label>
+                  <label className="text-xs font-bold text-ink-800 dark:text-white tracking-wider block">Display Density</label>
                   <div className="grid grid-cols-2 gap-3">
                     {[
                       { id: 'cozy', label: 'Cozy (Highly spacious spacing)', desc: 'Generous padding and relaxed micro-copy' },
@@ -1553,7 +1568,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 {/* Font Scaling */}
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
-                    <label className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Font Scaling Profile</label>
+                    <label className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Font Scaling Profile</label>
                     <span className="text-xs font-mono text-jade-500 font-bold capitalize">{fontSize} Profile</span>
                   </div>
                   <div className="flex gap-2">
@@ -1585,7 +1600,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 {/* Motion Effects */}
                 <div className="flex items-center justify-between p-4 bg-ink-50 dark:bg-ink-800/40 rounded-2xl border border-ink-150">
                   <div>
-                    <h3 className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Reduce Motion Transitions</h3>
+                    <h3 className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Reduce Motion Transitions</h3>
                     <p className="text-xs text-ink-400 mt-1">Disable complex floating and scaling animations for optimal hardware rendering.</p>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
@@ -1614,7 +1629,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
             <div className="space-y-6 animate-fade-in">
               <div className="bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 p-6 sm:p-8 rounded-[32px] shadow-sm space-y-6">
                 <div>
-                  <h2 className="font-display font-black text-lg text-ink-900 dark:text-white flex items-center gap-2">
+                  <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
                     <Lock className="w-5 h-5 text-jade-500" />
                     Privacy & Credentials Visibility
                   </h2>
@@ -1623,7 +1638,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
                 {/* Profile Visibility */}
                 <div className="space-y-3">
-                  <label className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider block">Global Profile Visibility</label>
+                  <label className="text-xs font-bold text-ink-800 dark:text-white tracking-wider block">Global Profile Visibility</label>
                   <select
                     value={profileVisibility}
                     onChange={(e) => {
@@ -1641,7 +1656,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
                 {/* Direct message permission */}
                 <div className="space-y-3">
-                  <label className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider block">Who Can Message You</label>
+                  <label className="text-xs font-bold text-ink-800 dark:text-white tracking-wider block">Who Can Message You</label>
                   <select
                     value={whoCanMessage}
                     onChange={(e) => {
@@ -1667,7 +1682,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                   ]).map((priv) => (
                     <label key={priv.key} className="flex items-center justify-between p-3.5 bg-ink-50 dark:bg-ink-800/20 border border-ink-100 dark:border-ink-800 rounded-2xl cursor-pointer">
                       <div>
-                        <span className="text-xs font-black text-ink-800 dark:text-white block">{priv.label}</span>
+                        <span className="text-xs font-bold text-ink-800 dark:text-white block">{priv.label}</span>
                         <span className="text-xs text-ink-400 font-normal">{priv.desc}</span>
                       </div>
                       <input 
@@ -1683,7 +1698,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 {/* Blocked/Muted Lists */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-ink-100 dark:border-ink-850 pt-5">
                   <div className="space-y-2">
-                    <h3 className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Blocked Account Registry</h3>
+                    <h3 className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Blocked Account Registry</h3>
                     <div className="p-3 bg-ink-50 dark:bg-ink-800/40 rounded-xl border border-ink-150">
                       {blockedUsers.length === 0 ? (
                         <p className="text-xs text-ink-400">Zero blocked traders.</p>
@@ -1718,7 +1733,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                   </div>
 
                   <div className="space-y-2">
-                    <h3 className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Muted Chat Accounts</h3>
+                    <h3 className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Muted Chat Accounts</h3>
                     <div className="p-3 bg-ink-50 dark:bg-ink-800/40 rounded-xl border border-ink-150">
                       {mutedUsers.length === 0 ? (
                         <p className="text-xs text-ink-400">Zero muted accounts.</p>
@@ -1761,7 +1776,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
             <div className="space-y-6 animate-fade-in">
               <div className="bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 p-6 sm:p-8 rounded-[32px] shadow-sm space-y-6">
                 <div>
-                  <h2 className="font-display font-black text-lg text-ink-900 dark:text-white flex items-center gap-2">
+                  <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
                     <ShoppingBag className="w-5 h-5 text-jade-500" />
                     Buying Preferences & Address Book
                   </h2>
@@ -1770,14 +1785,14 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
                 {/* Address Book */}
                 <div className="space-y-4">
-                  <h3 className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Saved Shipping Locations</h3>
+                  <h3 className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Saved Shipping Locations</h3>
                   <div className="space-y-2">
                     {savedAddresses.map((adr) => (
                       <div key={adr.id} className="p-4 bg-ink-50 dark:bg-ink-800/40 border border-ink-150 dark:border-ink-850 rounded-2xl flex items-start justify-between gap-4">
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-black text-ink-800 dark:text-white">{adr.label}</span>
-                            {adr.isDefault && <span className="px-1.5 py-0.5 bg-jade-100 text-jade-800 text-[10px] font-black uppercase rounded">Default</span>}
+                            <span className="text-xs font-bold text-ink-800 dark:text-white">{adr.label}</span>
+                            {adr.isDefault && <span className="px-1.5 py-0.5 bg-jade-100 text-jade-800 text-xs font-bold rounded">Default</span>}
                           </div>
                           <p className="text-xs text-ink-400 mt-1">{adr.address}</p>
                         </div>
@@ -1803,7 +1818,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
                   {/* Add New Address Form */}
                   <form onSubmit={handleAddAddress} className="bg-ink-50 dark:bg-ink-800/25 p-4 rounded-2xl border border-dashed border-ink-200 dark:border-ink-800 space-y-3">
-                    <p className="text-xs font-black text-ink-400 uppercase tracking-wider">Add New Address</p>
+                    <p className="text-xs font-bold text-ink-400 tracking-wider">Add New Address</p>
                     <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                       <input 
                         type="text" 
@@ -1831,7 +1846,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
                 {/* Default Escrow Method */}
                 <div className="border-t border-ink-100 dark:border-ink-850 pt-5 space-y-3">
-                  <h3 className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Default Payment Protocol</h3>
+                  <h3 className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Default Payment Protocol</h3>
                   <div className="grid grid-cols-3 gap-3">
                     {[
                       { id: 'CARD', label: 'Debit Card', desc: 'Secure local Master/Visa' },
@@ -1859,7 +1874,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
                 {/* Saved Searches */}
                 <div className="border-t border-ink-100 dark:border-ink-850 pt-5 space-y-3">
-                  <h3 className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Saved Searches (Push Alerts Active)</h3>
+                  <h3 className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Saved Searches (Push Alerts Active)</h3>
                   {savedSearches.length === 0 ? (
                     <p className="text-xs text-ink-400">No saved searches yet. Save a term to get notified about matching listings.</p>
                   ) : (
@@ -1869,7 +1884,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                           <span>&ldquo;{search}&rdquo;</span>
                           <button 
                             onClick={() => handleRemoveSavedSearch(search)}
-                            className="text-xs text-ink-500 font-extrabold hover:underline cursor-pointer"
+                            className="text-xs text-ink-500 font-semibold hover:underline cursor-pointer"
                           >
                             ×
                           </button>
@@ -1897,9 +1912,71 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
           {/* TAB 7: SELLING PREFERENCES */}
           {activeTab === 'selling' && (
             <div className="space-y-6 animate-fade-in">
+              {/* Account type — shopping is always open; selling needs a seller account */}
+              <div className="rounded-[32px] border border-ink-150 bg-white p-6 shadow-sm dark:border-ink-800 dark:bg-ink-900 sm:p-8">
+                <h2 className="flex items-center gap-2 font-display text-lg font-bold text-ink-900 dark:text-white">
+                  <Store className="h-5 w-5 text-jade-500" />
+                  Account type
+                </h2>
+                <p className="mt-1 max-w-2xl text-sm text-ink-500 dark:text-ink-400">
+                  Buying with escrow is available to every account. To list and sell, choose Individual Seller or
+                  Business Owner below — you can switch back to Buyer whenever you like.
+                </p>
+
+                <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  {[
+                    { role: UserRole.BUYER, label: 'Buyer', desc: 'Shop safely with escrow protection.' },
+                    { role: UserRole.SELLER, label: 'Individual Seller', desc: 'List items and get paid on delivery.' },
+                    { role: UserRole.BUSINESS, label: 'Business Owner', desc: 'Storefront, teams and invoices.' },
+                  ].map((option) => {
+                    const active = currentUser?.role === option.role;
+                    return (
+                      <button
+                        key={option.role}
+                        type="button"
+                        onClick={() => {
+                          if (active) return;
+                          const res = dbOperations.updateCurrentUserRole(option.role);
+                          if ('error' in res && res.error) {
+                            toast.error(res.error);
+                            return;
+                          }
+                          toast.success(`You're now a ${option.label}. Open the Seller Hub to start listing.`);
+                        }}
+                        className={`rounded-2xl border p-4 text-left transition-all cursor-pointer ${
+                          active
+                            ? 'border-jade-500 bg-jade-500/5 shadow-sm'
+                            : 'border-ink-200 bg-ink-50 hover:border-jade-500/40 hover:bg-jade-500/[0.03] dark:border-ink-800 dark:bg-ink-950'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`text-sm font-semibold ${active ? 'text-jade-700 dark:text-jade-300' : 'text-ink-900 dark:text-white'}`}>
+                            {option.label}
+                          </span>
+                          {active && (
+                            <span className="rounded-full bg-jade-500 px-2 py-0.5 text-[11px] font-semibold text-white">
+                              Current
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 text-xs leading-relaxed text-ink-500 dark:text-ink-400">{option.desc}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-4 flex items-start gap-2 rounded-2xl bg-jade-500/5 p-3 text-xs leading-relaxed text-ink-600 dark:text-ink-300">
+                  <Shield className="mt-0.5 h-4 w-4 shrink-0 text-jade-600 dark:text-jade-400" />
+                  <span>
+                    Verified badges are granted after GoodSale reviews your identity documents. Your account type here
+                    only controls whether you can sell.
+                  </span>
+                </div>
+              </div>
+
               <div className="bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 p-6 sm:p-8 rounded-[32px] shadow-sm space-y-6">
                 <div>
-                  <h2 className="font-display font-black text-lg text-ink-900 dark:text-white flex items-center gap-2">
+                  <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
                     <Grid className="w-5 h-5 text-jade-500" />
                     Selling & Stock Settings
                   </h2>
@@ -1910,7 +1987,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Vacation Mode</h3>
+                      <h3 className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Vacation Mode</h3>
                       <p className="text-xs text-ink-400 mt-0.5">Conceal active listings from search results temporarily while you are unavailable.</p>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
@@ -1929,7 +2006,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
                   {vacationMode && (
                     <div className="space-y-1.5 animate-slide-up">
-                      <label className="text-xs font-sans font-black text-ink-400 uppercase tracking-wider block">Vacation Auto-Reply Message</label>
+                      <label className="text-xs font-sans font-bold text-ink-400 tracking-wider block">Vacation Auto-Reply Message</label>
                       <textarea
                         value={vacationAutoReply}
                         onChange={(e) => setVacationAutoReply(e.target.value)}
@@ -1945,7 +2022,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 <div className="border-t border-ink-100 dark:border-ink-850 pt-5 space-y-4">
                   <div className="flex justify-between items-center">
                     <div>
-                      <h3 className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Inventory Depletion Threshold</h3>
+                      <h3 className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Inventory Depletion Threshold</h3>
                       <p className="text-xs text-ink-400 mt-0.5">Trigger warning notification when product inventory count drops to this value.</p>
                     </div>
                     <span className="text-xs font-mono font-bold text-jade-600 bg-jade-50 dark:bg-jade-950/20 px-2.5 py-1 rounded-lg">≤ {inventoryAlertThreshold} Units left</span>
@@ -1965,7 +2042,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 {/* Default product configurations */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-ink-100 dark:border-ink-850 pt-5">
                   <div className="space-y-1">
-                    <label className="text-xs font-sans font-black text-ink-400 uppercase tracking-wider block">Default Listing Category</label>
+                    <label className="text-xs font-sans font-bold text-ink-400 tracking-wider block">Default Listing Category</label>
                     <select
                       value={defaultCategory}
                       onChange={(e) => {
@@ -1982,7 +2059,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-sans font-black text-ink-400 uppercase tracking-wider block">Default Dispatch Method</label>
+                    <label className="text-xs font-sans font-bold text-ink-400 tracking-wider block">Default Dispatch Method</label>
                     <select
                       value={defaultDeliveryMethod}
                       onChange={(e) => {
@@ -2006,7 +2083,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
             <form onSubmit={handleSave} className="space-y-6 animate-fade-in">
               <div className="bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 p-6 sm:p-8 rounded-[32px] shadow-sm space-y-6">
                 <div>
-                  <h2 className="font-display font-black text-lg text-ink-900 dark:text-white flex items-center gap-2">
+                  <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
                     <Building className="w-5 h-5 text-ink-500" />
                     Verified Business Specifications
                   </h2>
@@ -2015,7 +2092,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
                 {/* Banner assets */}
                 <div className="space-y-4">
-                  <span className="text-xs font-sans font-black text-ink-400 uppercase tracking-wider block">Corporate Banner Assets</span>
+                  <span className="text-xs font-sans font-bold text-ink-400 tracking-wider block">Corporate Banner Assets</span>
                   <div className="relative h-32 rounded-2xl bg-ink-100 overflow-hidden border border-ink-250 dark:border-ink-800">
                     <SmartImage src={businessBanner} className="w-full h-full" />
                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
@@ -2034,7 +2111,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                         <button
                           type="button"
                           onClick={() => handleImageUpload('bizLogo')}
-                          className="text-[10px] text-white font-black cursor-pointer"
+                          className="text-xs text-white font-bold cursor-pointer"
                         >
                           {uploadingAsset === 'bizLogo' ? '…' : 'Edit'}
                         </button>
@@ -2045,7 +2122,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-xs font-sans font-black text-ink-500 dark:text-ink-400 uppercase tracking-wider">Corporate Business Name</label>
+                    <label className="text-xs font-sans font-bold text-ink-500 dark:text-ink-400 tracking-wider">Corporate Business Name</label>
                     <input 
                       type="text" 
                       value={businessName}
@@ -2055,7 +2132,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-sans font-black text-ink-500 dark:text-ink-400 uppercase tracking-wider">Opening & Closing Hours</label>
+                    <label className="text-xs font-sans font-bold text-ink-500 dark:text-ink-400 tracking-wider">Opening & Closing Hours</label>
                     <input 
                       type="text" 
                       value={businessHours}
@@ -2066,7 +2143,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-sans font-black text-ink-500 dark:text-ink-400 uppercase tracking-wider">Storefront Description</label>
+                  <label className="text-xs font-sans font-bold text-ink-500 dark:text-ink-400 tracking-wider">Storefront Description</label>
                   <textarea 
                     value={businessDesc}
                     onChange={(e) => setBusinessDesc(e.target.value)}
@@ -2077,16 +2154,16 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
                 {/* Staff list */}
                 <div className="border-t border-ink-100 dark:border-ink-850 pt-5 space-y-3">
-                  <h3 className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Corporate Staff Management</h3>
+                  <h3 className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Corporate Staff Management</h3>
                   <div className="space-y-2">
                     {staffList.map((st) => (
                       <div key={st.id} className="flex justify-between items-center p-3 bg-ink-50 dark:bg-ink-800/40 rounded-xl border border-ink-150 text-xs">
                         <div>
-                          <p className="font-extrabold text-ink-800 dark:text-white">{st.name}</p>
+                          <p className="font-semibold text-ink-800 dark:text-white">{st.name}</p>
                           <p className="text-xs text-ink-400">{st.role}</p>
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className="px-1.5 py-0.5 bg-jade-100 text-jade-800 text-[10px] font-black uppercase rounded">{st.status}</span>
+                          <span className="px-1.5 py-0.5 bg-jade-100 text-jade-800 text-xs font-bold rounded">{st.status}</span>
                           <button
                             type="button"
                             onClick={() => handleRemoveStaff(st.id)}
@@ -2131,7 +2208,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-6 py-2.5 bg-ink-600 hover:bg-ink-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  className="px-6 py-2.5 bg-jade-600 hover:bg-jade-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
                 >
                   Save Business Specifications
                 </button>
@@ -2145,26 +2222,26 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
               <div className="bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 p-6 sm:p-8 rounded-[32px] shadow-sm space-y-6">
                 <div className="flex items-start justify-between">
                   <div>
-                    <h2 className="font-display font-black text-lg text-ink-900 dark:text-white flex items-center gap-2">
+                    <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
                       <Sparkles className="w-5 h-5 text-ink-500" />
                       GoodPoints (GP) Loyalist Hub
                     </h2>
                     <p className="text-xs text-ink-400 mt-1">Redeem your accumulated escrow-handshake trust loyalty points for exclusive vouchers.</p>
                   </div>
-                  <div className="px-4 py-2.5 bg-ink-500 text-ink-950 rounded-2xl font-mono text-center">
-                    <span className="text-xs uppercase font-black block tracking-widest text-ink-800">Your Balance</span>
-                    <span className="text-base font-black">{currentUser.goodPoints} GP</span>
+                  <div className="px-4 py-2.5 bg-jade-500 text-white rounded-2xl text-center">
+                    <span className="text-xs font-bold block tracking-widest text-ink-800">Your Balance</span>
+                    <span className="text-base font-bold">{currentUser.goodPoints} GP</span>
                   </div>
                 </div>
 
                 {/* Rewards Catalog */}
                 <div className="space-y-4 pt-2">
-                  <h3 className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Rewards Catalog</h3>
+                  <h3 className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Rewards Catalog</h3>
                   
                   {redeemedVoucher && (
                     <div className="p-4 bg-jade-500/10 border border-jade-500/20 text-jade-800 dark:text-jade-400 rounded-2xl text-xs space-y-1 animate-scale-up">
-                      <p className="font-black">VOUCHER SUCCESSFULLY REDEEMED</p>
-                      <p>Use code: <strong className="font-mono bg-white dark:bg-ink-950 px-2 py-0.5 rounded text-jade-600 font-extrabold">{redeemedVoucher}</strong> at checkout.</p>
+                      <p className="font-bold">Voucher successfully redeemed</p>
+                      <p>Use code: <strong className="font-mono bg-white dark:bg-ink-950 px-2 py-0.5 rounded text-jade-600 font-semibold">{redeemedVoucher}</strong> at checkout.</p>
                       <button 
                         onClick={() => setRedeemedVoucher(null)}
                         className="text-xs underline font-bold block mt-2"
@@ -2182,14 +2259,14 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                     ].map((reward) => (
                       <div key={reward.title} className="p-4 bg-ink-50 dark:bg-ink-800/40 rounded-2xl border border-ink-150 flex flex-col justify-between text-xs">
                         <div>
-                          <span className="text-ink-500 font-mono font-black text-xs block">COST: {reward.cost} GP</span>
-                          <h4 className="font-black text-ink-800 dark:text-white mt-1">{reward.title}</h4>
+                          <span className="text-ink-500 font-mono font-bold text-xs block">COST: {reward.cost} GP</span>
+                          <h4 className="font-bold text-ink-800 dark:text-white mt-1">{reward.title}</h4>
                           <p className="text-xs text-ink-400 mt-1 leading-relaxed">{reward.desc}</p>
                         </div>
                         <button
                           onClick={() => void handleRedeemPoints(reward.cost, reward.code)}
                           disabled={redeeming}
-                          className="mt-4 w-full py-2 bg-ink-900 hover:bg-ink-500 hover:text-ink-950 text-white rounded-xl text-xs uppercase font-black transition-all cursor-pointer disabled:opacity-50"
+                          className="mt-4 w-full py-2 bg-jade-500 hover:bg-jade-600 text-white rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
                         >
                           {redeeming ? 'Redeeming…' : 'Redeem reward'}
                         </button>
@@ -2200,7 +2277,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
                 {/* Points Ledger */}
                 <div className="border-t border-ink-100 dark:border-ink-850 pt-5 space-y-3">
-                  <h3 className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Points Ledger History</h3>
+                  <h3 className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Points Ledger History</h3>
                   <div className="divide-y divide-ink-100 dark:divide-ink-850">
                     {db.goodPoints.filter(g => g.userId === currentUser.id).map((tx) => (
                       <div key={tx.id} className="py-2.5 flex justify-between items-center text-xs">
@@ -2208,7 +2285,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                           <p className="font-bold text-ink-800 dark:text-ink-200">{tx.reason}</p>
                           <p className="text-xs text-ink-400">{new Date(tx.createdAt).toLocaleDateString()}</p>
                         </div>
-                        <span className={`font-mono font-black ${tx.points >= 0 ? 'text-jade-500' : 'text-ink-500'}`}>
+                        <span className={`font-mono font-bold ${tx.points >= 0 ? 'text-jade-500' : 'text-ink-500'}`}>
                           {tx.points >= 0 ? `+${tx.points}` : tx.points} GP
                         </span>
                       </div>
@@ -2224,7 +2301,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
             <div className="space-y-6 animate-fade-in">
               <div className="bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 p-6 sm:p-8 rounded-[32px] shadow-sm space-y-6">
                 <div>
-                  <h2 className="font-display font-black text-lg text-ink-900 dark:text-white flex items-center gap-2">
+                  <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
                     <Gift className="w-5 h-5 text-jade-400" />
                     Referral Center
                   </h2>
@@ -2233,7 +2310,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
                 {/* Referral Link Box */}
                 <div className="p-5 bg-jade-500/5 border border-jade-500/10 rounded-2xl space-y-3">
-                  <span className="text-xs font-sans font-black text-jade-600 block uppercase tracking-wider">Your Unique Invite Coordinates</span>
+                  <span className="text-xs font-sans font-bold text-jade-600 block tracking-wider">Your Unique Invite Coordinates</span>
                   <div className="flex gap-2">
                     <input 
                       type="text" 
@@ -2243,7 +2320,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                     />
                     <button
                       onClick={handleCopyReferral}
-                      className="px-4 py-2.5 bg-jade-500 hover:bg-jade-600 text-white font-extrabold text-xs rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+                      className="px-4 py-2.5 bg-jade-500 hover:bg-jade-600 text-white font-semibold text-xs rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
                     >
                       {referralLinkCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                       {referralLinkCopied ? 'Copied' : 'Copy'}
@@ -2253,7 +2330,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
                 {/* Social Share Badges */}
                 <div className="space-y-2">
-                  <p className="text-xs font-black text-ink-400 uppercase tracking-wider">Share To Social Channels</p>
+                  <p className="text-xs font-bold text-ink-400 tracking-wider">Share To Social Channels</p>
                   <div className="flex flex-wrap gap-2 text-xs">
                     <button onClick={() => toast.info('Opening WhatsApp to share your referral link...')} className="px-3.5 py-2 bg-[#0A854B]/10 text-[#0A854B] hover:bg-[#0A854B] hover:text-white rounded-xl font-bold cursor-pointer transition-all">WhatsApp</button>
                     <button onClick={() => toast.info('Opening X to share your referral link...')} className="px-3.5 py-2 bg-black/10 text-ink-950 dark:text-white hover:bg-ink-900 rounded-xl font-bold cursor-pointer transition-all">X / Twitter</button>
@@ -2263,7 +2340,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
                 {/* Referrals ledger */}
                 <div className="border-t border-ink-100 dark:border-ink-850 pt-5 space-y-3">
-                  <h3 className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Referred Friends Registry</h3>
+                  <h3 className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Referred Friends Registry</h3>
                   
                   {db.referrals.length === 0 ? (
                     <p className="text-xs text-ink-400 py-4">No successful referrals yet. Share your code to get started!</p>
@@ -2272,11 +2349,11 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                       {db.referrals.filter(r => r.referrerId === currentUser.id).map((ref) => (
                         <div key={ref.id} className="py-3 flex justify-between items-center text-xs">
                           <div>
-                            <p className="font-extrabold text-ink-800 dark:text-white">{ref.refereeName}</p>
+                            <p className="font-semibold text-ink-800 dark:text-white">{ref.refereeName}</p>
                             <p className="text-xs text-ink-400">Signed up {new Date(ref.createdAt).toLocaleDateString()}</p>
                           </div>
                           <div className="flex items-center gap-3">
-                            <span className={`px-2 py-0.5 text-[10px] font-black uppercase rounded ${
+                            <span className={`px-2 py-0.5 text-xs font-bold rounded ${
                               ref.status === 'FIRST_ORDER_COMPLETED' ? 'bg-jade-100 text-jade-800' : 'bg-ink-100 text-ink-800'
                             }`}>
                               {ref.status === 'FIRST_ORDER_COMPLETED' ? 'Concluded (Earned)' : 'Pending Checkout'}
@@ -2297,7 +2374,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
             <div className="space-y-6 animate-fade-in">
               <div className="bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 p-6 sm:p-8 rounded-[32px] shadow-sm space-y-6">
                 <div>
-                  <h2 className="font-display font-black text-lg text-ink-900 dark:text-white flex items-center gap-2">
+                  <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
                     <MapPin className="w-5 h-5 text-ink-500" />
                     Delivery, Courier & SafeMeet™ Zones
                   </h2>
@@ -2306,7 +2383,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
                 {/* Preferred courier */}
                 <div className="space-y-3">
-                  <label className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider block">Preferred Logistics Courier</label>
+                  <label className="text-xs font-bold text-ink-800 dark:text-white tracking-wider block">Preferred Logistics Courier</label>
                   <select
                     value={preferredCourier}
                     onChange={(e) => {
@@ -2324,7 +2401,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
                 {/* SafeMeet Location Favorite */}
                 <div className="space-y-3 border-t border-ink-100 dark:border-ink-850 pt-5">
-                  <label className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider block">Default SafeMeet™ Secure zone</label>
+                  <label className="text-xs font-bold text-ink-800 dark:text-white tracking-wider block">Default SafeMeet™ Secure zone</label>
                   <div className="grid grid-cols-1 gap-2">
                     {db.safeMeetLocations.map((loc) => (
                       <button
@@ -2342,8 +2419,8 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                         }`}
                       >
                         <div className="flex justify-between items-center">
-                          <span className="font-extrabold text-xs">{loc.name}</span>
-                          <span className="font-mono text-xs bg-jade-100 text-jade-800 px-2 py-0.5 rounded uppercase font-black">Rating: {loc.safetyRating}</span>
+                          <span className="font-semibold text-xs">{loc.name}</span>
+                          <span className="font-mono text-xs bg-jade-100 text-jade-800 px-2 py-0.5 rounded font-bold">Rating: {loc.safetyRating}</span>
                         </div>
                         <p className="text-xs text-ink-400 mt-1 leading-normal">{loc.address}</p>
                       </button>
@@ -2353,7 +2430,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
                 {/* Default Pickup Address */}
                 <div className="space-y-1.5 border-t border-ink-100 dark:border-ink-850 pt-5">
-                  <label className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider block">Default Business Warehousing Pickup Address</label>
+                  <label className="text-xs font-bold text-ink-800 dark:text-white tracking-wider block">Default Business Warehousing Pickup Address</label>
                   <input 
                     type="text" 
                     value={pickupAddress}
@@ -2371,7 +2448,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
             <div className="space-y-6 animate-fade-in">
               <div className="bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 p-6 sm:p-8 rounded-[32px] shadow-sm space-y-6">
                 <div>
-                  <h2 className="font-display font-black text-lg text-ink-900 dark:text-white flex items-center gap-2">
+                  <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
                     <HelpCircle className="w-5 h-5 text-jade-500" />
                     Help & Support Handshake Center
                   </h2>
@@ -2380,7 +2457,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
                 {/* FAQ list */}
                 <div className="space-y-3">
-                  <h3 className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Frequently Asked Questions</h3>
+                  <h3 className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Frequently Asked Questions</h3>
                   {[
                     { q: 'Is my money safe in GoodSale Escrow?', a: 'Absolutely. Payment is locked within the client-side simulated escrow vault and only released once the buyer provides the delivery PIN handoff.' },
                     { q: 'What happens in case of a product dispute?', a: 'If a buyer rejects an item, they can trigger a Dispute. The locked funds remain in escrow, and our arbitration managers will investigate.' },
@@ -2399,18 +2476,18 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 {/* Support ticket history */}
                 {supportTickets.length > 0 && (
                   <div className="border-t border-ink-100 dark:border-ink-850 pt-5 space-y-3">
-                    <h3 className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Your Support Tickets</h3>
+                    <h3 className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Your Support Tickets</h3>
                     <div className="space-y-2">
                       {supportTickets.map((ticket) => (
                         <div key={ticket.id} className="flex items-start justify-between gap-3 rounded-xl border border-ink-150 bg-ink-50 p-3 text-xs dark:border-ink-850 dark:bg-ink-800/40">
                           <div className="min-w-0">
-                            <p className="font-mono font-black text-ink-700 dark:text-ink-200">#{ticket.id}</p>
+                            <p className="font-mono font-bold text-ink-700 dark:text-ink-200">#{ticket.id}</p>
                             <p className="mt-1 break-words text-ink-500">{ticket.message}</p>
                             <p className="mt-1 text-ink-400">
                               {new Date(ticket.createdAt).toLocaleString()} · {ticket.type.replace('_', ' ')}
                             </p>
                           </div>
-                          <span className="shrink-0 rounded bg-jade-100 px-2 py-0.5 text-[10px] font-black uppercase text-jade-800">
+                          <span className="shrink-0 rounded bg-jade-100 px-2 py-0.5 text-xs font-bold text-jade-800">
                             {ticket.status}
                           </span>
                         </div>
@@ -2421,7 +2498,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
                 {/* Support ticket submission */}
                 <div className="border-t border-ink-100 dark:border-ink-850 pt-5 space-y-3">
-                  <h3 className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Submit Support Inquiry Ticket</h3>
+                  <h3 className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Submit Support Inquiry Ticket</h3>
                   
                   {supportSuccess ? (
                     <div className="p-3.5 bg-jade-100 text-jade-800 text-xs font-bold rounded-xl">
@@ -2466,7 +2543,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
             <div className="space-y-6 animate-fade-in">
               <div className="bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 p-6 sm:p-8 rounded-[32px] shadow-sm space-y-6">
                 <div>
-                  <h2 className="font-display font-black text-lg text-ink-900 dark:text-white flex items-center gap-2">
+                  <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
                     <FileText className="w-5 h-5 text-ink-400" />
                     Legal Policies & Regulatory Accordions
                   </h2>
@@ -2501,7 +2578,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                   <Settings className="w-8 h-8 animate-spin-slow" />
                 </div>
                 <div>
-                  <h2 className="font-display font-black text-xl text-ink-900 dark:text-white">GoodSale™ Marketplace Suite</h2>
+                  <h2 className="font-display font-bold text-xl text-ink-900 dark:text-white">GoodSale™ Marketplace Suite</h2>
                   <p className="text-xs text-jade-500 font-mono font-bold mt-1">Version 2.4.0-premium (Stable)</p>
                   <p className="text-xs text-ink-400 mt-3 max-w-md mx-auto leading-relaxed">
                     Designed to facilitate high-quality local commerce in Nigeria under full, secure, anti-fraud escrow protection mechanics. Developed for AI Studio environment.
@@ -2527,7 +2604,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
             <div className="space-y-6 animate-fade-in">
               <div className="bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 p-6 sm:p-8 rounded-[32px] shadow-sm space-y-6">
                 <div>
-                  <h2 className="font-display font-black text-lg text-ink-900 dark:text-white flex items-center gap-2">
+                  <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
                     <RefreshCw className="w-5 h-5 text-jade-500 animate-spin-slow" />
                     Developer & Testing Sandbox
                   </h2>
@@ -2535,7 +2612,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 </div>
 
                 <div className="space-y-3">
-                  <label className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider block">Swap Active User Session</label>
+                  <label className="text-xs font-bold text-ink-800 dark:text-white tracking-wider block">Swap Active User Session</label>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     {db.users.map((user) => (
                       <button
@@ -2544,7 +2621,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                         onClick={() => handleSwitchUser(user.id)}
                         className={`p-4 rounded-2xl border text-left cursor-pointer transition-all ${
                           currentUser?.id === user.id 
-                            ? 'bg-jade-500/10 border-jade-500 text-jade-900 dark:text-jade-300 font-extrabold shadow-sm' 
+                            ? 'bg-jade-500/10 border-jade-500 text-jade-900 dark:text-jade-300 font-semibold shadow-sm' 
                             : 'bg-ink-50 dark:bg-ink-800/40 border-ink-150 dark:border-ink-800 hover:bg-ink-100 text-ink-700 dark:text-ink-300'
                         }`}
                       >
@@ -2552,7 +2629,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                           <span className="font-bold text-xs">{user.fullName}</span>
                           {currentUser?.id === user.id && <span className="w-2.5 h-2.5 rounded-full bg-jade-500 animate-pulse" />}
                         </div>
-                        <p className="text-xs text-ink-400 mt-1 uppercase tracking-wider font-mono font-bold">Role: {user.role.replace('VERIFIED_', '')}</p>
+                        <p className="text-xs text-ink-400 mt-1 tracking-wider font-mono font-bold">Role: {user.role.replace('VERIFIED_', '')}</p>
                       </button>
                     ))}
                   </div>
@@ -2563,7 +2640,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="w-5 h-5 text-ink-500 shrink-0" />
                     <div>
-                      <h4 className="text-xs font-black text-ink-700 dark:text-ink-300 uppercase tracking-wider">Toggle Current Merchant Role Status</h4>
+                      <h4 className="text-xs font-bold text-ink-700 dark:text-ink-300 tracking-wider">Toggle Current Merchant Role Status</h4>
                       <p className="text-xs text-ink-400 mt-1 leading-normal">
                         Verify both Buyer Profile and Merchant Escrow Hub layouts instantly by manually toggling user role parameters inside local database state.
                       </p>
@@ -2572,17 +2649,17 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                   <button
                     type="button"
                     onClick={() => {
-                      if (currentUser?.role === UserRole.BUYER) {
-                        dbOperations.updateCurrentUserRole(UserRole.VERIFIED_BUSINESS);
-                        toast.success('Upgraded to VERIFIED_BUSINESS. Open the Merchant Hub from the header to start selling.');
-                      } else {
-                        dbOperations.updateCurrentUserRole(UserRole.BUYER);
-                        toast.info('Reverted to BUYER. Standard purchasing profile restored.');
+                      const next = currentUser?.role === UserRole.BUYER ? UserRole.SELLER : UserRole.BUYER;
+                      const res = dbOperations.updateCurrentUserRole(next);
+                      if ('error' in res && res.error) {
+                        toast.error(res.error);
+                        return;
                       }
+                      toast.success(next === UserRole.SELLER ? 'Switched to SELLER.' : 'Switched to BUYER.');
                     }}
-                    className="px-4 py-2.5 bg-ink-500 hover:bg-ink-600 text-ink-950 rounded-xl text-xs font-bold uppercase cursor-pointer"
+                    className="px-4 py-2.5 bg-jade-500 hover:bg-jade-600 text-white rounded-xl text-xs font-bold cursor-pointer"
                   >
-                    Switch current user role
+                    Toggle buyer / seller
                   </button>
                 </div>
               </div>
@@ -2594,7 +2671,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
             <div className="space-y-6 animate-fade-in">
               <div className="bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 p-6 sm:p-8 rounded-[32px] shadow-sm space-y-6">
                 <div>
-                  <h2 className="font-display font-black text-lg text-ink-900 dark:text-white flex items-center gap-2">
+                  <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
                     <Trash2 className="w-5 h-5 text-ink-600" />
                     Account Controls & Data Deletion
                   </h2>
@@ -2604,7 +2681,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 {/* Export user data */}
                 <div className="p-4 bg-ink-50 dark:bg-ink-800/40 rounded-2xl border border-ink-150 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div>
-                    <h3 className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Export Relational Data JSON</h3>
+                    <h3 className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Export Relational Data JSON</h3>
                     <p className="text-xs text-ink-400 mt-0.5">Download a copy of your verified reviews, listings, and order history in JSON format.</p>
                   </div>
                   <button
@@ -2619,13 +2696,13 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 {/* Deactivate account */}
                 <div className="p-4 bg-ink-50 dark:bg-ink-800/40 rounded-2xl border border-ink-150 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div>
-                    <h3 className="text-xs font-black text-ink-800 dark:text-white uppercase tracking-wider">Deactivate Marketplace Profile</h3>
+                    <h3 className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Deactivate Marketplace Profile</h3>
                     <p className="text-xs text-ink-400 mt-0.5">Temporarily hide your profile details and active bids. Deactivation can be reverted by logging in again.</p>
                   </div>
                   <button
                     onClick={() => void handleToggleDeactivate()}
                     disabled={deactivateBusy}
-                    className="px-4 py-2 bg-ink-500/10 hover:bg-ink-500 text-ink-600 hover:text-ink-950 rounded-xl text-xs font-bold cursor-pointer disabled:opacity-50"
+                    className="px-4 py-2 bg-jade-500/10 hover:bg-jade-500 text-jade-700 hover:text-white dark:text-jade-300 rounded-xl text-xs font-bold cursor-pointer disabled:opacity-50"
                   >
                     {deactivateBusy ? 'Updating…' : deactivated ? 'Reactivate profile' : 'Deactivate profile'}
                   </button>
@@ -2634,7 +2711,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 {/* Delete account */}
                 <div className="p-4 bg-ink-500/5 border border-ink-500/10 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div>
-                    <h4 className="text-xs font-black text-ink-600 uppercase tracking-wider">Permanent Account Deletion</h4>
+                    <h4 className="text-xs font-bold text-ink-600 tracking-wider">Permanent Account Deletion</h4>
                     <p className="text-xs text-ink-400 mt-0.5">Irreversibly wipe your user record, active listings, and trust score history. This action cannot be undone.</p>
                   </div>
                   <button
@@ -2660,7 +2737,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                         toast.error('Could not reach the server. Try again.');
                       }
                     }}
-                    className="px-4 py-2 bg-ink-600 hover:bg-ink-700 text-white rounded-xl text-xs font-bold cursor-pointer"
+                    className="px-4 py-2 bg-jade-600 hover:bg-jade-700 text-white rounded-xl text-xs font-bold cursor-pointer"
                   >
                     Delete Account
                   </button>

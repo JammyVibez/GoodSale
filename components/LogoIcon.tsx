@@ -151,10 +151,10 @@ export default function Logo({
       <LogoIcon size={iconSize} variant={variant} />
       <div className="flex flex-col justify-center">
         {/* Geometric sans-serif with the single Aurora jade gradient wordmark */}
-        <h1 className={`font-sans font-extrabold tracking-tight leading-none text-lg sm:text-xl ${textColorClass}`}>
-          Good<span className="bg-gradient-to-r from-[#1FB377] to-[#0A854B] dark:from-[#5CD89F] dark:to-[#1FB377] bg-clip-text text-transparent font-black">Sale</span>
+        <h1 className={`font-sans font-bold tracking-tight leading-none text-lg sm:text-xl ${textColorClass}`}>
+          Good<span className="bg-gradient-to-r from-[#1FB377] to-[#0A854B] dark:from-[#5CD89F] dark:to-[#1FB377] bg-clip-text text-transparent font-bold">Sale</span>
         </h1>
-        <p className={`font-mono text-[10px] tracking-[0.25em] uppercase leading-none mt-1 font-extrabold ${subtitleColorClass}`}>
+        <p className={`text-[10px] tracking-wider leading-none mt-1 font-semibold ${subtitleColorClass}`}>
           Buy. Sell. Trust.
         </p>
       </div>

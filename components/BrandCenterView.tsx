@@ -51,7 +51,7 @@ export default function BrandCenterView({ onBack }: BrandCenterViewProps) {
               <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-1 transition-transform" />
               Return to Marketplace
             </button>
-            <h1 className="font-sans font-black text-2xl sm:text-3xl text-ink-900 dark:text-white tracking-tight">
+            <h1 className="font-sans font-bold text-2xl sm:text-3xl text-ink-900 dark:text-white tracking-tight">
               GoodSale <span className="text-jade-500">Brand Kit</span>
             </h1>
             <p className="text-xs text-ink-500 dark:text-ink-400 mt-1 max-w-xl font-sans">
@@ -60,7 +60,7 @@ export default function BrandCenterView({ onBack }: BrandCenterViewProps) {
           </div>
           
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-1 bg-jade-500/10 text-jade-500 dark:text-jade-400 rounded-full text-xs font-bold uppercase tracking-wider border border-jade-500/20">
+            <span className="px-2.5 py-1 bg-jade-500/10 text-jade-500 dark:text-jade-400 rounded-full text-xs font-bold tracking-wider border border-jade-500/20">
               V1.0.0 Spec
             </span>
           </div>
@@ -81,7 +81,7 @@ export default function BrandCenterView({ onBack }: BrandCenterViewProps) {
                 onClick={() => setActiveTab(tab.id as any)}
                 className={`flex items-center gap-2 px-4 py-2.5 border-b-2 text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
                   activeTab === tab.id 
-                    ? 'border-jade-500 text-jade-500 dark:text-jade-400 font-extrabold' 
+                    ? 'border-jade-500 text-jade-500 dark:text-jade-400 font-semibold' 
                     : 'border-transparent text-ink-500 dark:text-ink-400 hover:text-ink-950 dark:hover:text-white'
                 }`}
               >
@@ -98,7 +98,7 @@ export default function BrandCenterView({ onBack }: BrandCenterViewProps) {
             
             {/* The Logo Showpiece */}
             <div className="lg:col-span-5 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800/80 rounded-3xl p-8 shadow-sm flex flex-col items-center justify-center text-center space-y-6 relative overflow-hidden">
-              <div className="absolute top-4 left-4 text-xs font-mono text-ink-400 dark:text-ink-500">OFFICIAL LOGOMARK</div>
+              <div className="absolute top-4 left-4 text-xs font-mono text-ink-400 dark:text-ink-500">Official logomark</div>
               
               <div className="p-8 bg-ink-50 dark:bg-ink-950/50 rounded-2xl border border-ink-100 dark:border-ink-800/50 flex items-center justify-center w-48 h-48 group">
                 <LogoIcon size={120} variant="solid" className="transform group-hover:scale-105 transition-transform duration-500" />
@@ -113,11 +113,11 @@ export default function BrandCenterView({ onBack }: BrandCenterViewProps) {
 
               <div className="pt-4 border-t border-ink-100 dark:border-ink-800/60 w-full grid grid-cols-2 gap-2">
                 <div className="bg-ink-50 dark:bg-ink-950 p-3 rounded-xl border border-ink-100 dark:border-ink-800 text-left">
-                  <span className="text-xs text-ink-400 uppercase font-bold block">Aspect Ratio</span>
+                  <span className="text-xs text-ink-400 font-bold block">Aspect Ratio</span>
                   <span className="text-xs font-bold text-ink-800 dark:text-ink-200">1:1 Symmetric</span>
                 </div>
                 <div className="bg-ink-50 dark:bg-ink-950 p-3 rounded-xl border border-ink-100 dark:border-ink-800 text-left">
-                  <span className="text-xs text-ink-400 uppercase font-bold block">Style Spec</span>
+                  <span className="text-xs text-ink-400 font-bold block">Style Spec</span>
                   <span className="text-xs font-bold text-ink-800 dark:text-ink-200">Refined Mono</span>
                 </div>
               </div>
@@ -164,7 +164,7 @@ export default function BrandCenterView({ onBack }: BrandCenterViewProps) {
                 </div>
 
                 <div className="p-4 bg-ink-50 dark:bg-ink-950 border border-ink-100 dark:border-ink-800 rounded-2xl">
-                  <span className="text-xs text-ink-400 font-bold uppercase tracking-wider block mb-1">Our Branding Principle</span>
+                  <span className="text-xs text-ink-400 font-bold tracking-wider block mb-1">Our Branding Principle</span>
                   <p className="text-xs text-ink-600 dark:text-ink-400 leading-relaxed italic">
                     &quot;True luxury doesn&apos;t make noise. By eliminating distracting generic visual metaphors and complex color gradients, the GoodSale icon achieves high-fidelity recognition at any scale—from a tiny 16px tab icon to a giant city-wide billboard.&quot;
                   </p>
@@ -248,35 +248,35 @@ export default function BrandCenterView({ onBack }: BrandCenterViewProps) {
             <div className="lg:col-span-6 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800/80 rounded-3xl p-6 shadow-sm space-y-6">
               <div className="flex items-center gap-2">
                 <Type className="w-5 h-5 text-jade-500" />
-                <h3 className="font-sans font-bold text-base text-ink-900 dark:text-white">Refined Geometric Typography</h3>
+                <h3 className="font-sans font-bold text-base text-ink-900 dark:text-white">Typography system</h3>
               </div>
 
               <div className="space-y-5">
                 <div className="p-4 bg-ink-50 dark:bg-ink-950 border border-ink-100 dark:border-ink-800 rounded-2xl space-y-3">
                   <div className="border-b border-ink-200/50 dark:border-ink-800/50 pb-2">
-                    <span className="text-xs font-mono font-bold text-ink-400 uppercase tracking-widest">DISPLAY TYPE SPEC</span>
-                    <h2 className="font-sans font-extrabold text-xl sm:text-2xl text-ink-950 dark:text-white tracking-tight mt-1">
-                      Good<span className="text-jade-500 font-black">Sale</span>
+                    <span className="text-xs font-bold text-ink-400">Display type</span>
+                    <h2 className="font-sans font-semibold text-xl sm:text-2xl text-ink-950 dark:text-white tracking-tight mt-1">
+                      Good<span className="text-jade-500 font-bold">Sale</span>
                     </h2>
                   </div>
                   <div className="text-xs text-ink-500 font-sans space-y-1">
-                    <p><strong>Font Family:</strong> Inter, custom-tuned geometric tracking</p>
-                    <p><strong>Spacing:</strong> <code className="font-mono bg-white dark:bg-ink-900 px-1 py-0.5 border border-ink-100 dark:border-ink-800 rounded">tracking-tight (-0.025em)</code></p>
-                    <p><strong>Weight Pair:</strong> Extrabold paired with Black</p>
+                    <p><strong>Font family:</strong> Plus Jakarta Sans (display) · Inter (body)</p>
+                    <p><strong>Spacing:</strong> <code className="bg-white dark:bg-ink-900 px-1 py-0.5 border border-ink-100 dark:border-ink-800 rounded">tracking-tight (-0.025em)</code></p>
+                    <p><strong>Weight pair:</strong> Bold with semibold — no heavier weights</p>
                   </div>
                 </div>
 
                 <div className="p-4 bg-ink-50 dark:bg-ink-950 border border-ink-100 dark:border-ink-800 rounded-2xl space-y-3">
                   <div className="border-b border-ink-200/50 dark:border-ink-800/50 pb-2">
-                    <span className="text-xs font-mono font-bold text-ink-400 uppercase tracking-widest">SUBTITLE TAGLINE SPEC</span>
-                    <p className="font-mono text-xs text-ink-900 dark:text-white tracking-[0.25em] uppercase leading-none mt-1 font-semibold">
+                    <span className="text-xs font-bold text-ink-400">Subtitle tagline</span>
+                    <p className="text-xs text-ink-900 dark:text-white tracking-wider leading-none mt-1 font-semibold">
                       Buy. Sell. Trust.
                     </p>
                   </div>
                   <div className="text-xs text-ink-500 font-sans space-y-1">
-                    <p><strong>Font Family:</strong> JetBrains Mono / Fira Code</p>
-                    <p><strong>Spacing:</strong> <code className="font-mono bg-white dark:bg-ink-900 px-1 py-0.5 border border-ink-100 dark:border-ink-800 rounded">tracking-[0.25em] (4px letter spacing)</code></p>
-                    <p><strong>Case:</strong> Force Uppercase</p>
+                    <p><strong>Font family:</strong> Inter — one sans face, no monospace</p>
+                    <p><strong>Spacing:</strong> <code className="bg-white dark:bg-ink-900 px-1 py-0.5 border border-ink-100 dark:border-ink-800 rounded">tracking-wider</code></p>
+                    <p><strong>Case:</strong> Sentence case</p>
                   </div>
                 </div>
               </div>
@@ -291,7 +291,7 @@ export default function BrandCenterView({ onBack }: BrandCenterViewProps) {
             {/* App Icon Mockup */}
             <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-6 shadow-sm space-y-4">
               <div className="flex items-center justify-between">
-                <span className="px-2 py-0.5 bg-ink-100 dark:bg-ink-800 text-ink-500 text-xs font-bold uppercase rounded font-mono">Mobile App Icon</span>
+                <span className="px-2 py-0.5 bg-ink-100 dark:bg-ink-800 text-ink-500 text-xs font-bold rounded font-mono">Mobile App Icon</span>
                 <Smartphone className="w-4 h-4 text-ink-400" />
               </div>
               
@@ -315,7 +315,7 @@ export default function BrandCenterView({ onBack }: BrandCenterViewProps) {
             {/* Favicon Mockup */}
             <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-6 shadow-sm space-y-4">
               <div className="flex items-center justify-between">
-                <span className="px-2 py-0.5 bg-ink-100 dark:bg-ink-800 text-ink-500 text-xs font-bold uppercase rounded font-mono">Website Favicon</span>
+                <span className="px-2 py-0.5 bg-ink-100 dark:bg-ink-800 text-ink-500 text-xs font-bold rounded font-mono">Website Favicon</span>
                 <Laptop className="w-4 h-4 text-ink-400" />
               </div>
 
@@ -341,7 +341,7 @@ export default function BrandCenterView({ onBack }: BrandCenterViewProps) {
             {/* Social Media Profile */}
             <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-6 shadow-sm space-y-4">
               <div className="flex items-center justify-between">
-                <span className="px-2 py-0.5 bg-ink-100 dark:bg-ink-800 text-ink-500 text-xs font-bold uppercase rounded font-mono">Social Profile</span>
+                <span className="px-2 py-0.5 bg-ink-100 dark:bg-ink-800 text-ink-500 text-xs font-bold rounded font-mono">Social Profile</span>
                 <ExternalLink className="w-4 h-4 text-ink-400" />
               </div>
 
@@ -352,12 +352,12 @@ export default function BrandCenterView({ onBack }: BrandCenterViewProps) {
                     <div className="w-14 h-14 rounded-full bg-ink-900 flex items-center justify-center border-2 border-jade-500 shadow-md">
                       <LogoIcon size={28} variant="solid" />
                     </div>
-                    <div className="absolute -bottom-1 -right-1 bg-ink-500 text-white rounded-full p-0.5 border border-white">
+                    <div className="absolute -bottom-1 -right-1 bg-jade-500 text-white rounded-full p-0.5 border border-white">
                       <Award className="w-3 h-3" />
                     </div>
                   </div>
                   <div>
-                    <h5 className="font-sans font-extrabold text-xs text-ink-900 dark:text-white">GoodSale Nigeria</h5>
+                    <h5 className="font-sans font-semibold text-xs text-ink-900 dark:text-white">GoodSale Nigeria</h5>
                     <p className="text-xs text-ink-400 font-mono">@goodsale.ng</p>
                   </div>
                 </div>
@@ -381,7 +381,7 @@ export default function BrandCenterView({ onBack }: BrandCenterViewProps) {
             <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-6 shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b border-ink-100 dark:border-ink-800 pb-3">
                 <div>
-                  <span className="px-2 py-0.5 bg-jade-100 text-jade-800 dark:bg-jade-500/10 dark:text-jade-400 text-xs font-bold uppercase rounded font-mono">Physical Product</span>
+                  <span className="px-2 py-0.5 bg-jade-100 text-jade-800 dark:bg-jade-500/10 dark:text-jade-400 text-xs font-bold rounded font-mono">Physical Product</span>
                   <h4 className="font-sans font-bold text-sm text-ink-950 dark:text-white mt-1">Premium Cardboard Packaging</h4>
                 </div>
                 <ImageIcon className="w-4 h-4 text-ink-400" />
@@ -405,7 +405,7 @@ export default function BrandCenterView({ onBack }: BrandCenterViewProps) {
             <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-6 shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b border-ink-100 dark:border-ink-800 pb-3">
                 <div>
-                  <span className="px-2 py-0.5 bg-jade-100 text-jade-800 dark:bg-jade-500/10 dark:text-jade-400 text-xs font-bold uppercase rounded font-mono">Apparel Spec</span>
+                  <span className="px-2 py-0.5 bg-jade-100 text-jade-800 dark:bg-jade-500/10 dark:text-jade-400 text-xs font-bold rounded font-mono">Apparel Spec</span>
                   <h4 className="font-sans font-bold text-sm text-ink-950 dark:text-white mt-1">Delivery Agent Uniforms</h4>
                 </div>
                 <ImageIcon className="w-4 h-4 text-ink-400" />
@@ -429,7 +429,7 @@ export default function BrandCenterView({ onBack }: BrandCenterViewProps) {
             <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-6 shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b border-ink-100 dark:border-ink-800 pb-3">
                 <div>
-                  <span className="px-2 py-0.5 bg-jade-100 text-jade-800 dark:bg-jade-500/10 dark:text-jade-400 text-xs font-bold uppercase rounded font-mono">Corporate Collateral</span>
+                  <span className="px-2 py-0.5 bg-jade-100 text-jade-800 dark:bg-jade-500/10 dark:text-jade-400 text-xs font-bold rounded font-mono">Corporate Collateral</span>
                   <h4 className="font-sans font-bold text-sm text-ink-950 dark:text-white mt-1">Executive Business Cards</h4>
                 </div>
                 <FileText className="w-4 h-4 text-ink-400" />
@@ -466,7 +466,7 @@ export default function BrandCenterView({ onBack }: BrandCenterViewProps) {
             <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-6 shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b border-ink-100 dark:border-ink-800 pb-3">
                 <div>
-                  <span className="px-2 py-0.5 bg-jade-100 text-jade-800 dark:bg-jade-500/10 dark:text-jade-400 text-xs font-bold uppercase rounded font-mono">Out-Of-Home Ads</span>
+                  <span className="px-2 py-0.5 bg-jade-100 text-jade-800 dark:bg-jade-500/10 dark:text-jade-400 text-xs font-bold rounded font-mono">Out-Of-Home Ads</span>
                   <h4 className="font-sans font-bold text-sm text-ink-950 dark:text-white mt-1">High-Impact City Billboards</h4>
                 </div>
                 <Grid className="w-4 h-4 text-ink-400" />
@@ -479,10 +479,10 @@ export default function BrandCenterView({ onBack }: BrandCenterViewProps) {
                   <Logo iconSize={24} textColorClass="text-white text-base" subtitleColorClass="text-jade-400" />
                   
                   <div className="space-y-1 z-10">
-                    <h3 className="font-sans font-black text-sm tracking-tight leading-none text-ink-100">
+                    <h3 className="font-sans font-bold text-sm tracking-tight leading-none text-ink-100">
                       Nigeria&apos;s Secure Escrow Platform.
                     </h3>
-                    <p className="text-xs text-jade-400 font-mono">ZERO SCAMS. 100% VERIFIED TRUST.</p>
+                    <p className="text-xs text-jade-400 font-mono">Zero scams. 100% verified trust.</p>
                   </div>
                 </div>
               </div>

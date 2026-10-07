@@ -16,6 +16,12 @@ import {
   Dispute,
   ChatRoom,
   Message,
+  MessageReaction,
+  Call,
+  Report,
+  ServiceArea,
+  VerificationKind,
+  VerificationDocument,
   Review,
   IdentityVerification,
   VerificationStatus,
@@ -328,6 +334,7 @@ export function mapMessage(row: Record<string, unknown>): Message {
     id: n(row.id),
     roomId: n(row.room_id),
     senderId: n(row.sender_id),
+    replyToId: row.reply_to_id != null ? n(row.reply_to_id) : undefined,
     messageText: row.message_text != null ? s(row.message_text) : undefined,
     imageUrl: row.image_url != null ? s(row.image_url) : undefined,
     videoUrl: row.video_url != null ? s(row.video_url) : undefined,
@@ -362,13 +369,76 @@ export function mapVerification(row: Record<string, unknown>): IdentityVerificat
   return {
     id: n(row.id),
     userId: n(row.user_id),
+    applicationKind: (s(row.application_kind, 'IDENTITY') as VerificationKind) || VerificationKind.IDENTITY,
     fullName: s(row.full_name),
     documentType: (s(row.document_type, 'NIN') as DocumentType) || DocumentType.NIN,
     documentNumber: s(row.document_number),
     documentImageUrl: s(row.document_image_url),
     selfieImageUrl: s(row.selfie_image_url),
     proofOfAddressUrl: s(row.proof_of_address_url),
+    documents: arr<VerificationDocument>(row.documents),
+    businessName: s(row.business_name),
+    businessAddress: s(row.business_address),
     status: (s(row.status, 'PENDING') as VerificationStatus) || VerificationStatus.PENDING,
+    adminNotes: row.admin_notes != null ? s(row.admin_notes) : undefined,
+    rejectionReason: row.rejection_reason != null ? s(row.rejection_reason) : undefined,
+    reviewedBy: row.reviewed_by != null ? n(row.reviewed_by) : undefined,
+    reviewedAt: row.reviewed_at != null ? s(row.reviewed_at) : undefined,
+    createdAt: s(row.created_at, new Date().toISOString()),
+  };
+}
+
+export function mapMessageReaction(row: Record<string, unknown>): MessageReaction {
+  return {
+    id: n(row.id),
+    messageId: n(row.message_id),
+    userId: n(row.user_id),
+    emoji: s(row.emoji, '👍'),
+    createdAt: s(row.created_at, new Date().toISOString()),
+  };
+}
+
+export function mapCall(row: Record<string, unknown>): Call {
+  return {
+    id: n(row.id),
+    roomId: n(row.room_id),
+    callerId: n(row.caller_id),
+    calleeId: n(row.callee_id),
+    kind: s(row.kind, 'AUDIO') === 'VIDEO' ? 'VIDEO' : 'AUDIO',
+    status: (s(row.status, 'RINGING') as Call['status']) || 'RINGING',
+    startedAt: s(row.started_at, new Date().toISOString()),
+    answeredAt: row.answered_at != null ? s(row.answered_at) : undefined,
+    endedAt: row.ended_at != null ? s(row.ended_at) : undefined,
+    durationSeconds: n(row.duration_seconds),
+    createdAt: s(row.created_at, new Date().toISOString()),
+  };
+}
+
+export function mapReport(row: Record<string, unknown>): Report {
+  return {
+    id: n(row.id),
+    reporterId: row.reporter_id != null ? n(row.reporter_id) : undefined,
+    targetType: (s(row.target_type, 'USER') as Report['targetType']) || 'USER',
+    targetId: n(row.target_id),
+    targetLabel: s(row.target_label),
+    reason: s(row.reason),
+    details: s(row.details),
+    evidenceUrl: s(row.evidence_url),
+    status: (s(row.status, 'OPEN') as Report['status']) || 'OPEN',
+    adminNotes: row.admin_notes != null ? s(row.admin_notes) : undefined,
+    resolvedBy: row.resolved_by != null ? n(row.resolved_by) : undefined,
+    resolvedAt: row.resolved_at != null ? s(row.resolved_at) : undefined,
+    createdAt: s(row.created_at, new Date().toISOString()),
+  };
+}
+
+export function mapServiceArea(row: Record<string, unknown>): ServiceArea {
+  return {
+    id: n(row.id),
+    state: s(row.state),
+    city: s(row.city),
+    salesEnabled: b(row.sales_enabled, true),
+    deliveryEnabled: b(row.delivery_enabled, true),
     createdAt: s(row.created_at, new Date().toISOString()),
   };
 }
@@ -496,6 +566,10 @@ export function mapDeliveryPartner(row: Record<string, unknown>): DeliveryPartne
     nin: s(row.nin),
     selfieUrl: s(row.selfie_url),
     licenseUrl: row.license_url != null ? s(row.license_url) : undefined,
+    documents: arr<VerificationDocument>(row.documents),
+    rejectionReason: row.rejection_reason != null ? s(row.rejection_reason) : undefined,
+    reviewedBy: row.reviewed_by != null ? n(row.reviewed_by) : undefined,
+    reviewedAt: row.reviewed_at != null ? s(row.reviewed_at) : undefined,
     createdAt: s(row.created_at, new Date().toISOString()),
   };
 }

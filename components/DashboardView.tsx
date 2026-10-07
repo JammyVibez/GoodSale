@@ -11,13 +11,20 @@ import {
 import { 
   Product, ProductCondition, getDBState, saveDBState, dbOperations, UserRole, OrderStatus, Order, Escrow
 } from '../lib/store';
+import { SmartImage } from './ui/SmartImage';
 import LiveSafeMeetMap from './LiveSafeMeetMap';
 import LiveDispatchMap from './LiveDispatchMap';
 import { bestCoords, rankPartnersByProximity, formatDistanceKm } from '@/lib/geo';
 import { toast, confirmDialog } from '@/lib/feedback';
 import AdSlot from './AdSlot';
 
-export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void }) {
+export default function DashboardView({
+  onOpenAuth,
+  onNavigate,
+}: {
+  onOpenAuth?: () => void;
+  onNavigate?: (view: string) => void;
+}) {
   const [db, setDb] = useState(getDBState());
   const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'inventory' | 'create_listing' | 'barcode_scanner'>('overview');
   
@@ -558,17 +565,68 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
         <div className="w-16 h-16 bg-ink-500/10 dark:bg-ink-500/5 rounded-full flex items-center justify-center mx-auto mb-6 border border-ink-500/20">
           <Store className="w-8 h-8 text-ink-500" />
         </div>
-        <h2 className="font-display font-black text-2xl text-ink-900 dark:text-white mb-2">Merchant Seller Hub</h2>
+        <h2 className="font-display font-bold text-2xl text-ink-900 dark:text-white mb-2">Merchant Seller Hub</h2>
         <p className="text-sm text-ink-500 dark:text-ink-400 mb-8 max-w-sm mx-auto leading-relaxed">
           Setup your escrow secure business store, manage product stock inventory, list items, verify barcode tags, and check pending payouts from Nigerian buyers.
         </p>
         <div className="space-y-3">
           <button
             onClick={onOpenAuth}
-            className="w-full py-3 bg-gradient-to-r from-jade-500 to-jade-600 hover:from-jade-600 hover:to-jade-700 text-white font-sans font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer shadow-md shadow-jade-500/10 transition-all"
+            className="w-full py-3 bg-jade-500 hover:bg-jade-600 text-white font-semibold text-sm rounded-xl cursor-pointer shadow-md shadow-jade-500/10 transition-all"
           >
-            Sign In / Register Account
+            Sign in or create an account
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Selling is reserved for seller / business accounts. Buyers can still buy
+  // from the marketplace freely — they just switch account type to start selling.
+  const canSell = [
+    UserRole.SELLER,
+    UserRole.VERIFIED_SELLER,
+    UserRole.BUSINESS,
+    UserRole.VERIFIED_BUSINESS,
+    UserRole.MODERATOR,
+    UserRole.ADMIN,
+    UserRole.SUPER_ADMIN,
+  ].includes(user.role);
+
+  if (!canSell) {
+    return (
+      <div className="bg-ink-50 dark:bg-ink-950 min-h-screen py-16 px-4 transition-colors duration-300">
+        <div className="mx-auto max-w-2xl rounded-3xl border border-ink-200 bg-white p-8 text-center shadow-sm dark:border-ink-800 dark:bg-ink-900 sm:p-12">
+          <div className="mx-auto mb-5 grid h-16 w-16 place-items-center rounded-2xl bg-jade-500/10 text-jade-600 dark:text-jade-400">
+            <Store className="h-8 w-8" />
+          </div>
+          <h2 className="font-display text-2xl font-bold tracking-tight text-ink-900 dark:text-white">
+            Start selling on GoodSale
+          </h2>
+          <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-ink-500 dark:text-ink-400">
+            You&apos;re signed in as a <strong className="font-semibold text-ink-700 dark:text-ink-200">Buyer</strong> —
+            which means you can shop with escrow protection anytime. To list and sell items, switch your account
+            type to Individual Seller or Business Owner in Settings.
+          </p>
+          <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => onNavigate?.('settings')}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-jade-500 px-6 py-3 text-sm font-semibold text-white shadow-md shadow-jade-500/20 transition-all hover:bg-jade-600 cursor-pointer"
+            >
+              <Settings className="h-4 w-4" /> Change account type in Settings
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate?.('marketplace')}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-ink-200 bg-white px-6 py-3 text-sm font-semibold text-ink-700 transition-colors hover:bg-ink-50 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 dark:hover:bg-ink-800 cursor-pointer"
+            >
+              Keep shopping
+            </button>
+          </div>
+          <p className="mt-6 text-xs text-ink-400">
+            Buying is always available — switching account type never removes your ability to shop.
+          </p>
         </div>
       </div>
     );
@@ -589,10 +647,10 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="font-display font-black text-2xl text-ink-900 dark:text-white leading-none">
+                <h1 className="font-display font-bold text-2xl text-ink-900 dark:text-white leading-none">
                   GoodSale Merchant Hub
                 </h1>
-                <span className="px-2.5 py-1 bg-ink-500/10 border border-ink-500/20 text-ink-500 text-xs font-mono font-bold tracking-wider uppercase rounded-full">
+                <span className="px-2.5 py-1 bg-ink-500/10 border border-ink-500/20 text-ink-500 text-xs font-mono font-bold tracking-wider rounded-full">
                   {user?.role.replace('_', ' ')}
                 </span>
               </div>
@@ -652,13 +710,13 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
               {/* Withdrawable Earnings */}
               <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 p-5 rounded-3xl flex flex-col justify-between shadow-sm relative overflow-hidden group">
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-xs text-ink-400 dark:text-ink-500 uppercase font-black tracking-widest font-mono">Withdrawable Balance</span>
+                  <span className="text-xs text-ink-400 dark:text-ink-500 font-bold tracking-widest font-mono">Withdrawable Balance</span>
                   <div className="w-9 h-9 bg-jade-500/10 rounded-xl flex items-center justify-center text-jade-500">
                     <DollarSign className="w-5 h-5" />
                   </div>
                 </div>
                 <div>
-                  <span className="font-mono font-extrabold text-2xl text-ink-950 dark:text-white block">₦{withdrawableEarnings.toLocaleString()}</span>
+                  <span className="font-mono font-semibold text-2xl text-ink-950 dark:text-white block">₦{withdrawableEarnings.toLocaleString()}</span>
                   <button 
                     onClick={() => {
                       setPayoutError(null);
@@ -666,7 +724,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                       setShowPayoutModal(true);
                     }}
                     disabled={withdrawableEarnings <= 0}
-                    className="mt-3.5 w-full py-2 bg-jade-500 hover:bg-jade-600 disabled:bg-ink-100 disabled:text-ink-400 dark:disabled:bg-ink-800/50 dark:disabled:text-ink-600 text-white font-sans font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 shadow-md shadow-jade-500/10"
+                    className="mt-3.5 w-full py-2 bg-jade-500 hover:bg-jade-600 disabled:bg-ink-100 disabled:text-ink-400 dark:disabled:bg-ink-800/50 dark:disabled:text-ink-600 text-white font-sans font-semibold text-xs tracking-wider rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 shadow-md shadow-jade-500/10"
                   >
                     <Landmark className="w-3.5 h-3.5" />
                     Withdraw to Bank
@@ -677,13 +735,13 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
               {/* Escrow Held */}
               <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 p-5 rounded-3xl flex flex-col justify-between shadow-sm">
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-xs text-ink-400 dark:text-ink-500 uppercase font-black tracking-widest font-mono">Held in Escrow</span>
+                  <span className="text-xs text-ink-400 dark:text-ink-500 font-bold tracking-widest font-mono">Held in Escrow</span>
                   <div className="w-9 h-9 bg-ink-500/10 rounded-xl flex items-center justify-center text-ink-500">
-                    <Shield className="w-4.5 h-4.5" />
+                    <Shield className="w-4 h-4" />
                   </div>
                 </div>
                 <div>
-                  <span className="font-mono font-extrabold text-2xl text-ink-950 dark:text-white block">₦{escrowHeldSum.toLocaleString()}</span>
+                  <span className="font-mono font-semibold text-2xl text-ink-950 dark:text-white block">₦{escrowHeldSum.toLocaleString()}</span>
                   <span className="text-xs text-ink-400 font-sans block mt-1.5 italic">
                     Released instantly upon delivery PIN handshake
                   </span>
@@ -693,13 +751,13 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
               {/* Active Products count */}
               <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 p-5 rounded-3xl flex flex-col justify-between shadow-sm">
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-xs text-ink-400 dark:text-ink-500 uppercase font-black tracking-widest font-mono">Store Listings</span>
+                  <span className="text-xs text-ink-400 dark:text-ink-500 font-bold tracking-widest font-mono">Store Listings</span>
                   <div className="w-9 h-9 bg-ink-100 dark:bg-ink-800 rounded-xl flex items-center justify-center text-ink-600 dark:text-ink-300">
-                    <Package className="w-4.5 h-4.5" />
+                    <Package className="w-4 h-4" />
                   </div>
                 </div>
                 <div>
-                  <span className="font-sans font-black text-2xl text-ink-950 dark:text-white block">{sellerProducts.length} Items</span>
+                  <span className="font-sans font-bold text-2xl text-ink-950 dark:text-white block">{sellerProducts.length} Items</span>
                   <button 
                     onClick={() => setActiveTab('inventory')}
                     className="text-xs text-jade-500 font-bold flex items-center gap-0.5 mt-3 hover:underline text-left"
@@ -713,13 +771,13 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
               {/* Views */}
               <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 p-5 rounded-3xl flex flex-col justify-between shadow-sm">
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-xs text-ink-400 dark:text-ink-500 uppercase font-black tracking-widest font-mono">Traffic Analytics</span>
+                  <span className="text-xs text-ink-400 dark:text-ink-500 font-bold tracking-widest font-mono">Traffic Analytics</span>
                   <div className="w-9 h-9 bg-ink-100 dark:bg-ink-800 rounded-xl flex items-center justify-center text-ink-600 dark:text-ink-300">
-                    <TrendingUp className="w-4.5 h-4.5" />
+                    <TrendingUp className="w-4 h-4" />
                   </div>
                 </div>
                 <div>
-                  <span className="font-sans font-black text-2xl text-ink-950 dark:text-white block">{totalVisits.toLocaleString()} Views</span>
+                  <span className="font-sans font-bold text-2xl text-ink-950 dark:text-white block">{totalVisits.toLocaleString()} Views</span>
                   <span className="text-xs text-ink-400 block mt-1.5">
                     Conversion rate: 4.8% average
                   </span>
@@ -734,7 +792,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
               {/* Card Header & Controls */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-ink-100 dark:border-ink-800 pb-5">
                 <div>
-                  <h3 className="font-display font-black text-base text-ink-900 dark:text-white flex items-center gap-1.5">
+                  <h3 className="font-display font-bold text-base text-ink-900 dark:text-white flex items-center gap-1.5">
                     <BarChart3 className="w-5 h-5 text-jade-500" />
                     Interactive Business Analytics
                   </h3>
@@ -789,7 +847,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                 {/* Left Side: SVG Live Render Chart */}
                 <div className="lg:col-span-7 flex flex-col justify-between space-y-4">
                   <div className="flex justify-between items-center">
-                    <span className="text-xs font-mono text-ink-400 uppercase tracking-widest">
+                    <span className="text-xs font-mono text-ink-400 tracking-widest">
                       {analyticsTab === 'sales' ? 'Naira (₦) Cashflow Volume' : 'Total Client Impressions'}
                     </span>
                     <span className="text-xs font-bold text-ink-850 dark:text-white bg-ink-50 dark:bg-ink-800 px-2.5 py-1 rounded-lg">
@@ -890,7 +948,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                                   textAnchor="middle"
                                   fill="#717D78"
                                   fontSize="8"
-                                  fontFamily="monospace"
+                                  fontFamily="Inter, system-ui, sans-serif"
                                   className="pointer-events-none"
                                 >
                                   {labels[idx]}
@@ -918,7 +976,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                                   fill="#ffffff"
                                   fontSize="9"
                                   fontWeight="bold"
-                                  fontFamily="monospace"
+                                  fontFamily="Inter, system-ui, sans-serif"
                                 >
                                   {analyticsTab === 'sales' 
                                     ? `₦${points[hoveredDataIndex].val.toLocaleString()}` 
@@ -947,8 +1005,8 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                 <div className="lg:col-span-5 bg-ink-50 dark:bg-ink-900/50 border border-ink-150 dark:border-ink-800 p-5 rounded-[24px] flex flex-col justify-between space-y-4">
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-1.5">
-                      <Sparkles className="w-4.5 h-4.5 text-jade-500 animate-pulse" />
-                      <h4 className="text-xs font-sans font-black text-ink-950 dark:text-white uppercase tracking-wider">
+                      <Sparkles className="w-4 h-4 text-jade-500 animate-pulse" />
+                      <h4 className="text-xs font-sans font-bold text-ink-950 dark:text-white tracking-wider">
                         Gemini AI Sales Optimizer
                       </h4>
                     </div>
@@ -967,19 +1025,19 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                     ) : aiPremiumInsight ? (
                       <div className="space-y-3.5 text-xs animate-fade-in">
                         <div className="flex items-start gap-1.5">
-                          <span className="px-1.5 py-0.5 rounded bg-jade-100 dark:bg-jade-500/10 text-jade-800 dark:text-jade-400 font-bold text-[10px] tracking-wider uppercase">Velocity</span>
+                          <span className="px-1.5 py-0.5 rounded bg-jade-100 dark:bg-jade-500/10 text-jade-800 dark:text-jade-400 font-bold text-[10px] tracking-wider">Velocity</span>
                           <span className="text-ink-850 dark:text-ink-200 font-medium leading-normal">{aiPremiumInsight.salesVelocity}</span>
                         </div>
                         <div className="flex items-start gap-1.5">
-                          <span className="px-1.5 py-0.5 rounded bg-jade-100 dark:bg-jade-500/10 text-jade-800 dark:text-jade-400 font-bold text-[10px] tracking-wider uppercase">Strategy</span>
+                          <span className="px-1.5 py-0.5 rounded bg-jade-100 dark:bg-jade-500/10 text-jade-800 dark:text-jade-400 font-bold text-[10px] tracking-wider">Strategy</span>
                           <span className="text-ink-850 dark:text-ink-200 font-medium leading-normal">{aiPremiumInsight.growthTip}</span>
                         </div>
                         <div className="flex items-start gap-1.5">
-                          <span className="px-1.5 py-0.5 rounded bg-jade-100 dark:bg-jade-500/10 text-jade-800 dark:text-jade-400 font-bold text-[10px] tracking-wider uppercase">Price Audit</span>
+                          <span className="px-1.5 py-0.5 rounded bg-jade-100 dark:bg-jade-500/10 text-jade-800 dark:text-jade-400 font-bold text-[10px] tracking-wider">Price Audit</span>
                           <span className="text-ink-850 dark:text-ink-200 font-medium leading-normal">{aiPremiumInsight.priceAdjustment}</span>
                         </div>
                         <div className="flex items-start gap-1.5">
-                          <span className="px-1.5 py-0.5 rounded bg-ink-100 dark:bg-ink-500/10 text-ink-800 dark:text-ink-400 font-bold text-[10px] tracking-wider uppercase">Trust Bump</span>
+                          <span className="px-1.5 py-0.5 rounded bg-ink-100 dark:bg-ink-500/10 text-ink-800 dark:text-ink-400 font-bold text-[10px] tracking-wider">Trust Bump</span>
                           <span className="text-ink-850 dark:text-ink-200 font-medium leading-normal">{aiPremiumInsight.organicBoostChance}</span>
                         </div>
                       </div>
@@ -995,7 +1053,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                     type="button"
                     onClick={handleAnalyzeStoreMetrics}
                     disabled={isAnalyzingMetrics}
-                    className="w-full py-2.5 bg-ink-900 dark:bg-white hover:bg-ink-800 dark:hover:bg-ink-100 text-white dark:text-ink-900 font-sans font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 shadow-md"
+                    className="w-full py-2.5 bg-ink-900 dark:bg-white hover:bg-ink-800 dark:hover:bg-ink-100 text-white dark:text-ink-900 font-sans font-semibold text-xs tracking-wider rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 shadow-md"
                   >
                     <Sparkles className="w-3.5 h-3.5 text-jade-500" />
                     {isAnalyzingMetrics ? 'Generating Strategy...' : 'Audit Store Metrics'}
@@ -1011,8 +1069,8 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm select-none">
                 <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 p-6 rounded-[32px] max-w-md w-full shadow-2xl relative animate-fade-in space-y-4">
                   <div>
-                    <h3 className="font-display font-black text-lg text-ink-900 dark:text-white flex items-center gap-2">
-                      <Landmark className="w-5.5 h-5.5 text-jade-500" />
+                    <h3 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
+                      <Landmark className="w-5 h-5 text-jade-500" />
                       Instant Bank Settlement
                     </h3>
                     <p className="text-xs text-ink-500 dark:text-ink-400 mt-1 leading-relaxed">
@@ -1025,7 +1083,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                       <div className="w-12 h-12 rounded-full bg-jade-500/10 text-jade-500 flex items-center justify-center mx-auto">
                         <Check className="w-7 h-7" />
                       </div>
-                      <p className="text-xs font-bold text-jade-500 uppercase tracking-widest">Withdrawal Dispatched Successfully!</p>
+                      <p className="text-xs font-bold text-jade-500 tracking-widest">Withdrawal Dispatched Successfully!</p>
                       <p className="text-xs text-ink-500">₦{Number(payoutAmount).toLocaleString()} dispatched to {payoutBank} Acc: {payoutAccountNum}.</p>
                     </div>
                   ) : (
@@ -1093,13 +1151,13 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                         <button
                           type="button"
                           onClick={() => setShowPayoutModal(false)}
-                          className="flex-1 py-3 bg-ink-100 hover:bg-ink-200 dark:bg-ink-800 dark:hover:bg-ink-750 text-ink-800 dark:text-white font-display font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer text-center"
+                          className="flex-1 py-3 bg-ink-100 hover:bg-ink-200 dark:bg-ink-800 dark:hover:bg-ink-750 text-ink-800 dark:text-white font-display font-semibold text-xs tracking-wider rounded-xl transition-all cursor-pointer text-center"
                         >
                           Cancel
                         </button>
                         <button
                           type="submit"
-                          className="flex-1 py-3 bg-jade-500 hover:bg-jade-600 text-white font-display font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-md shadow-jade-500/10 text-center"
+                          className="flex-1 py-3 bg-jade-500 hover:bg-jade-600 text-white font-display font-semibold text-xs tracking-wider rounded-xl transition-all cursor-pointer shadow-md shadow-jade-500/10 text-center"
                         >
                           Withdraw Funds
                         </button>
@@ -1169,12 +1227,12 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs text-left">
                         <thead>
-                          <tr className="border-b border-ink-150 dark:border-ink-800 pb-2 text-ink-400 uppercase tracking-widest font-mono text-xs">
-                            <th className="pb-2 font-black">Transaction ID</th>
-                            <th className="pb-2 font-black">Bank Detail</th>
-                            <th className="pb-2 font-black">Withdrawn</th>
-                            <th className="pb-2 font-black">Date</th>
-                            <th className="pb-2 font-black text-right">Status</th>
+                          <tr className="border-b border-ink-150 dark:border-ink-800 pb-2 text-ink-400 tracking-widest font-mono text-xs">
+                            <th className="pb-2 font-bold">Transaction ID</th>
+                            <th className="pb-2 font-bold">Bank Detail</th>
+                            <th className="pb-2 font-bold">Withdrawn</th>
+                            <th className="pb-2 font-bold">Date</th>
+                            <th className="pb-2 font-bold text-right">Status</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-ink-100 dark:divide-ink-800/50">
@@ -1215,7 +1273,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
             <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-[32px] overflow-hidden shadow-sm">
               <div className="p-5 border-b border-ink-100 dark:border-ink-800 flex justify-between items-center">
                 <div>
-                  <h3 className="font-display font-black text-base text-ink-900 dark:text-white">Merchant Escrow Orders</h3>
+                  <h3 className="font-display font-bold text-base text-ink-900 dark:text-white">Merchant Escrow Orders</h3>
                   <p className="text-xs text-ink-400 font-sans mt-0.5">Secure payment tracking, shipments dispatcher, and pin verification portal.</p>
                 </div>
               </div>
@@ -1241,7 +1299,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                             <img src={ord.productImage} alt="" className="w-full h-full object-cover" />
                           </div>
                           <div className="min-w-0">
-                            <span className="font-mono text-xs font-black text-jade-500 tracking-wider uppercase block mb-0.5">{ord.orderNumber}</span>
+                            <span className="font-mono text-xs font-bold text-jade-500 tracking-wider block mb-0.5">{ord.orderNumber}</span>
                             <h4 className="font-display font-bold text-sm text-ink-900 dark:text-white truncate mb-1">{ord.productTitle}</h4>
                             <p className="text-xs text-ink-400 font-sans">
                               Buyer: <strong className="text-ink-700 dark:text-ink-300">{buyer?.fullName}</strong> • City: {ord.deliveryCity}
@@ -1252,11 +1310,11 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                         {/* Amount & Date Block */}
                         <div className="flex sm:gap-6 items-center flex-wrap shrink-0">
                           <div>
-                            <span className="text-ink-400 text-xs uppercase tracking-widest font-mono block">Escrow Paid</span>
-                            <span className="font-mono font-extrabold text-sm text-ink-900 dark:text-white">₦{ord.totalAmount.toLocaleString()}</span>
+                            <span className="text-ink-400 text-xs tracking-widest font-mono block">Escrow Paid</span>
+                            <span className="font-mono font-semibold text-sm text-ink-900 dark:text-white">₦{ord.totalAmount.toLocaleString()}</span>
                           </div>
                           <div>
-                            <span className="text-ink-400 text-xs uppercase tracking-widest font-mono block">Order Date</span>
+                            <span className="text-ink-400 text-xs tracking-widest font-mono block">Order Date</span>
                             <span className="font-mono text-xs text-ink-600 dark:text-ink-400">{new Date(ord.createdAt).toLocaleDateString()}</span>
                           </div>
                         </div>
@@ -1265,7 +1323,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto pt-3 lg:pt-0 border-t lg:border-t-0 border-ink-100 dark:border-ink-800 justify-end">
                           
                           {/* STATUS BADGE */}
-                          <span className={`px-2.5 py-1.5 rounded-xl text-xs font-mono font-black uppercase tracking-wider ${
+                          <span className={`px-2.5 py-1.5 rounded-xl text-xs font-mono font-bold tracking-wider ${
                             ord.status === OrderStatus.PAID_ESCROW ? 'bg-jade-500/10 border border-jade-500/20 text-jade-500' :
                             ord.status === OrderStatus.SHIPPED ? 'bg-jade-500/10 border border-jade-500/20 text-jade-500' :
                             ord.status === OrderStatus.OUT_FOR_DELIVERY ? 'bg-ink-500/10 border border-ink-500/20 text-ink-500' :
@@ -1279,7 +1337,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                           {ord.status === OrderStatus.PAID_ESCROW && (
                             <button
                               onClick={() => setSelectedOrderForShipment(ord)}
-                              className="px-4 py-2 bg-jade-600 hover:bg-jade-700 text-white font-display font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-md"
+                              className="px-4 py-2 bg-jade-600 hover:bg-jade-700 text-white font-display font-semibold text-xs tracking-wider rounded-xl transition-all cursor-pointer shadow-md"
                             >
                               Dispatch Package
                             </button>
@@ -1289,7 +1347,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                           {ord.status === OrderStatus.SHIPPED && (
                             <button
                               onClick={() => handleMarkOutForDelivery(ord.id)}
-                              className="px-4 py-2 bg-ink-500 hover:bg-ink-600 text-white font-display font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-md"
+                              className="px-4 py-2 bg-jade-500 hover:bg-jade-600 text-white font-display font-semibold text-xs tracking-wider rounded-xl transition-all cursor-pointer shadow-md"
                             >
                               Out with Dispatcher
                             </button>
@@ -1303,7 +1361,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                                 setPinError(null);
                                 setPinSuccess(false);
                               }}
-                              className="px-4 py-2 bg-jade-500 hover:bg-jade-600 text-white font-display font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-md flex items-center gap-1"
+                              className="px-4 py-2 bg-jade-500 hover:bg-jade-600 text-white font-display font-semibold text-xs tracking-wider rounded-xl transition-all cursor-pointer shadow-md flex items-center gap-1"
                             >
                               <Shield className="w-3.5 h-3.5" />
                               PIN Handshake
@@ -1343,7 +1401,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                                   />
                                   {nearby.length > 0 && !job?.partnerId && (
                                     <div className="text-xs text-ink-500 dark:text-ink-400 space-y-1">
-                                      <span className="font-bold uppercase tracking-wider text-jade-600">Nearby available riders</span>
+                                      <span className="font-bold tracking-wider text-jade-600">Nearby available riders</span>
                                       {nearby.map((n) => (
                                         <div key={n.partner.id} className="flex justify-between gap-2">
                                           <span>{n.partner.fullName}</span>
@@ -1370,7 +1428,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                           {(ord.status === OrderStatus.PAID_ESCROW || ord.status === OrderStatus.SHIPPED || ord.status === OrderStatus.OUT_FOR_DELIVERY) && (
                             <button
                               onClick={() => setActiveSafeMeetOrderId(activeSafeMeetOrderId === ord.id ? null : ord.id)}
-                              className={`px-3.5 py-2 font-display font-black text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
+                              className={`px-3.5 py-2 font-display font-bold text-xs tracking-wider rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
                                 activeSafeMeetOrderId === ord.id
                                   ? 'bg-jade-600 text-white hover:bg-jade-700'
                                   : 'bg-jade-50 hover:bg-jade-100 text-jade-600 dark:bg-jade-950/20 dark:text-jade-400 dark:hover:bg-jade-950/40'
@@ -1400,11 +1458,11 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                           return (
                             <div className="border-t border-jade-200 dark:border-jade-50/20 p-5 bg-jade-500/[0.02] space-y-4 w-full rounded-b-[32px]">
                               <div className="flex items-center justify-between">
-                                <h4 className="font-display font-black text-xs text-ink-800 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+                                <h4 className="font-display font-bold text-xs text-ink-800 dark:text-white tracking-wider flex items-center gap-1.5">
                                   <Shield className="w-4 h-4 text-jade-500" />
                                   GoodSale SafeMeet™ Merchant Panel
                                 </h4>
-                                <span className="text-xs font-bold text-jade-600 bg-jade-150/50 dark:bg-jade-950/40 px-2 py-0.5 rounded uppercase tracking-wider">
+                                <span className="text-xs font-bold text-jade-600 bg-jade-150/50 dark:bg-jade-950/40 px-2 py-0.5 rounded tracking-wider">
                                   Escrow Meetup Protocol
                                 </span>
                               </div>
@@ -1413,10 +1471,10 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                               <div className="bg-white dark:bg-ink-900 border border-jade-100 dark:border-jade-950 p-4 rounded-2xl space-y-3">
                                 <div className="flex justify-between items-start">
                                   <div>
-                                    <span className="text-[10px] font-mono font-black text-jade-600 bg-jade-100 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                    <span className="text-[10px] font-mono font-bold text-jade-600 bg-jade-100 px-1.5 py-0.5 rounded tracking-wider">
                                       Proposed Location
                                     </span>
-                                    <h5 className="font-black text-ink-850 dark:text-white mt-1 text-xs">{selectedLoc.name}</h5>
+                                    <h5 className="font-bold text-ink-850 dark:text-white mt-1 text-xs">{selectedLoc.name}</h5>
                                     <p className="text-xs text-ink-400 mt-0.5">{selectedLoc.address}</p>
                                   </div>
                                   <div className="text-right text-xs font-mono text-jade-500 font-bold">
@@ -1461,7 +1519,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                                       </p>
                                     )}
                                     {meetup.status === 'COMPLETED' && (
-                                      <p className="text-jade-600 dark:text-jade-400 font-extrabold">
+                                      <p className="text-jade-600 dark:text-jade-400 font-semibold">
                                         Physical meetup verified by both parties! Inspect product. Input buyer delivery PIN to release locked escrow.
                                       </p>
                                     )}
@@ -1478,7 +1536,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                                           toast.success('Meetup scheduled — prepare items for handoff.');
                                           setDb(getDBState()); // Sync
                                         }}
-                                        className="flex-1 py-2 bg-jade-600 hover:bg-jade-700 text-white rounded-xl text-xs font-bold uppercase cursor-pointer"
+                                        className="flex-1 py-2 bg-jade-600 hover:bg-jade-700 text-white rounded-xl text-xs font-bold cursor-pointer"
                                       >
                                         Approve Meetup Invitation
                                       </button>
@@ -1491,7 +1549,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                                             setDb(getDBState());
                                           }
                                         }}
-                                        className="px-4 py-2 bg-ink-500/10 hover:bg-ink-500 text-ink-500 hover:text-white rounded-xl font-bold text-xs cursor-pointer"
+                                        className="px-4 py-2 bg-jade-500/10 hover:bg-jade-500 text-jade-700 hover:text-white dark:text-jade-300 rounded-xl font-bold text-xs cursor-pointer"
                                       >
                                         Decline
                                       </button>
@@ -1508,7 +1566,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                                           toast.success('Your physical arrival is verified!');
                                           setDb(getDBState());
                                         }}
-                                        className={`flex-1 py-2 rounded-xl text-xs font-bold uppercase transition-all ${
+                                        className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
                                           meetup.sellerConfirmedArrival
                                             ? 'bg-jade-100 text-jade-800 dark:bg-jade-950/20 dark:text-jade-400 cursor-not-allowed'
                                             : 'bg-jade-600 hover:bg-jade-700 text-white cursor-pointer'
@@ -1525,7 +1583,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                                             setDb(getDBState());
                                           }
                                         }}
-                                        className="px-4 py-2 bg-ink-500/10 hover:bg-ink-500 text-ink-500 hover:text-white rounded-xl font-bold text-xs cursor-pointer"
+                                        className="px-4 py-2 bg-jade-500/10 hover:bg-jade-500 text-jade-700 hover:text-white dark:text-jade-300 rounded-xl font-bold text-xs cursor-pointer"
                                       >
                                         Cancel Meetup
                                       </button>
@@ -1549,7 +1607,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
                 <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 p-6 rounded-[32px] max-w-sm w-full shadow-2xl relative space-y-4">
                   <div>
-                    <h3 className="font-display font-black text-base text-ink-900 dark:text-white">Dispatch Escrow Item</h3>
+                    <h3 className="font-display font-bold text-base text-ink-900 dark:text-white">Dispatch Escrow Item</h3>
                     <p className="text-xs text-ink-500 mt-1 font-sans">Enter shipping carrier details to update the buyer tracker.</p>
                   </div>
 
@@ -1584,13 +1642,13 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                   <div className="flex gap-2 pt-2">
                     <button
                       onClick={() => setSelectedOrderForShipment(null)}
-                      className="flex-1 py-3 bg-ink-100 hover:bg-ink-200 dark:bg-ink-800 dark:hover:bg-ink-750 text-ink-700 dark:text-ink-300 font-display font-extrabold text-xs uppercase tracking-wider rounded-xl"
+                      className="flex-1 py-3 bg-ink-100 hover:bg-ink-200 dark:bg-ink-800 dark:hover:bg-ink-750 text-ink-700 dark:text-ink-300 font-display font-semibold text-xs tracking-wider rounded-xl"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={() => handleShipOrder(selectedOrderForShipment.id)}
-                      className="flex-1 py-3 bg-jade-600 hover:bg-jade-700 text-white font-display font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md"
+                      className="flex-1 py-3 bg-jade-600 hover:bg-jade-700 text-white font-display font-semibold text-xs tracking-wider rounded-xl shadow-md"
                     >
                       Confirm Dispatch
                     </button>
@@ -1604,8 +1662,8 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
                 <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 p-6 rounded-[32px] max-w-sm w-full shadow-2xl relative space-y-4">
                   <div>
-                    <h3 className="font-display font-black text-base text-ink-900 dark:text-white flex items-center gap-1.5">
-                      <Shield className="w-5.5 h-5.5 text-jade-500" />
+                    <h3 className="font-display font-bold text-base text-ink-900 dark:text-white flex items-center gap-1.5">
+                      <Shield className="w-5 h-5 text-jade-500" />
                       PIN Handshake Release
                     </h3>
                     <p className="text-xs text-ink-500 mt-1 font-sans">
@@ -1618,14 +1676,14 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                       <div className="w-10 h-10 rounded-full bg-jade-500 text-white flex items-center justify-center mx-auto">
                         <Check className="w-6 h-6" />
                       </div>
-                      <p className="text-xs font-bold text-jade-500 uppercase tracking-widest">Verification Success!</p>
+                      <p className="text-xs font-bold text-jade-500 tracking-widest">Verification Success!</p>
                       <p className="text-xs text-ink-400 font-mono">Funds released instantly to your available payout balance.</p>
                     </div>
                   ) : (
                     <div className="space-y-4 text-xs">
                       
                       <div className="p-3 bg-ink-500/5 border border-ink-500/10 rounded-2xl">
-                        <span className="text-xs font-mono text-ink-500 font-bold block mb-0.5 uppercase tracking-widest">Buyer PIN required</span>
+                        <span className="text-xs font-mono text-ink-500 font-bold block mb-0.5 tracking-widest">Buyer PIN required</span>
                         <p className="text-xs text-ink-500 leading-relaxed font-sans">
                           Ask the buyer for their delivery PIN from the order card. The PIN is never shown to sellers.
                         </p>
@@ -1652,13 +1710,13 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                       <div className="flex gap-2">
                         <button
                           onClick={() => setSelectedOrderForPin(null)}
-                          className="flex-1 py-3 bg-ink-100 hover:bg-ink-200 dark:bg-ink-800 dark:hover:bg-ink-750 text-ink-700 dark:text-ink-300 font-display font-extrabold text-xs uppercase tracking-wider rounded-xl"
+                          className="flex-1 py-3 bg-ink-100 hover:bg-ink-200 dark:bg-ink-800 dark:hover:bg-ink-750 text-ink-700 dark:text-ink-300 font-display font-semibold text-xs tracking-wider rounded-xl"
                         >
                           Cancel
                         </button>
                         <button
                           onClick={handlePinHandshake}
-                          className="flex-1 py-3 bg-jade-500 hover:bg-jade-600 text-white font-display font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md"
+                          className="flex-1 py-3 bg-jade-500 hover:bg-jade-600 text-white font-display font-semibold text-xs tracking-wider rounded-xl shadow-md"
                         >
                           Verify PIN
                         </button>
@@ -1679,12 +1737,12 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
           <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-[32px] overflow-hidden shadow-sm">
             <div className="p-5 border-b border-ink-100 dark:border-ink-800 flex justify-between items-center flex-wrap gap-3">
               <div>
-                <h3 className="font-display font-black text-base text-ink-900 dark:text-white">Store Catalog Management</h3>
+                <h3 className="font-display font-bold text-base text-ink-900 dark:text-white">Store Catalog Management</h3>
                 <p className="text-xs text-ink-400 font-sans mt-0.5">Edit pricing, toggle real-time stock levels, and delete stale listings instantly.</p>
               </div>
               <button
                 onClick={() => setActiveTab('create_listing')}
-                className="px-4 py-2.5 bg-jade-500 hover:bg-jade-600 text-white font-display font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md"
+                className="px-4 py-2.5 bg-jade-500 hover:bg-jade-600 text-white font-display font-semibold text-xs tracking-wider rounded-xl transition-all shadow-md"
               >
                 Add Product
               </button>
@@ -1702,8 +1760,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                     {/* Thumbnail Detail Column */}
                     <div className="flex items-center gap-3.5">
                       <div className="w-14 h-14 rounded-2xl bg-ink-100 dark:bg-ink-800 overflow-hidden relative shrink-0 border border-ink-100 dark:border-ink-800">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={p.images[0]} alt="" className="w-full h-full object-cover" />
+                        <SmartImage src={p.images?.[0]} alt={p.title} seed={`listing-${p.id}`} className="h-full w-full" />
                       </div>
                       <div>
                         <h4 className="font-display font-bold text-sm text-ink-950 dark:text-white mb-1 leading-snug">{p.title}</h4>
@@ -1746,7 +1803,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                         ) : (
                           <div className="flex items-center gap-1.5">
                             <div>
-                              <span className="font-mono font-extrabold text-sm block text-ink-950 dark:text-white leading-none">
+                              <span className="font-mono font-semibold text-sm block text-ink-950 dark:text-white leading-none">
                                 ₦{p.price.toLocaleString()}
                               </span>
                               <span className="text-xs text-ink-400">Qty: {p.quantity}</span>
@@ -1781,7 +1838,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                       {/* Delete listing button */}
                       <button
                         onClick={() => handleDeleteProduct(p.id)}
-                        className="p-2.5 bg-ink-100/10 hover:bg-ink-500 hover:text-white text-ink-500 border border-ink-500/20 rounded-xl transition-all cursor-pointer"
+                        className="p-2.5 bg-jade-500/5 hover:bg-jade-500 hover:text-white text-jade-600 dark:text-jade-400 border border-jade-500/20 rounded-xl transition-all cursor-pointer"
                         title="Delete this listing permanently"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -1802,7 +1859,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
             {/* Wizard Header Progress Bar Tracker */}
             <div className="lg:col-span-3 bg-ink-50 dark:bg-ink-800/30 p-5 rounded-3xl border border-ink-200 dark:border-ink-800 flex flex-col md:flex-row justify-between items-center gap-4">
               <div className="flex flex-col">
-                <h3 className="font-display font-black text-sm text-ink-800 dark:text-white flex items-center gap-1.5">
+                <h3 className="font-display font-bold text-sm text-ink-800 dark:text-white flex items-center gap-1.5">
                   <Layers className="w-4 h-4 text-jade-500" />
                   Escrow Listing Creator Wizard
                 </h3>
@@ -1858,7 +1915,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
               {currentListingStep === 1 && (
                 <div className="space-y-4">
                   <div className="border-b border-ink-100 dark:border-ink-800 pb-3">
-                    <h4 className="font-display font-bold text-xs uppercase tracking-wider text-ink-400">Step 1: Product Taxonomy & Cataloging</h4>
+                    <h4 className="font-display font-bold text-xs tracking-wider text-ink-400">Step 1: Product Taxonomy & Cataloging</h4>
                     <p className="text-xs text-ink-400">Classify product taxonomy, establish SKU parameters and catalog metadata.</p>
                   </div>
 
@@ -1956,7 +2013,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
               {currentListingStep === 2 && (
                 <div className="space-y-4">
                   <div className="border-b border-ink-100 dark:border-ink-800 pb-3">
-                    <h4 className="font-display font-bold text-xs uppercase tracking-wider text-ink-400">Step 2: Interactive Multimedia Assets</h4>
+                    <h4 className="font-display font-bold text-xs tracking-wider text-ink-400">Step 2: Interactive Multimedia Assets</h4>
                     <p className="text-xs text-ink-400">Upload 3 to 15 inspection photos. Interactive cropping, rotation & optimization controls provided below.</p>
                   </div>
 
@@ -2004,7 +2061,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                   {/* Photo assets editor */}
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
-                      <label className="text-xs font-bold text-ink-400 uppercase tracking-wider">Asset Catalog ({uploadedImages.length}/15)</label>
+                      <label className="text-xs font-bold text-ink-400 tracking-wider">Asset Catalog ({uploadedImages.length}/15)</label>
                       <span className="text-xs text-jade-500 font-bold bg-jade-500/10 px-2 py-0.5 rounded-full">Minimum 3 Required</span>
                     </div>
 
@@ -2013,17 +2070,17 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                         <div key={idx} className="bg-ink-50 dark:bg-ink-800/40 rounded-2xl p-2.5 border border-ink-200 dark:border-ink-800 flex flex-col justify-between">
                           <div className="relative w-full h-24 bg-ink-200 dark:bg-ink-900 rounded-lg overflow-hidden mb-2 group">
                             <img src={img} alt={`Preview #${idx+1}`} className="w-full h-full object-cover" />
-                            <span className="absolute top-1 left-1 bg-black/60 text-white font-mono text-xs px-1.5 py-0.5 rounded font-black">
+                            <span className="absolute top-1 left-1 bg-black/60 text-white font-mono text-xs px-1.5 py-0.5 rounded font-bold">
                               {idx === 0 ? 'Primary' : `#${idx+1}`}
                             </span>
 
                             {/* Live AI Image Moderation Overlay */}
-                            <div className="absolute inset-x-0 bottom-0 bg-black/75 backdrop-blur-[1px] py-1 px-1.5 flex items-center justify-between text-[10px] font-bold text-white uppercase tracking-wider font-mono">
+                            <div className="absolute inset-x-0 bottom-0 bg-black/75 backdrop-blur-[1px] py-1 px-1.5 flex items-center justify-between text-[10px] font-bold text-white tracking-wider font-mono">
                               <span className="flex items-center gap-1 text-jade-400">
                                 <span className="w-1.5 h-1.5 rounded-full bg-jade-500 animate-pulse shrink-0" />
                                 Safe AI Scan
                               </span>
-                              <span className="text-[10px] text-jade-500 font-extrabold bg-jade-500/10 px-1 py-0.5 rounded">Passed</span>
+                              <span className="text-[10px] text-jade-500 font-semibold bg-jade-500/10 px-1 py-0.5 rounded">Passed</span>
                             </div>
                           </div>
 
@@ -2053,7 +2110,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                             <button
                               type="button"
                               onClick={() => handleRemoveImage(idx)}
-                              className="py-1 px-1 bg-ink-100/10 hover:bg-ink-500 hover:text-white text-ink-500 text-xs rounded flex items-center justify-center gap-1 font-bold cursor-pointer"
+                              className="py-1 px-1 bg-jade-500/5 hover:bg-jade-500 hover:text-white text-jade-600 dark:text-jade-400 text-xs rounded flex items-center justify-center gap-1 font-bold cursor-pointer"
                             >
                               <Trash2 className="w-2.5 h-2.5" /> Delete
                             </button>
@@ -2105,7 +2162,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                         <button
                           type="button"
                           onClick={() => setUploadedVideo(null)}
-                          className="absolute top-2 right-2 p-1.5 bg-black/60 hover:bg-ink-500 rounded-full text-white"
+                          className="absolute top-2 right-2 p-1.5 bg-black/60 hover:bg-jade-500 rounded-full text-white"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -2121,7 +2178,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
               {currentListingStep === 3 && (
                 <div className="space-y-4">
                   <div className="border-b border-ink-100 dark:border-ink-800 pb-3">
-                    <h4 className="font-display font-bold text-xs uppercase tracking-wider text-ink-400">Step 3: Product Description & Valuation</h4>
+                    <h4 className="font-display font-bold text-xs tracking-wider text-ink-400">Step 3: Product Description & Valuation</h4>
                     <p className="text-xs text-ink-400">Detail pricing, condition parameters, inventory ledger count and search index tags.</p>
                   </div>
 
@@ -2221,7 +2278,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
               {currentListingStep === 4 && (
                 <div className="space-y-4">
                   <div className="border-b border-ink-100 dark:border-ink-800 pb-3">
-                    <h4 className="font-display font-bold text-xs uppercase tracking-wider text-ink-400">Step 4: Logistics, Fulfillment & Escrow Parameters</h4>
+                    <h4 className="font-display font-bold text-xs tracking-wider text-ink-400">Step 4: Logistics, Fulfillment & Escrow Parameters</h4>
                     <p className="text-xs text-ink-400">Set weight-based logistics multipliers and escrow inspection bounds.</p>
                   </div>
 
@@ -2330,7 +2387,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                         onChange={(e) => setIsAuction(e.target.checked)}
                         className="w-4 h-4 rounded text-jade-500 border-ink-300 focus:ring-jade-500"
                       />
-                      <span className="text-ink-500 font-extrabold">Enable Live Bidding Auction Event</span>
+                      <span className="text-ink-500 font-semibold">Enable Live Bidding Auction Event</span>
                     </label>
 
                     {isAuction && (
@@ -2491,7 +2548,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
               {currentListingStep === 5 && (
                 <div className="space-y-4">
                   <div className="border-b border-ink-100 dark:border-ink-800 pb-3">
-                    <h4 className="font-display font-bold text-xs uppercase tracking-wider text-ink-400">Step 5: Compliance Review & Publication Gateway</h4>
+                    <h4 className="font-display font-bold text-xs tracking-wider text-ink-400">Step 5: Compliance Review & Publication Gateway</h4>
                     <p className="text-xs text-ink-400">Verify catalog duplicate checks, run AI compliance scans and sign listing block.</p>
                   </div>
 
@@ -2523,13 +2580,13 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                       <div className="bg-white dark:bg-ink-900 p-3.5 rounded-xl border border-jade-500/20 text-xs space-y-2">
                         <div className="flex justify-between items-center">
                           <span className="font-bold text-ink-600 dark:text-ink-300">Trust Safety Index:</span>
-                          <span className="font-mono font-black text-jade-500 bg-jade-500/10 px-2 py-0.5 rounded">
+                          <span className="font-mono font-bold text-jade-500 bg-jade-500/10 px-2 py-0.5 rounded">
                             {aiReport.safetyScan.safetyScore}/100
                           </span>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="font-bold text-ink-600 dark:text-ink-300">Policy Verdict:</span>
-                          <span className="font-black text-white bg-jade-500 px-2 py-0.5 rounded text-xs uppercase tracking-wider font-sans">
+                          <span className="font-bold text-white bg-jade-500 px-2 py-0.5 rounded text-xs tracking-wider font-sans">
                             {aiReport.safetyScan.recommendation}
                           </span>
                         </div>
@@ -2632,7 +2689,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                   ) : (
                     <button
                       type="submit"
-                      className="px-6 py-2.5 bg-jade-500 hover:bg-jade-600 text-white font-sans font-black text-xs rounded-xl transition-all shadow-lg shadow-jade-500/15 cursor-pointer flex items-center gap-1.5"
+                      className="px-6 py-2.5 bg-jade-500 hover:bg-jade-600 text-white font-sans font-bold text-xs rounded-xl transition-all shadow-lg shadow-jade-500/15 cursor-pointer flex items-center gap-1.5"
                     >
                       <Check className="w-4 h-4" /> Sign & Publish Listing
                     </button>
@@ -2644,7 +2701,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
 
             {/* Safety report widget display */}
             <div className="lg:col-span-1 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-[32px] p-5 shadow-sm space-y-4">
-              <h4 className="font-sans font-extrabold text-xs uppercase tracking-wider text-ink-500 dark:text-ink-400">AI Safety Analyzer Report</h4>
+              <h4 className="font-sans font-semibold text-xs tracking-wider text-ink-500 dark:text-ink-400">AI Safety Analyzer Report</h4>
               
               {isAiLoading && (
                 <div className="p-8 text-center text-xs text-ink-400 font-medium">
@@ -2663,14 +2720,14 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
                 <div className="space-y-3 text-xs">
                   <div className="flex justify-between items-center bg-ink-50 dark:bg-ink-800/40 p-2.5 rounded-lg">
                     <span className="font-bold">Trust Safety Score:</span>
-                    <span className={`font-mono font-extrabold px-2 py-0.5 rounded text-sm ${aiReport.safetyScan.safetyScore > 80 ? 'bg-jade-100 text-jade-800 dark:bg-jade-500/10 dark:text-jade-400' : 'bg-ink-100 text-ink-800 dark:bg-ink-500/10'}`}>
+                    <span className={`font-mono font-semibold px-2 py-0.5 rounded text-sm ${aiReport.safetyScan.safetyScore > 80 ? 'bg-jade-100 text-jade-800 dark:bg-jade-500/10 dark:text-jade-400' : 'bg-ink-100 text-ink-800 dark:bg-ink-500/10'}`}>
                       {aiReport.safetyScan.safetyScore}/100
                     </span>
                   </div>
 
                   <div className="bg-ink-50 dark:bg-ink-800/40 p-3 rounded-lg">
                     <span className="font-bold block mb-1">Decision recommendation:</span>
-                    <span className={`font-bold px-2 py-0.5 rounded text-xs uppercase tracking-wider ${aiReport.safetyScan.recommendation === 'APPROVE' ? 'bg-jade-500 text-white' : 'bg-ink-500 text-white'}`}>
+                    <span className={`font-bold px-2 py-0.5 rounded text-xs tracking-wider ${aiReport.safetyScan.recommendation === 'APPROVE' ? 'bg-jade-500 text-white' : 'bg-ink-500 text-white'}`}>
                       {aiReport.safetyScan.recommendation}
                     </span>
                   </div>
@@ -2691,7 +2748,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
           <div className="max-w-2xl mx-auto bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-[32px] p-6 shadow-sm space-y-6">
             <div className="text-center">
               <QrCode className="w-12 h-12 text-jade-500 mx-auto mb-3" />
-              <h3 className="font-sans font-extrabold text-base text-ink-900 dark:text-white">Barcode Auto-Fill Scanner</h3>
+              <h3 className="font-sans font-semibold text-base text-ink-900 dark:text-white">Barcode Auto-Fill Scanner</h3>
               <p className="text-xs text-ink-500 dark:text-ink-400 max-w-sm mx-auto mt-1 leading-relaxed">
                 Enter or click any popular barcode below. GoodSale sends the code to Gemini AI to lookup real commercial catalog specifications.
               </p>
@@ -2699,7 +2756,7 @@ export default function DashboardView({ onOpenAuth }: { onOpenAuth?: () => void 
 
             {/* Quick selector presets */}
             <div className="p-4 bg-ink-50 dark:bg-ink-800/40 rounded-2xl">
-              <span className="text-xs font-bold text-ink-400 uppercase tracking-widest block mb-2 text-center">Presets Barcodes (Click to Test)</span>
+              <span className="text-xs font-bold text-ink-400 tracking-widest block mb-2 text-center">Presets Barcodes (Click to Test)</span>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <button
                   onClick={() => handlePresetScan('194253831814')}

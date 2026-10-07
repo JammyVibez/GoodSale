@@ -161,6 +161,214 @@ export async function deleteAnnouncementById(client: SupabaseClient, id: number)
   if (error) throw error;
 }
 
+// ---------------------------------------------------------------------------
+// Community trust — reactions, calls, reports, service areas (migration 012)
+// ---------------------------------------------------------------------------
+
+/** Toggle an emoji reaction: returns the new state (true = added). */
+export async function toggleMessageReaction(
+  client: SupabaseClient,
+  reaction: { messageId: number; userId: number; emoji: string; add: boolean }
+) {
+  if (reaction.add) {
+    const { error } = await client.from('message_reactions').insert({
+      message_id: reaction.messageId,
+      user_id: reaction.userId,
+      emoji: reaction.emoji,
+    });
+    // A duplicate just means it is already there — not a failure.
+    if (error && error.code !== '23505') throw error;
+    return;
+  }
+  const { error } = await client
+    .from('message_reactions')
+    .delete()
+    .eq('message_id', reaction.messageId)
+    .eq('user_id', reaction.userId)
+    .eq('emoji', reaction.emoji);
+  if (error) throw error;
+}
+
+/** Open a call record (RINGING) and return the persisted row id. */
+export async function insertCall(
+  client: SupabaseClient,
+  call: {
+    roomId: number;
+    callerId: number;
+    calleeId: number;
+    kind: 'AUDIO' | 'VIDEO';
+  }
+) {
+  const { data, error } = await client
+    .from('calls')
+    .insert({
+      room_id: call.roomId,
+      caller_id: call.callerId,
+      callee_id: call.calleeId,
+      kind: call.kind,
+      status: 'RINGING',
+    })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return Number((data as { id: number }).id);
+}
+
+/** Move a call through its lifecycle (answered, ended, declined, missed). */
+export async function updateCall(
+  client: SupabaseClient,
+  callId: number,
+  patch: {
+    status?: string;
+    answered_at?: string | null;
+    ended_at?: string | null;
+    duration_seconds?: number;
+  }
+) {
+  const { error } = await client.from('calls').update(patch).eq('id', callId);
+  if (error) throw error;
+}
+
+/** File a report against a user, product, message or business. */
+export async function insertReport(
+  client: SupabaseClient,
+  report: {
+    reporterId: number;
+    targetType: string;
+    targetId: number;
+    targetLabel: string;
+    reason: string;
+    details: string;
+    evidenceUrl?: string;
+  }
+) {
+  const { error } = await client.from('reports').insert({
+    reporter_id: report.reporterId,
+    target_type: report.targetType,
+    target_id: report.targetId,
+    target_label: report.targetLabel,
+    reason: report.reason,
+    details: report.details,
+    evidence_url: report.evidenceUrl || '',
+    status: 'OPEN',
+  });
+  if (error) throw error;
+}
+
+/** Admin triage: move a report's status and record notes. */
+export async function updateReport(
+  client: SupabaseClient,
+  id: number,
+  patch: { status?: string; admin_notes?: string; resolved_by?: number | null; resolved_at?: string | null }
+) {
+  const { error } = await client.from('reports').update(patch).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteReportById(client: SupabaseClient, id: number) {
+  const { error } = await client.from('reports').delete().eq('id', id);
+  if (error) throw error;
+}
+
+/** Admin adds or re-activates a state/city GoodSale operates in. */
+export async function upsertServiceArea(
+  client: SupabaseClient,
+  area: { state: string; city: string; salesEnabled: boolean; deliveryEnabled: boolean }
+) {
+  const { error } = await client.from('service_areas').upsert(
+    {
+      state: area.state,
+      city: area.city,
+      sales_enabled: area.salesEnabled,
+      delivery_enabled: area.deliveryEnabled,
+    },
+    { onConflict: 'state,city' }
+  );
+  if (error) throw error;
+}
+
+export async function updateServiceAreaFlags(
+  client: SupabaseClient,
+  id: number,
+  patch: { sales_enabled?: boolean; delivery_enabled?: boolean }
+) {
+  const { error } = await client.from('service_areas').update(patch).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteServiceAreaById(client: SupabaseClient, id: number) {
+  const { error } = await client.from('service_areas').delete().eq('id', id);
+  if (error) throw error;
+}
+
+/**
+ * A seller/business verification application with every uploaded document so
+ * an admin can review the whole file before approving.
+ */
+export async function insertVerificationApplication(
+  client: SupabaseClient,
+  app: {
+    userId: number;
+    applicationKind: string;
+    fullName: string;
+    documentType: string;
+    documentNumber: string;
+    documentImageUrl: string;
+    selfieImageUrl: string;
+    proofOfAddressUrl: string;
+    documents: { label: string; url: string; kind?: string }[];
+    businessName?: string;
+    businessAddress?: string;
+  }
+) {
+  const { error } = await client.from('identity_verifications').insert({
+    user_id: app.userId,
+    application_kind: app.applicationKind,
+    full_name: app.fullName,
+    document_type: app.documentType,
+    document_number: app.documentNumber,
+    document_image_url: app.documentImageUrl,
+    selfie_image_url: app.selfieImageUrl,
+    proof_of_address_url: app.proofOfAddressUrl,
+    documents: app.documents,
+    business_name: app.businessName || '',
+    business_address: app.businessAddress || '',
+    status: 'PENDING',
+  });
+  if (error) throw error;
+}
+
+/** Admin decision on an application — records reviewer, reason and timestamp. */
+export async function updateVerificationReview(
+  client: SupabaseClient,
+  id: number,
+  patch: {
+    status: string;
+    admin_notes?: string;
+    rejection_reason?: string;
+    reviewed_by: number;
+    reviewed_at: string;
+  }
+) {
+  const { error } = await client.from('identity_verifications').update(patch).eq('id', id);
+  if (error) throw error;
+}
+
+/** Admin decision on a rider — records reviewer, reason and timestamp. */
+export async function updateDeliveryPartnerReview(
+  client: SupabaseClient,
+  id: number,
+  patch: {
+    status: string;
+    rejection_reason?: string;
+    reviewed_by: number;
+    reviewed_at: string;
+  }
+) {
+  const { error } = await client.from('delivery_partners').update(patch).eq('id', id);
+  if (error) throw error;
+}
+
 /** Persist live stats/management changes back to an existing ad row. */
 export async function updateSponsoredAd(
   client: SupabaseClient,
