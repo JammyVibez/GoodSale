@@ -40,8 +40,9 @@ const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
   {
-    key: 'Permissions-Policy',
-    value: 'camera=(self), microphone=(), geolocation=(self), payment=(self)',
+    key: 'Permissions-Policy',      // Camera and microphone are both required for the in-chat WebRTC calls,
+      // so both are scoped to this origin rather than denied outright.
+      value: 'camera=(self), microphone=(self), geolocation=(self), payment=(self)',
   },
   {
     key: 'Content-Security-Policy',
