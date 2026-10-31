@@ -1,19 +1,5 @@
 import type { Metadata } from 'next';
-import { Inter, Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
-
-const inter = Inter({
-  subsets: ['latin'],
-  variable: '--font-sans',
-});
-
-// Softer, friendlier display face than a techy geometric sans — reads premium
-// and commerce-focused rather than developer-tooling.
-const plusJakarta = Plus_Jakarta_Sans({
-  subsets: ['latin'],
-  variable: '--font-display',
-  weight: ['500', '600', '700', '800'],
-});
 
 const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://goodsale.ng';
 
@@ -58,7 +44,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${inter.variable} ${plusJakarta.variable}`}>
+    <html lang="en">
       <head>
         {/* Pre-paint theme: apply the saved mode before first render to avoid a flash */}
         <script

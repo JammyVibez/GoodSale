@@ -6,7 +6,8 @@ import {
   Search, ShoppingCart, Bell, User as UserIcon, Shield, RefreshCw, 
   Award, Store, Sun, Moon, Laptop, LogIn, CheckCircle, Sparkles,
   X, Gavel, Package, Eye, EyeOff, Trash, MessageSquare, Truck, DollarSign,
-  Wallet, ChevronDown, Settings as SettingsIcon, LogOut, LayoutGrid, BadgeCheck
+  Wallet, ChevronDown, Settings as SettingsIcon, LogOut, LayoutGrid, BadgeCheck,
+  HelpCircle, Menu, ShieldCheck
 } from 'lucide-react';
 import { UserRole, dbOperations, useDBState } from '../lib/store';
 import Logo from './LogoIcon';
@@ -167,6 +168,413 @@ export default function Header({
     }
     setShowNotifications(false);
   };
+
+  const [landingDropdown, setLandingDropdown] = useState<string | null>(null);
+  const [landingMobileOpen, setLandingMobileOpen] = useState(false);
+  const [landingSearchOpen, setLandingSearchOpen] = useState(false);
+
+  if (currentView === 'landing') {
+    return (
+      <header className="sticky top-0 z-50 w-full font-sans shadow-md">
+        {/* 1. Top Notice Bar */}
+        <div className="bg-[#021A12] border-b border-emerald-950/60 text-xs py-2 px-4 sm:px-6 lg:px-8 text-gray-300">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-[#F5A623] shrink-0" />
+              <span className="font-medium text-gray-200 truncate">
+                Shop. Sell. Grow. — A smarter way to trade in Nigeria.
+              </span>
+            </div>
+            <div className="hidden sm:flex items-center gap-4 text-xs text-gray-400 shrink-0">
+              <button 
+                onClick={() => onNavigate('settings')} 
+                className="hover:text-white transition-colors flex items-center gap-1 cursor-pointer"
+              >
+                <HelpCircle className="w-3.5 h-3.5 text-gray-400" /> Help
+              </button>
+              <span className="text-emerald-900">|</span>
+              <button 
+                onClick={() => onNavigate('verification')} 
+                className="hover:text-white transition-colors flex items-center gap-1 cursor-pointer"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-gray-400" /> Trust &amp; Safety
+              </button>
+              <span className="text-emerald-900">|</span>
+              <button 
+                onClick={() => onNavigate('dispatch')} 
+                className="hover:text-white transition-colors flex items-center gap-1 cursor-pointer"
+              >
+                <Package className="w-3.5 h-3.5 text-gray-400" /> Track Order
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* 2. Main Navigation Bar */}
+        <nav className="bg-[#022118] border-b border-emerald-900/40 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-7xl mx-auto flex items-center justify-between h-18">
+            {/* Logo */}
+            <div 
+              onClick={() => onNavigate('landing')} 
+              className="flex items-center gap-2 cursor-pointer select-none shrink-0"
+            >
+              <svg width="34" height="34" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 14C12 9.58172 15.5817 6 20 6C24.4183 6 28 9.58172 28 14" stroke="#102019" strokeWidth="2.5" strokeLinecap="round" />
+                <rect x="6" y="12" width="28" height="24" rx="6" fill="#F5A623" />
+                <path d="M13 22C15.5 26 24.5 26 27 22" stroke="#102019" strokeWidth="2.5" strokeLinecap="round" />
+              </svg>
+              <span className="font-extrabold text-2xl tracking-tight text-white">
+                Good<span className="text-[#F5A623]">Sale</span>
+              </span>
+            </div>
+
+            {/* Desktop Navigation Links */}
+            <div className="hidden lg:flex items-center gap-7 text-sm font-medium text-gray-200">
+              <button 
+                onClick={() => onNavigate('landing')} 
+                className="text-white font-semibold relative py-2 border-b-2 border-[#F5A623] cursor-pointer"
+              >
+                Home
+              </button>
+
+              {/* Shop Dropdown */}
+              <div 
+                className="relative" 
+                onMouseLeave={() => setLandingDropdown(null)}
+              >
+                <button 
+                  onMouseEnter={() => setLandingDropdown('shop')}
+                  onClick={() => onNavigate('marketplace')}
+                  className="flex items-center gap-1 hover:text-white transition-colors py-2 cursor-pointer"
+                >
+                  Shop <ChevronDown className="w-3.5 h-3.5 opacity-80" />
+                </button>
+                {landingDropdown === 'shop' && (
+                  <div className="absolute left-0 top-full pt-1 z-50 w-56 animate-fade-in">
+                    <div className="bg-[#021a12] border border-emerald-900/60 rounded-2xl shadow-2xl p-2 text-xs">
+                      <button 
+                        onClick={() => { setLandingDropdown(null); onNavigate('marketplace'); }} 
+                        className="w-full text-left px-3 py-2 rounded-xl text-gray-200 hover:bg-emerald-900/40 hover:text-white font-semibold flex items-center justify-between"
+                      >
+                        All Marketplace Items <span className="text-[10px] text-emerald-400">Explore →</span>
+                      </button>
+                      <button 
+                        onClick={() => { setLandingDropdown(null); onNavigate('marketplace'); }} 
+                        className="w-full text-left px-3 py-2 rounded-xl text-gray-300 hover:bg-emerald-900/40 hover:text-white"
+                      >
+                        📱 Phones &amp; Tablets
+                      </button>
+                      <button 
+                        onClick={() => { setLandingDropdown(null); onNavigate('marketplace'); }} 
+                        className="w-full text-left px-3 py-2 rounded-xl text-gray-300 hover:bg-emerald-900/40 hover:text-white"
+                      >
+                        💻 Electronics &amp; Laptops
+                      </button>
+                      <button 
+                        onClick={() => { setLandingDropdown(null); onNavigate('marketplace'); }} 
+                        className="w-full text-left px-3 py-2 rounded-xl text-gray-300 hover:bg-emerald-900/40 hover:text-white"
+                      >
+                        👗 Fashion &amp; Beauty
+                      </button>
+                      <button 
+                        onClick={() => { setLandingDropdown(null); onNavigate('marketplace'); }} 
+                        className="w-full text-left px-3 py-2 rounded-xl text-gray-300 hover:bg-emerald-900/40 hover:text-white"
+                      >
+                        🛋️ Home &amp; Living
+                      </button>
+                      <button 
+                        onClick={() => { setLandingDropdown(null); onNavigate('marketplace'); }} 
+                        className="w-full text-left px-3 py-2 rounded-xl text-gray-300 hover:bg-emerald-900/40 hover:text-white"
+                      >
+                        🚗 Cars &amp; Bikes
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Sell Dropdown */}
+              <div 
+                className="relative" 
+                onMouseLeave={() => setLandingDropdown(null)}
+              >
+                <button 
+                  onMouseEnter={() => setLandingDropdown('sell')}
+                  onClick={() => onNavigate(user ? 'dashboard' : 'landing')}
+                  className="flex items-center gap-1 hover:text-white transition-colors py-2 cursor-pointer"
+                >
+                  Sell <ChevronDown className="w-3.5 h-3.5 opacity-80" />
+                </button>
+                {landingDropdown === 'sell' && (
+                  <div className="absolute left-0 top-full pt-1 z-50 w-52 animate-fade-in">
+                    <div className="bg-[#021a12] border border-emerald-900/60 rounded-2xl shadow-2xl p-2 text-xs">
+                      <button 
+                        onClick={() => { setLandingDropdown(null); if (user) onNavigate('dashboard'); else onOpenAuth?.('register'); }} 
+                        className="w-full text-left px-3 py-2 rounded-xl text-gray-200 hover:bg-emerald-900/40 hover:text-white font-semibold"
+                      >
+                        Start Selling Today
+                      </button>
+                      <button 
+                        onClick={() => { setLandingDropdown(null); onNavigate('dashboard'); }} 
+                        className="w-full text-left px-3 py-2 rounded-xl text-gray-300 hover:bg-emerald-900/40 hover:text-white"
+                      >
+                        Merchant Dashboard
+                      </button>
+                      <button 
+                        onClick={() => { setLandingDropdown(null); onNavigate('verification'); }} 
+                        className="w-full text-left px-3 py-2 rounded-xl text-gray-300 hover:bg-emerald-900/40 hover:text-white"
+                      >
+                        Get Verified Badge
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Deals with Hot Badge */}
+              <button 
+                onClick={() => {
+                  const el = document.getElementById('hot-deals');
+                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  else onNavigate('marketplace');
+                }} 
+                className="flex items-center gap-1 hover:text-white transition-colors py-2 cursor-pointer"
+              >
+                Deals 
+                <span className="bg-[#10B981] text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full leading-none">
+                  Hot
+                </span>
+              </button>
+
+              {/* Categories Dropdown */}
+              <div 
+                className="relative" 
+                onMouseLeave={() => setLandingDropdown(null)}
+              >
+                <button 
+                  onMouseEnter={() => setLandingDropdown('categories')}
+                  onClick={() => onNavigate('marketplace')}
+                  className="flex items-center gap-1 hover:text-white transition-colors py-2 cursor-pointer"
+                >
+                  Categories <ChevronDown className="w-3.5 h-3.5 opacity-80" />
+                </button>
+                {landingDropdown === 'categories' && (
+                  <div className="absolute left-0 top-full pt-1 z-50 w-60 animate-fade-in">
+                    <div className="bg-[#021a12] border border-emerald-900/60 rounded-2xl shadow-2xl p-2 text-xs grid grid-cols-2 gap-1">
+                      {[
+                        'Phones & Tablets', 'Electronics', 'Fashion', 'Home & Living',
+                        'Appliances', 'Cars & Bikes', 'Sports', 'Beauty'
+                      ].map(cat => (
+                        <button
+                          key={cat}
+                          onClick={() => { setLandingDropdown(null); onNavigate('marketplace'); }}
+                          className="text-left px-2.5 py-1.5 rounded-lg text-gray-300 hover:bg-emerald-900/40 hover:text-white truncate"
+                        >
+                          {cat}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* More Dropdown */}
+              <div 
+                className="relative" 
+                onMouseLeave={() => setLandingDropdown(null)}
+              >
+                <button 
+                  onMouseEnter={() => setLandingDropdown('more')}
+                  className="flex items-center gap-1 hover:text-white transition-colors py-2 cursor-pointer"
+                >
+                  More <ChevronDown className="w-3.5 h-3.5 opacity-80" />
+                </button>
+                {landingDropdown === 'more' && (
+                  <div className="absolute left-0 top-full pt-1 z-50 w-52 animate-fade-in">
+                    <div className="bg-[#021a12] border border-emerald-900/60 rounded-2xl shadow-2xl p-2 text-xs">
+                      <button 
+                        onClick={() => { setLandingDropdown(null); onNavigate('settings'); }} 
+                        className="w-full text-left px-3 py-2 rounded-xl text-gray-300 hover:bg-emerald-900/40 hover:text-white"
+                      >
+                        🛡️ Escrow Protection
+                      </button>
+                      <button 
+                        onClick={() => { setLandingDropdown(null); onNavigate('dispatch'); }} 
+                        className="w-full text-left px-3 py-2 rounded-xl text-gray-300 hover:bg-emerald-900/40 hover:text-white"
+                      >
+                        🚚 GoodDispatch Tracking
+                      </button>
+                      <button 
+                        onClick={() => { setLandingDropdown(null); onNavigate('verification'); }} 
+                        className="w-full text-left px-3 py-2 rounded-xl text-gray-300 hover:bg-emerald-900/40 hover:text-white"
+                      >
+                        🤝 SafeMeet™ Locations
+                      </button>
+                      <button 
+                        onClick={() => { setLandingDropdown(null); onNavigate('settings'); }} 
+                        className="w-full text-left px-3 py-2 rounded-xl text-gray-300 hover:bg-emerald-900/40 hover:text-white"
+                      >
+                        💬 24/7 Support Desk
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right Action Controls */}
+            <div className="flex items-center gap-3">
+              {/* Search Toggle Button */}
+              <button 
+                onClick={() => setLandingSearchOpen(!landingSearchOpen)} 
+                className="p-2 text-gray-300 hover:text-white rounded-full hover:bg-white/5 transition-colors cursor-pointer"
+                title="Search GoodSale"
+              >
+                <Search className="w-5 h-5" />
+              </button>
+
+              {/* Shopping Cart Button */}
+              <button 
+                onClick={() => onNavigate('cart')} 
+                className="relative p-2 text-gray-300 hover:text-white rounded-full hover:bg-white/5 transition-colors cursor-pointer"
+                title="Your Cart"
+              >
+                <ShoppingCart className="w-5 h-5" />
+                <span className="absolute -top-0.5 -right-0.5 bg-[#F5A623] text-black font-extrabold text-[10px] w-4 h-4 rounded-full flex items-center justify-center shadow-sm">
+                  {cartCount}
+                </span>
+              </button>
+
+              {/* Login / Sign Up */}
+              {user ? (
+                <button 
+                  onClick={() => onNavigate('buyer-profile')} 
+                  className="bg-[#F5A623] hover:bg-[#e0981b] text-ink-950 font-bold px-4 py-2 rounded-full text-xs sm:text-sm transition-all shadow-md active:scale-95 cursor-pointer"
+                >
+                  {user.fullName ? user.fullName.split(' ')[0] : 'My Account'}
+                </button>
+              ) : (
+                <button 
+                  onClick={() => onOpenAuth?.('login')} 
+                  className="bg-[#F5A623] hover:bg-[#e0981b] text-ink-950 font-bold px-5 py-2 rounded-full text-xs sm:text-sm transition-all shadow-md active:scale-95 cursor-pointer"
+                >
+                  Login / Sign Up
+                </button>
+              )}
+
+              {/* Mobile Hamburger Menu Button */}
+              <button 
+                onClick={() => setLandingMobileOpen(!landingMobileOpen)} 
+                className="lg:hidden p-2 text-gray-300 hover:text-white rounded-lg hover:bg-white/5 cursor-pointer"
+                aria-label="Toggle menu"
+              >
+                {landingMobileOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Collapsible Search Bar Overlay */}
+          {landingSearchOpen && (
+            <div className="pb-4 pt-1 animate-slide-in">
+              <div className="relative max-w-xl mx-auto">
+                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search products, phones, cars, electronics..."
+                  value={searchQuery}
+                  onChange={(e) => onSearchChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      onNavigate('marketplace');
+                      setLandingSearchOpen(false);
+                    }
+                  }}
+                  autoFocus
+                  className="w-full pl-10 pr-24 py-2.5 rounded-full bg-[#011a12] border border-emerald-800 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#F5A623]"
+                />
+                <button
+                  onClick={() => {
+                    onNavigate('marketplace');
+                    setLandingSearchOpen(false);
+                  }}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-[#F5A623] text-black font-bold text-xs px-3.5 py-1.5 rounded-full hover:bg-[#e0981b]"
+                >
+                  Search
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Mobile Drawer Menu */}
+          {landingMobileOpen && (
+            <div className="lg:hidden py-4 border-t border-emerald-900/40 text-sm animate-slide-in text-gray-200 space-y-3">
+              <div className="px-2">
+                <button 
+                  onClick={() => { setLandingMobileOpen(false); onNavigate('landing'); }} 
+                  className="w-full text-left py-2 font-semibold text-white flex items-center justify-between border-b border-emerald-900/30"
+                >
+                  <span>Home</span> <span className="text-[#F5A623]">●</span>
+                </button>
+                <button 
+                  onClick={() => { setLandingMobileOpen(false); onNavigate('marketplace'); }} 
+                  className="w-full text-left py-2 text-gray-200 hover:text-white flex items-center justify-between border-b border-emerald-900/30"
+                >
+                  <span>Browse Shop &amp; Categories</span> <span>→</span>
+                </button>
+                <button 
+                  onClick={() => { 
+                    setLandingMobileOpen(false); 
+                    const el = document.getElementById('hot-deals');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                    else onNavigate('marketplace');
+                  }} 
+                  className="w-full text-left py-2 text-gray-200 hover:text-white flex items-center justify-between border-b border-emerald-900/30"
+                >
+                  <span>Hot Deals 🔥</span> <span className="bg-[#10B981] text-white text-[10px] font-bold px-2 py-0.5 rounded-full">Save Big</span>
+                </button>
+                <button 
+                  onClick={() => { setLandingMobileOpen(false); if (user) onNavigate('dashboard'); else onOpenAuth?.('register'); }} 
+                  className="w-full text-left py-2 text-gray-200 hover:text-white flex items-center justify-between border-b border-emerald-900/30"
+                >
+                  <span>Start Selling on GoodSale</span> <span className="text-[#F5A623] font-semibold">Join Free</span>
+                </button>
+                <button 
+                  onClick={() => { setLandingMobileOpen(false); onNavigate('verification'); }} 
+                  className="w-full text-left py-2 text-gray-200 hover:text-white flex items-center justify-between border-b border-emerald-900/30"
+                >
+                  <span>Trust &amp; Buyer Protection</span> <span>🛡️</span>
+                </button>
+                <button 
+                  onClick={() => { setLandingMobileOpen(false); onNavigate('dispatch'); }} 
+                  className="w-full text-left py-2 text-gray-200 hover:text-white flex items-center justify-between"
+                >
+                  <span>Track Courier Delivery</span> <span>🚚</span>
+                </button>
+              </div>
+
+              <div className="pt-2 px-2">
+                {user ? (
+                  <button 
+                    onClick={() => { setLandingMobileOpen(false); onNavigate('buyer-profile'); }}
+                    className="w-full bg-[#F5A623] text-black font-bold py-2.5 rounded-xl text-center shadow-md"
+                  >
+                    Go to My Account ({user.fullName ? user.fullName.split(' ')[0] : 'Profile'})
+                  </button>
+                ) : (
+                  <button 
+                    onClick={() => { setLandingMobileOpen(false); onOpenAuth?.('login'); }}
+                    className="w-full bg-[#F5A623] text-black font-bold py-2.5 rounded-xl text-center shadow-md"
+                  >
+                    Login / Sign Up
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </nav>
+      </header>
+    );
+  }
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-ink-200 dark:border-ink-800 bg-white/95 dark:bg-ink-900/95 backdrop-blur-md transition-colors duration-300">

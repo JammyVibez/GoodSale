@@ -261,7 +261,7 @@ Deliver a highly tailored response containing:
 3. "filterTags": An array of 2-4 lowercase search hashtags (e.g. "iphone", "gadgets", "tech") to refine the search.`;
 
         const response = await client.models.generateContent({
-          model: "gemini-3.5-flash",
+          model: "gemini-2.5-flash",
           contents: prompt,
           config: {
             responseMimeType: "application/json",
@@ -318,7 +318,7 @@ Return the metadata as a JSON object with:
 If the barcode is unfamiliar, make up a realistic product of high quality fitting a standard UPC format.`;
 
         const response = await client.models.generateContent({
-          model: "gemini-3.5-flash",
+          model: "gemini-2.5-flash",
           contents: prompt,
           config: {
             responseMimeType: "application/json",
@@ -384,7 +384,7 @@ Provide a safety report JSON with:
 3. "feedback": a helpful explanation or constructive tip explaining the compliance assessment for the seller.`;
 
         const response = await client.models.generateContent({
-          model: "gemini-3.5-flash",
+          model: "gemini-2.5-flash",
           contents: prompt,
           config: {
             responseMimeType: "application/json",
@@ -452,7 +452,7 @@ Evaluate their conversion stats and provide a highly motivating, strategic growt
 4. "organicBoostChance": string - explaining the importance of verifying their ID for the Gold Badge or upgrading to Business Subscriptions to increase traffic.`;
 
         const response = await client.models.generateContent({
-          model: "gemini-3.5-flash",
+          model: "gemini-2.5-flash",
           contents: prompt,
           config: {
             responseMimeType: "application/json",
@@ -513,7 +513,7 @@ Provide a safety tip JSON with:
 3. "threatLevel": One of "LOW", "MEDIUM", or "HIGH" depending on how risky this transaction category is typically.`;
 
         const response = await client.models.generateContent({
-          model: "gemini-3.5-flash",
+          model: "gemini-2.5-flash",
           contents: prompt,
           config: {
             responseMimeType: "application/json",

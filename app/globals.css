@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap");
 @import "tailwindcss";
 
 /* ═══════════════════════════════════════════════════════════════
@@ -7,10 +8,10 @@
    Everything else is white or black. No other hues.
    ═══════════════════════════════════════════════════════════════ */
 @theme static {
-  --font-sans: var(--font-sans), system-ui, -apple-system, sans-serif;
-  --font-display: var(--font-display), var(--font-sans), sans-serif;
+  --font-sans: 'Inter', var(--font-sans, system-ui), -apple-system, sans-serif;
+  --font-display: 'Plus Jakarta Sans', var(--font-display, var(--font-sans)), sans-serif;
   /* Numbers and labels render in the same clean sans — no terminal mono look. */
-  --font-mono: var(--font-sans), system-ui, sans-serif;
+  --font-mono: var(--font-sans, system-ui), sans-serif;
 
   /* ── jade: the single green hue (H≈150) ── */
   --color-jade-50: #edfcf3;
