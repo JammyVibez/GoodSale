@@ -27,6 +27,10 @@ export async function insertBid(
   if (error) throw error;
 }
 
+/**
+ * Insert a review and return the real DB id so the optimistic local row can be
+ * re-keyed (replies and helpful votes must not point at a temporary id).
+ */
 export async function insertReview(
   client: SupabaseClient,
   review: {
@@ -37,17 +41,50 @@ export async function insertReview(
     rating: number;
     comment: string;
   }
-) {
-  const { error } = await client.from('reviews').insert({
-    order_id: review.orderId ?? null,
-    product_id: review.productId ?? null,
-    reviewer_id: review.reviewerId,
-    reviewee_id: review.revieweeId ?? null,
-    rating: review.rating,
-    comment: review.comment,
-    is_helpful_votes: 0,
-  });
+): Promise<number | undefined> {
+  const { data, error } = await client
+    .from('reviews')
+    .insert({
+      order_id: review.orderId ?? null,
+      product_id: review.productId ?? null,
+      reviewer_id: review.reviewerId,
+      reviewee_id: review.revieweeId ?? null,
+      rating: review.rating,
+      comment: review.comment,
+      is_helpful_votes: 0,
+    })
+    .select('id')
+    .single();
   if (error) throw error;
+  return (data as { id?: number } | null)?.id;
+}
+
+/** Nested reply under a review, authored by a buyer, seller or admin. */
+export async function insertReviewReply(
+  client: SupabaseClient,
+  reply: {
+    reviewId: number;
+    authorId: number;
+    authorName: string;
+    authorPhoto: string;
+    authorRole: string;
+    comment: string;
+  }
+): Promise<number | undefined> {
+  const { data, error } = await client
+    .from('review_replies')
+    .insert({
+      review_id: reply.reviewId,
+      author_id: reply.authorId,
+      author_name: reply.authorName,
+      author_photo: reply.authorPhoto,
+      author_role: reply.authorRole,
+      comment: reply.comment,
+    })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return (data as { id?: number } | null)?.id;
 }
 
 export async function upsertSafeMeetMeetup(
@@ -290,7 +327,7 @@ export async function upsertServiceArea(
 export async function updateServiceAreaFlags(
   client: SupabaseClient,
   id: number,
-  patch: { sales_enabled?: boolean; delivery_enabled?: boolean }
+  patch: { state?: string; city?: string; sales_enabled?: boolean; delivery_enabled?: boolean }
 ) {
   const { error } = await client.from('service_areas').update(patch).eq('id', id);
   if (error) throw error;

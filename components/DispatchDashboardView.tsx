@@ -4,7 +4,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Truck, Shield, MapPin, Navigation, Compass, AlertCircle, CheckCircle2, 
-  DollarSign, Clock, List, FileText, UserCheck, Plus, Check, Map, Eye,
+  DollarSign, Clock, List, FileText, UserCheck, Check, Map, Eye,
   RefreshCw, TrendingUp, Key, Lock, Phone, User, Star, ChevronRight,
   Camera, CreditCard, Bike
 } from 'lucide-react';
@@ -45,10 +45,11 @@ export default function DispatchDashboardView() {
   
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState(false);
+  const [uploadingDoc, setUploadingDoc] = useState<'selfie' | 'license' | 'vehicle' | null>(null);
 
   // Active tracking state
-  const [simulatedJob, setSimulatedJob] = useState<DeliveryJob | null>(null);
-  const [simulationActive, setSimulationActive] = useState(false);
+  const [activeJob, setActiveJob] = useState<DeliveryJob | null>(null);
+  const [gpsBroadcasting, setGpsBroadcasting] = useState(false);
   const [pinCode, setPinCode] = useState('');
   const [pinError, setPinError] = useState<string | null>(null);
   const [pinSuccess, setPinSuccess] = useState(false);
@@ -61,9 +62,9 @@ export default function DispatchDashboardView() {
     highAccuracy: true,
   });
 
-  const mapLat = liveGps.coords?.lat ?? simulatedJob?.currentLat ?? 6.5244;
-  const mapLng = liveGps.coords?.lng ?? simulatedJob?.currentLng ?? 3.3792;
-  const simSpeed = simulatedJob?.currentSpeed ?? (liveGps.watching ? 25 : 0);
+  const mapLat = liveGps.coords?.lat ?? activeJob?.currentLat ?? 6.5244;
+  const mapLng = liveGps.coords?.lng ?? activeJob?.currentLng ?? 3.3792;
+  const currentSpeed = activeJob?.currentSpeed ?? (liveGps.watching ? 25 : 0);
 
   // GoodDispatch Safety & SOS states
   const [sosActive, setSosActive] = useState(false);
@@ -88,10 +89,10 @@ export default function DispatchDashboardView() {
   useEffect(() => {
     if (courier) {
       if (courier.status === 'APPROVED') {
-        const activeJob = db.deliveryJobs.find(j => j.partnerId === courier.id && j.status !== DeliveryJobStatus.COMPLETED);
-        if (activeJob) {
+        const activeJobRecord = db.deliveryJobs.find(j => j.partnerId === courier.id && j.status !== DeliveryJobStatus.COMPLETED);
+        if (activeJobRecord) {
           setActiveSubTab('active_jobs');
-          setSimulatedJob(activeJob);
+          setActiveJob(activeJobRecord);
         } else {
           setActiveSubTab('marketplace');
         }
@@ -149,6 +150,26 @@ export default function DispatchDashboardView() {
     }
   };
 
+  // Real document uploads for rider onboarding (stored in the private bucket).
+  const handleDocUpload = async (
+    kind: 'selfie' | 'license' | 'vehicle',
+    file: File
+  ) => {
+    setFormError(null);
+    setUploadingDoc(kind);
+    try {
+      const { uploadMedia } = await import('@/lib/upload');
+      const url = await uploadMedia(file, 'government-ids');
+      if (kind === 'selfie') setSelfieUrl(url);
+      else if (kind === 'license') setLicenseUrl(url);
+      else setPhotoUrl(url);
+    } catch {
+      setFormError('Document upload failed. Please check the file and try again.');
+    } finally {
+      setUploadingDoc(null);
+    }
+  };
+
   // Toggle Driver Active Availability Status
   const toggleAvailability = () => {
     if (!user || !courier) return;
@@ -171,21 +192,29 @@ export default function DispatchDashboardView() {
     }
     const updatedJob = dbOperations.acceptDeliveryJob(jobId, courier.id);
     if (updatedJob) {
-      setSimulatedJob(updatedJob);
+      setActiveJob(updatedJob);
       setActiveSubTab('active_jobs');
       dbOperations.addAuditLog(user?.id || 0, 'ACCEPT_DELIVERY_JOB', 'deliveryJobs', jobId, `Courier accepted delivery request`);
     }
   };
 
-  // Publish live GPS while job is in transit / picked up
+  // Stream the rider's real device GPS to the buyer + seller while the job is moving.
   useEffect(() => {
-    if (!simulationActive || !simulatedJob || !liveGps.coords) return;
+    if (!activeJob || !liveGps.coords) return;
+    const moving =
+      activeJob.status === DeliveryJobStatus.PICKED_UP ||
+      activeJob.status === DeliveryJobStatus.IN_TRANSIT;
+    if (!moving) {
+      setGpsBroadcasting(false);
+      return;
+    }
     const speed =
-      typeof (liveGps as { accuracy?: number | null }).accuracy === 'number'
-        ? Math.max(8, Math.min(55, 40 - ((liveGps.accuracy || 20) / 5)))
+      typeof liveGps.accuracy === 'number'
+        ? Math.max(8, Math.min(55, 40 - liveGps.accuracy / 5))
         : 28;
 
-    dbOperations.updateDeliveryJobStatus(simulatedJob.id, DeliveryJobStatus.IN_TRANSIT, {
+    setGpsBroadcasting(true);
+    dbOperations.updateDeliveryJobStatus(activeJob.id, activeJob.status, {
       lat: liveGps.coords.lat,
       lng: liveGps.coords.lng,
       speed,
@@ -194,59 +223,60 @@ export default function DispatchDashboardView() {
     if (courier) {
       dbOperations.updatePartnerLiveLocation(courier.id, liveGps.coords.lat, liveGps.coords.lng);
     }
-  }, [liveGps.coords, simulationActive, simulatedJob?.id, courier?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveGps.coords?.lat, liveGps.coords?.lng, liveGps.accuracy, activeJob?.id, activeJob?.status, courier?.id]);
 
   // Keep active job synced from store (Realtime)
   useEffect(() => {
     if (!courier) return;
-    const activeJob = db.deliveryJobs.find(
+    const activeJobRecord = db.deliveryJobs.find(
       (j) => j.partnerId === courier.id && j.status !== DeliveryJobStatus.COMPLETED
     );
-    if (activeJob) setSimulatedJob(activeJob);
+    if (activeJobRecord) setActiveJob(activeJobRecord);
   }, [db.deliveryJobs, courier?.id]);
 
   // Transition Active Job status
   const transitionJobStatus = (status: DeliveryJobStatus) => {
-    if (!simulatedJob) return;
+    if (!activeJob) return;
     
     if (status === DeliveryJobStatus.PICKED_UP) {
       if (liveGps.coords) {
-        dbOperations.updateDeliveryJobStatus(simulatedJob.id, DeliveryJobStatus.PICKED_UP, {
+        dbOperations.updateDeliveryJobStatus(activeJob.id, DeliveryJobStatus.PICKED_UP, {
           lat: liveGps.coords.lat,
           lng: liveGps.coords.lng,
           speed: 0,
         });
       } else {
-        dbOperations.updateDeliveryJobStatus(simulatedJob.id, DeliveryJobStatus.PICKED_UP);
+        dbOperations.updateDeliveryJobStatus(activeJob.id, DeliveryJobStatus.PICKED_UP);
       }
     } else if (status === DeliveryJobStatus.IN_TRANSIT) {
-      setSimulationActive(true);
+      setGpsBroadcasting(true);
       if (liveGps.coords) {
-        dbOperations.updateDeliveryJobStatus(simulatedJob.id, DeliveryJobStatus.IN_TRANSIT, {
+        dbOperations.updateDeliveryJobStatus(activeJob.id, DeliveryJobStatus.IN_TRANSIT, {
           lat: liveGps.coords.lat,
           lng: liveGps.coords.lng,
           speed: 25,
         });
       } else {
-        dbOperations.updateDeliveryJobStatus(simulatedJob.id, DeliveryJobStatus.IN_TRANSIT);
+        dbOperations.updateDeliveryJobStatus(activeJob.id, DeliveryJobStatus.IN_TRANSIT);
       }
     } else if (status === DeliveryJobStatus.ARRIVED) {
-      setSimulationActive(false);
+      setGpsBroadcasting(false);
       if (liveGps.coords) {
-        dbOperations.updateDeliveryJobStatus(simulatedJob.id, DeliveryJobStatus.ARRIVED, {
+        dbOperations.updateDeliveryJobStatus(activeJob.id, DeliveryJobStatus.ARRIVED, {
           lat: liveGps.coords.lat,
           lng: liveGps.coords.lng,
           speed: 0,
         });
       } else {
-        dbOperations.updateDeliveryJobStatus(simulatedJob.id, DeliveryJobStatus.ARRIVED);
+        dbOperations.updateDeliveryJobStatus(activeJob.id, DeliveryJobStatus.ARRIVED);
       }
     }
   };
 
   // PIN code delivery completion handler
   const handleVerifyPin = async () => {
-    if (!simulatedJob) return;
+    if (!activeJob) return;
     if (!pinCode) {
       setPinError('Please enter the delivery PIN from the buyer.');
       return;
@@ -255,10 +285,10 @@ export default function DispatchDashboardView() {
     setPinError(null);
     setPinSuccess(false);
 
-    const result = await dbOperations.completeDeliveryJobWithPin(simulatedJob.id, pinCode);
+    const result = await dbOperations.completeDeliveryJobWithPin(activeJob.id, pinCode);
     if (result.success) {
       setPinSuccess(true);
-      setSimulatedJob(null);
+      setActiveJob(null);
       setPinCode('');
       setTimeout(() => {
         setPinSuccess(false);
@@ -271,20 +301,20 @@ export default function DispatchDashboardView() {
 
   // SOS emergency trigger
   const handleTriggerSos = () => {
-    if (!simulatedJob) return;
+    if (!activeJob) return;
     const state = getDBState();
-    const job = state.deliveryJobs.find(j => j.id === simulatedJob.id);
+    const job = state.deliveryJobs.find(j => j.id === activeJob.id);
     if (job) {
       job.trackingHistory.push({
         status: DeliveryJobStatus.IN_TRANSIT,
         time: new Date().toISOString(),
-        note: `SOS EMERGENCY TRIGGERED: Courier reported active safety/security alert. Real-time rescue coordinates: ${mapLat.toFixed(4)}° N, ${mapLng.toFixed(4)}° E. Urgent support dispatched.`
+        note: `SOS EMERGENCY TRIGGERED: ${courier?.fullName || user?.fullName || 'Courier'} reported an active safety/security alert. Live coordinates: ${mapLat.toFixed(4)}° N, ${mapLng.toFixed(4)}° E.`
       });
       saveDBState(state);
       setDb(state);
       setSosActive(true);
-      setSosSuccessMessage('Emergency SOS alert sent! GoodDispatch™ Operations and emergency medical/security partners have been notified with your live coordinates.');
-      dbOperations.addAuditLog(user?.id || 0, 'SOS_ALERT', 'deliveryJobs', simulatedJob.id, `Courier Dele Coker triggered SOS emergency panic signal`);
+      setSosSuccessMessage('Emergency SOS recorded. Your live coordinates were attached to this delivery and shared with the buyer and seller.');
+      dbOperations.addAuditLog(user?.id || 0, 'SOS_ALERT', 'deliveryJobs', activeJob.id, `${courier?.fullName || user?.fullName || 'Courier'} triggered an SOS emergency signal`);
       setTimeout(() => setSosSuccessMessage(null), 8000);
     }
   };
@@ -292,9 +322,9 @@ export default function DispatchDashboardView() {
   // Report transit incident
   const handleReportIncident = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!simulatedJob || !incidentNote.trim()) return;
+    if (!activeJob || !incidentNote.trim()) return;
     const state = getDBState();
-    const job = state.deliveryJobs.find(j => j.id === simulatedJob.id);
+    const job = state.deliveryJobs.find(j => j.id === activeJob.id);
     if (job) {
       const typeLabel = incidentType.replace('_', ' ');
       job.trackingHistory.push({
@@ -306,7 +336,7 @@ export default function DispatchDashboardView() {
       setDb(state);
       setIncidentReported(true);
       setIncidentNote('');
-      dbOperations.addAuditLog(user?.id || 0, 'INCIDENT_REPORTED', 'deliveryJobs', simulatedJob.id, `Courier Dele Coker logged transit incident: ${typeLabel}`);
+      dbOperations.addAuditLog(user?.id || 0, 'INCIDENT_REPORTED', 'deliveryJobs', activeJob.id, `${courier?.fullName || user?.fullName || 'Courier'} logged a transit incident: ${typeLabel}`);
       setTimeout(() => {
         setIncidentReported(false);
         setShowIncidentForm(false);
@@ -347,12 +377,12 @@ export default function DispatchDashboardView() {
     })
     .sort((a, b) => a.distanceKm - b.distanceKm);
 
-  const activeJob = db.deliveryJobs.find(j => j.partnerId === courier?.id && j.status !== DeliveryJobStatus.COMPLETED);
+  const storeActiveJob = db.deliveryJobs.find(j => j.partnerId === courier?.id && j.status !== DeliveryJobStatus.COMPLETED);
   const myCompletedJobs = db.deliveryJobs.filter(j => j.partnerId === courier?.id && j.status === DeliveryJobStatus.COMPLETED);
   const courierEarningsSum = myCompletedJobs.reduce((acc, j) => acc + j.courierEarnings, 0);
 
-  const activeOrder = simulatedJob
-    ? db.orders.find((o) => o.id === simulatedJob.orderId)
+  const activeOrder = activeJob
+    ? db.orders.find((o) => o.id === activeJob.orderId)
     : undefined;
   const activeDest = activeOrder
     ? bestCoords(
@@ -372,9 +402,9 @@ export default function DispatchDashboardView() {
         undefined
       )
     : null;
-  const simEta =
+  const eta =
     liveGps.coords && activeDest
-      ? estimateEtaMinutes(haversineKm(liveGps.coords, activeDest), simSpeed || 30)
+      ? estimateEtaMinutes(haversineKm(liveGps.coords, activeDest), currentSpeed || 30)
       : activePickup && activeDest
         ? estimateEtaMinutes(haversineKm(activePickup, activeDest))
         : 25;
@@ -536,7 +566,7 @@ export default function DispatchDashboardView() {
                         <Navigation className="w-4 h-4" />
                         Active Job Tracker
                       </span>
-                      {activeJob && (
+                      {storeActiveJob && (
                         <span className="w-2.5 h-2.5 bg-jade-500 rounded-full animate-ping" />
                       )}
                     </button>
@@ -817,32 +847,40 @@ export default function DispatchDashboardView() {
 
                       </div>
 
-                      {/* Mock File Upload Sections (Highly visual with placeholders) */}
+                      {/* 3. REQUIRED DOCUMENT UPLOADS (real files → private storage) */}
                       <div className="space-y-3 pt-4 border-t border-ink-100 dark:border-ink-800">
-                        <h4 className="text-xs font-bold tracking-wider font-mono text-ink-500">3. Document Upload Check</h4>
+                        <h4 className="text-xs font-bold tracking-wider font-mono text-ink-500">3. Document Uploads</h4>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          
-                          {/* Photo Selfie */}
-                          <div className="border border-dashed border-ink-200 dark:border-ink-800 rounded-2xl p-4 text-center cursor-pointer hover:bg-ink-50 dark:hover:bg-ink-950/40 transition-colors">
-                            <Camera className="w-7 h-7 block mx-auto mb-1 text-jade-500" />
-                            <span className="text-xs font-bold text-ink-700 dark:text-ink-300 block">Selfie with Vehicle</span>
-                            <p className="text-xs text-ink-400 mt-1">Uploaded self_photo.png</p>
-                          </div>
-
-                          {/* Drivers License */}
-                          <div className="border border-dashed border-ink-200 dark:border-ink-800 rounded-2xl p-4 text-center cursor-pointer hover:bg-ink-50 dark:hover:bg-ink-950/40 transition-colors">
-                            <CreditCard className="w-7 h-7 block mx-auto mb-1 text-jade-500" />
-                            <span className="text-xs font-bold text-ink-700 dark:text-ink-300 block">Driver&apos;s License Photo</span>
-                            <p className="text-xs text-ink-400 mt-1">Uploaded license_front.png</p>
-                          </div>
-
-                          {/* Vehicle Photo */}
-                          <div className="border border-dashed border-ink-200 dark:border-ink-800 rounded-2xl p-4 text-center cursor-pointer hover:bg-ink-50 dark:hover:bg-ink-950/40 transition-colors">
-                            <Bike className="w-7 h-7 block mx-auto mb-1 text-jade-500" />
-                            <span className="text-xs font-bold text-ink-700 dark:text-ink-300 block">Vehicle Box Photo</span>
-                            <p className="text-xs text-ink-400 mt-1">Uploaded dispatch_bike.png</p>
-                          </div>
-
+                          {([
+                            { key: 'selfie' as const, label: 'Selfie with Vehicle', Icon: Camera, url: selfieUrl },
+                            { key: 'license' as const, label: "Driver's License Photo", Icon: CreditCard, url: licenseUrl },
+                            { key: 'vehicle' as const, label: 'Vehicle Box Photo', Icon: Bike, url: photoUrl },
+                          ]).map(({ key, label, Icon, url }) => (
+                            <label
+                              key={key}
+                              className="border border-dashed border-ink-200 dark:border-ink-800 rounded-2xl p-4 text-center cursor-pointer hover:bg-ink-50 dark:hover:bg-ink-950/40 transition-colors block"
+                            >
+                              <Icon className="w-7 h-7 block mx-auto mb-1 text-jade-500" />
+                              <span className="text-xs font-bold text-ink-700 dark:text-ink-300 block">{label}</span>
+                              <span className="text-xs text-ink-400 mt-1 block">
+                                {uploadingDoc === key
+                                  ? 'Uploading…'
+                                  : url
+                                    ? 'Uploaded ✓'
+                                    : 'Tap to upload (JPG/PNG/PDF)'}
+                              </span>
+                              <input
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp,application/pdf"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) void handleDocUpload(key, file);
+                                  e.target.value = '';
+                                }}
+                              />
+                            </label>
+                          ))}
                         </div>
                       </div>
 
@@ -883,28 +921,10 @@ export default function DispatchDashboardView() {
                   {availableJobs.length === 0 ? (
                     <div className="text-center py-16 bg-ink-50 dark:bg-ink-950/50 border border-ink-100 dark:border-ink-800 rounded-3xl p-8 space-y-4">
                       <Compass className="w-12 h-12 text-ink-400 mx-auto animate-spin" />
-                      <h4 className="text-sm font-bold text-ink-750 dark:text-ink-200">Scanning for Jobs...</h4>
+                      <h4 className="text-sm font-bold text-ink-750 dark:text-ink-200">No open jobs right now</h4>
                       <p className="text-xs text-ink-500 dark:text-ink-400 max-w-sm mx-auto">
-                        Currently no pending delivery jobs are available in Lagos. High frequency blocks usually trigger when customers checkout escrow orders.
+                        Delivery jobs appear here in real time the moment a buyer in your coverage area checks out an escrow order. Keep your duty status online to receive them.
                       </p>
-                      
-                      {/* Simulation Trigger button to seed a job if empty */}
-                      <button 
-                        onClick={() => {
-                          const state = getDBState();
-                          const lastOrder = state.orders[state.orders.length - 1];
-                          if (lastOrder) {
-                            dbOperations.createDeliveryJob(lastOrder.id, 'STANDARD', 3500);
-                            setDb(getDBState());
-                          } else {
-                            toast.error('No orders found to deliver. Please place an order first.');
-                          }
-                        }}
-                        className="mx-auto flex items-center gap-1.5 bg-jade-500 hover:bg-jade-600 text-white font-bold text-xs px-3 py-2 rounded-xl cursor-pointer"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        Simulate Customer Delivery Request
-                      </button>
                     </div>
                   ) : (
                     <div className="space-y-4">
@@ -995,7 +1015,7 @@ export default function DispatchDashboardView() {
               {/* ACTIVE JOBS SUB-TAB */}
               {activeSubTab === 'active_jobs' && (
                 <div className="space-y-6">
-                  {simulatedJob ? (
+                  {activeJob ? (
                     <div className="space-y-6">
                       
                       {/* Active Job summary header */}
@@ -1006,17 +1026,17 @@ export default function DispatchDashboardView() {
                               Active Journey
                             </span>
                             <span className="text-xs font-mono text-ink-500">
-                              Job ID: #JOB-{simulatedJob.id}
+                              Job ID: #JOB-{activeJob.id}
                             </span>
                           </div>
                           <h4 className="text-sm font-bold text-ink-800 dark:text-white">
-                            Delivering for Order #{simulatedJob.orderId}
+                            Delivering for Order #{activeJob.orderId}
                           </h4>
                         </div>
                         <div className="text-right">
                           <span className="text-xs text-ink-400 font-mono block">Your Commission Payout</span>
                           <span className="text-xl font-bold text-jade-500 font-mono">
-                            ₦{simulatedJob.courierEarnings.toLocaleString()}
+                            ₦{activeJob.courierEarnings.toLocaleString()}
                           </span>
                         </div>
                       </div>
@@ -1030,11 +1050,11 @@ export default function DispatchDashboardView() {
                             rider={{ lat: mapLat, lng: mapLng }}
                             destination={activeDest}
                             pickup={activePickup}
-                            speedKmh={simSpeed}
+                            speedKmh={currentSpeed}
                             statusLabel={
-                              simulationActive
+                              gpsBroadcasting
                                 ? 'Broadcasting live GPS'
-                                : simulatedJob.status === DeliveryJobStatus.ARRIVED
+                                : activeJob.status === DeliveryJobStatus.ARRIVED
                                   ? 'Arrived at destination'
                                   : 'Rider location'
                             }
@@ -1051,7 +1071,7 @@ export default function DispatchDashboardView() {
                             <h4 className="text-xs font-bold tracking-wider font-mono text-ink-500">Journey Controls</h4>
                             
                             <div className="space-y-2">
-                              {simulatedJob.status === DeliveryJobStatus.ACCEPTED && (
+                              {activeJob.status === DeliveryJobStatus.ACCEPTED && (
                                 <button
                                   onClick={() => transitionJobStatus(DeliveryJobStatus.PICKED_UP)}
                                   className="w-full py-3 bg-jade-600 hover:bg-jade-700 text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-transform active:scale-95 flex items-center justify-center gap-2"
@@ -1061,7 +1081,7 @@ export default function DispatchDashboardView() {
                                 </button>
                               )}
 
-                              {simulatedJob.status === DeliveryJobStatus.PICKED_UP && (
+                              {activeJob.status === DeliveryJobStatus.PICKED_UP && (
                                 <button
                                   onClick={() => transitionJobStatus(DeliveryJobStatus.IN_TRANSIT)}
                                   className="w-full py-3 bg-jade-600 hover:bg-jade-700 text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-transform active:scale-95 flex items-center justify-center gap-2"
@@ -1071,13 +1091,13 @@ export default function DispatchDashboardView() {
                                 </button>
                               )}
 
-                              {simulatedJob.status === DeliveryJobStatus.IN_TRANSIT && (
+                              {activeJob.status === DeliveryJobStatus.IN_TRANSIT && (
                                 <div className="p-3 bg-ink-100 dark:bg-ink-850 rounded-xl text-center text-xs text-ink-500 space-y-2">
                                   <div className="font-semibold text-ink-700 dark:text-ink-300">
                                     Live GPS sharing active
                                   </div>
                                   <p className="text-xs text-ink-400">
-                                    Your phone location is streaming to buyer & seller maps. ETA ~{simEta} mins.
+                                    Your phone location is streaming to buyer & seller maps. ETA ~{eta} mins.
                                   </p>
                                   <button
                                     onClick={() => transitionJobStatus(DeliveryJobStatus.ARRIVED)}
@@ -1088,7 +1108,7 @@ export default function DispatchDashboardView() {
                                 </div>
                               )}
 
-                              {[DeliveryJobStatus.ARRIVED].includes(simulatedJob.status) && (
+                              {[DeliveryJobStatus.ARRIVED].includes(activeJob.status) && (
                                 <div className="space-y-4 pt-2 border-t border-ink-200 dark:border-ink-800">
                                   
                                   <div className="space-y-1">
@@ -1208,7 +1228,7 @@ export default function DispatchDashboardView() {
 
                                     <button
                                       type="submit"
-                                      className="w-full py-2 bg-ink-800 hover:bg-ink-900 dark:bg-ink-700 dark:hover:bg-ink-600 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer"
+                                      className="w-full py-2 bg-jade-600 hover:bg-jade-700 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer"
                                     >
                                       Submit Incident Log
                                     </button>
@@ -1222,7 +1242,7 @@ export default function DispatchDashboardView() {
                           <div className="bg-ink-50 dark:bg-ink-950 p-4 rounded-2xl border border-ink-100 dark:border-ink-800 space-y-3">
                             <h4 className="text-xs font-bold tracking-wider font-mono text-ink-500">Journey Log</h4>
                             <div className="space-y-3 text-xs">
-                              {simulatedJob.trackingHistory?.map((log, idx) => (
+                              {activeJob.trackingHistory?.map((log, idx) => (
                                 <div key={idx} className="flex gap-2.5 items-start">
                                   <span className="w-1.5 h-1.5 rounded-full bg-jade-500 mt-1 flex-shrink-0" />
                                   <div>

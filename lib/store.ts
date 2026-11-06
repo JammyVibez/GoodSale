@@ -14,11 +14,13 @@ import {
   updateDeliveryJobLocation,
   updatePartnerLocation,
   upsertDeliveryPartner,
+  upsertDeliveryJob,
 } from '@/lib/data/sync';
 import {
   withClient,
   insertBid,
   insertReview,
+  insertReviewReply,
   upsertSafeMeetMeetup,
   updateSafeMeetMeetup,
   insertSponsoredAd,
@@ -45,8 +47,8 @@ import {
   updateDeliveryPartnerReview,
 } from '@/lib/data/persist';
 import { resolveCityCoords, bestCoords } from '@/lib/geo';
+import { notificationAllowed } from '@/lib/notificationPrefs';
 import { computePlatformFee } from '@/lib/fees';
-import { isDemoMode, isOwnerAdminEmail } from '@/lib/demo';
 import type { GoodSaleDBState, User, Product, Order, Message } from '@/lib/types';
 import {
   UserRole,
@@ -629,6 +631,16 @@ export const dbOperations = {
     const product = state.products.find((p) => p.id === productId);
     if (!product) return null;
 
+    // Inventory guard: never sell a listing that is sold, unavailable or depleted.
+    if (
+      product.stockStatus === 'SOLD' ||
+      product.stockStatus === 'UNAVAILABLE' ||
+      product.stockStatus === 'OUT_OF_STOCK' ||
+      product.quantity <= 0
+    ) {
+      return null;
+    }
+
     const orderNumber = `GS-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
     const deliveryPin = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digit release pin
 
@@ -823,10 +835,29 @@ export const dbOperations = {
       });
     }
 
-    // Reduce product quantity
+    // Reduce product quantity and derive the new availability status.
     product.quantity -= 1;
     if (product.quantity <= 0) {
-      product.stockStatus = 'OUT_OF_STOCK';
+      product.quantity = 0;
+      product.stockStatus = 'SOLD';
+    } else if (product.quantity <= 5) {
+      product.stockStatus = 'LOW_STOCK';
+    } else if (product.stockStatus === 'LOW_STOCK') {
+      product.stockStatus = 'IN_STOCK';
+    }
+
+    if (notificationAllowed('stock') && (product.stockStatus === 'SOLD' || product.stockStatus === 'LOW_STOCK')) {
+      state.notifications.push({
+        id: state.notifications.length + 1,
+        userId: product.sellerId,
+        title: product.stockStatus === 'SOLD' ? 'Listing sold out' : 'Low stock warning',
+        message: product.stockStatus === 'SOLD'
+          ? `"${product.title}" is now sold out and hidden from purchase until you restock.`
+          : `"${product.title}" has ${product.quantity} unit${product.quantity === 1 ? '' : 's'} left. Restock to keep it visible.`,
+        type: 'STOCK',
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      });
     }
 
     // Auto-create Delivery Job if using GoodDispatch network
@@ -1038,7 +1069,7 @@ export const dbOperations = {
       });
       const payload = await res.json();
       if (!res.ok || !payload.success) {
-        // Local fallback for offline/demo without RPC
+        // Fallback when the dispute RPC is unavailable
         const state = getDBState();
         const order = state.orders.find((o) => o.id === orderId);
         if (!order) return { error: payload.error || 'Order not found' };
@@ -1085,6 +1116,215 @@ export const dbOperations = {
     }
   },
 
+  /** Buyer cancels before fulfilment starts. Held escrow is marked refunded. */
+  async cancelOrder(orderId: number, reason: string) {
+    const state = getDBState();
+    const user = state.currentUser;
+    if (!user) return { error: 'Please sign in.' };
+    const order = state.orders.find((o) => o.id === orderId);
+    if (!order) return { error: 'Order not found.' };
+    if (order.buyerId !== user.id) return { error: 'Only the buyer can cancel this order.' };
+
+    const cancellable: OrderStatus[] = [
+      OrderStatus.PENDING,
+      OrderStatus.PENDING_BANK_TRANSFER,
+      OrderStatus.PAID_ESCROW,
+      OrderStatus.PARTIAL_DEPOSIT_PAID,
+    ];
+    if (!cancellable.includes(order.status)) {
+      return { error: 'This order has already been shipped. Open a dispute or request a refund instead.' };
+    }
+
+    const fundsHeld = order.status === OrderStatus.PAID_ESCROW || order.status === OrderStatus.PARTIAL_DEPOSIT_PAID;
+    const now = new Date().toISOString();
+
+    order.status = fundsHeld ? OrderStatus.REFUNDED : OrderStatus.CANCELLED;
+    order.updatedAt = now;
+
+    const escrow = state.escrows.find((e) => e.orderId === order.id);
+    if (escrow) escrow.isRefunded = fundsHeld;
+
+    const tx = state.transactions.find((t) => t.orderId === order.id);
+    if (fundsHeld && tx) tx.status = 'REFUNDED';
+
+    if (fundsHeld) {
+      // Refund is queued for provider processing; money never reaches the seller.
+      state.refunds.push({
+        id: Math.max(...state.refunds.map((r) => r.id), 0) + 1,
+        refundNumber: `RF-${Date.now().toString().slice(-6)}`,
+        transactionId: tx?.transactionId || order.orderNumber,
+        orderId: order.id,
+        amount: escrow?.heldAmount || order.totalAmount,
+        reason: reason || 'Buyer cancelled before shipment',
+        status: 'PENDING',
+        createdAt: now,
+      });
+    }
+
+    // Return the unit to the seller's inventory.
+    const product = state.products.find((p) => p.id === order.productId);
+    if (product) {
+      product.quantity += 1;
+      if (product.stockStatus === 'SOLD' || product.stockStatus === 'OUT_OF_STOCK') {
+        product.stockStatus = product.quantity <= 5 ? 'LOW_STOCK' : 'IN_STOCK';
+      }
+    }
+
+    state.notifications.push({
+      id: state.notifications.length + 1,
+      userId: order.sellerId,
+      title: `Order ${order.orderNumber} cancelled`,
+      message: `The buyer cancelled before shipment. ${fundsHeld ? 'Escrow funds are being returned to the buyer — do not dispatch.' : 'No payment was captured.'}`,
+      type: 'ORDER',
+      isRead: false,
+      createdAt: now,
+    });
+    state.notifications.push({
+      id: state.notifications.length + 1,
+      userId: order.buyerId,
+      title: fundsHeld ? 'Cancellation confirmed — refund pending' : 'Order cancelled',
+      message: fundsHeld
+        ? `₦${(escrow?.heldAmount || order.totalAmount).toLocaleString()} is protected and queued for refund to your original payment method.`
+        : `Order ${order.orderNumber} was cancelled.`,
+      type: fundsHeld ? 'ESCROW' : 'ORDER',
+      isRead: false,
+      createdAt: now,
+    });
+
+    saveDBState(state);
+    return { success: true, refunded: fundsHeld };
+  },
+
+  /** Buyer asks for a refund after payment but before/around delivery. Funds stay protected. */
+  async requestRefund(orderId: number, reason: string) {
+    const state = getDBState();
+    const user = state.currentUser;
+    if (!user) return { error: 'Please sign in.' };
+    const order = state.orders.find((o) => o.id === orderId);
+    if (!order) return { error: 'Order not found.' };
+    if (order.buyerId !== user.id) return { error: 'Only the buyer can request this refund.' };
+    if (!reason.trim() || reason.trim().length < 10) return { error: 'Tell us what went wrong (10+ characters).' };
+
+    const refundable: OrderStatus[] = [
+      OrderStatus.PAID_ESCROW,
+      OrderStatus.SHIPPED,
+      OrderStatus.OUT_FOR_DELIVERY,
+      OrderStatus.PARTIAL_DEPOSIT_PAID,
+    ];
+    if (!refundable.includes(order.status)) {
+      return { error: 'A refund cannot be requested for this order in its current state.' };
+    }
+    if (state.refunds.some((r) => r.orderId === orderId && r.status === 'PENDING')) {
+      return { error: 'A refund request is already under review for this order.' };
+    }
+
+    const now = new Date().toISOString();
+    const escrow = state.escrows.find((e) => e.orderId === order.id);
+    const tx = state.transactions.find((t) => t.orderId === order.id);
+
+    state.refunds.push({
+      id: Math.max(...state.refunds.map((r) => r.id), 0) + 1,
+      refundNumber: `RF-${Date.now().toString().slice(-6)}`,
+      transactionId: tx?.transactionId || order.orderNumber,
+      orderId: order.id,
+      amount: escrow?.heldAmount || order.totalAmount,
+      reason: reason.trim(),
+      status: 'PENDING',
+      createdAt: now,
+    });
+    order.status = OrderStatus.REFUND_REQUESTED;
+    order.updatedAt = now;
+
+    state.notifications.push({
+      id: state.notifications.length + 1,
+      userId: order.sellerId,
+      title: 'Refund requested',
+      message: `Buyer requested a refund on ${order.orderNumber}: ${reason.trim()}. Respond in Support within 48 hours.`,
+      type: 'ESCROW',
+      isRead: false,
+      createdAt: now,
+    });
+
+    saveDBState(state);
+
+    // Persist through the server so admins see the request from any device.
+    void (async () => {
+      try {
+        await fetch('/api/refunds/request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId, reason: reason.trim() }),
+        });
+      } catch {
+        // Offline: the local refund record still protects the buyer's view.
+      }
+    })();
+
+    return { success: true };
+  },
+
+  /** Admin decision on a refund request. Refunds are provider-processed, never seller-released. */
+  async reviewRefund(refundId: number, decision: 'APPROVED' | 'REJECTED', notes?: string) {
+    let state: GoodSaleDBState;
+    try {
+      state = dbOperations.requireAdmin();
+    } catch {
+      return { error: 'Administrator access required.' };
+    }
+    const refund = state.refunds.find((r) => r.id === refundId);
+    if (!refund) return { error: 'Refund not found.' };
+    if (refund.status !== 'PENDING') return { error: 'This refund has already been decided.' };
+
+    const now = new Date().toISOString();
+    refund.status = decision;
+    const order = state.orders.find((o) => o.id === refund.orderId);
+    const escrow = order ? state.escrows.find((e) => e.orderId === order.id) : undefined;
+    const tx = order ? state.transactions.find((t) => t.orderId === order.id) : undefined;
+
+    if (decision === 'APPROVED' && order) {
+      order.status = OrderStatus.REFUNDED;
+      order.updatedAt = now;
+      if (escrow) { escrow.isRefunded = true; escrow.isReleased = false; }
+      if (tx) tx.status = 'REFUNDED';
+    } else if (order && order.status === OrderStatus.REFUND_REQUESTED) {
+      order.status = OrderStatus.PAID_ESCROW;
+      order.updatedAt = now;
+    }
+
+    // Route approved refunds through the existing admin escrow RPC so the
+    // server ledger, escrow flag and refund row stay authoritative.
+    let serverApplied = false;
+    if (decision === 'APPROVED' && order) {
+      try {
+        const res = await fetch('/api/admin/escrow', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId: order.id, action: 'REFUND_BUYER', notes: notes || refund.reason }),
+        });
+        serverApplied = res.ok;
+      } catch {
+        serverApplied = false;
+      }
+    }
+
+    if (order) {
+      state.notifications.push({
+        id: state.notifications.length + 1,
+        userId: order.buyerId,
+        title: decision === 'APPROVED' ? 'Refund approved' : 'Refund request declined',
+        message: decision === 'APPROVED'
+          ? `₦${refund.amount.toLocaleString()} for ${order.orderNumber} is being returned to your original payment method.`
+          : `Your refund request for ${order.orderNumber} was declined. ${notes || 'Contact support if you need help.'}`,
+        type: 'ESCROW',
+        isRead: false,
+        createdAt: now,
+      });
+    }
+
+    saveDBState(state);
+    return { success: true, serverApplied };
+  },
+
   // Submit User Verification — persisted for admin review
   async submitVerification(docType: DocumentType, docNum: string, docImageUrl?: string) {
     const state = getDBState();
@@ -1126,48 +1366,6 @@ export const dbOperations = {
       });
       await reloadFromSupabase();
     }
-  },
-
-  verifyUserImmediately(userId: number, role: UserRole) {
-    if (!isDemoMode()) {
-      console.warn('Instant verification is disabled outside demo mode. Await admin review.');
-      return;
-    }
-    const state = getDBState();
-    const user = state.users.find(u => u.id === userId);
-    if (user) {
-      user.role = role;
-      if (state.currentUser && state.currentUser.id === userId) {
-        state.currentUser.role = role;
-      }
-      user.trustScore = 100;
-      user.goodPoints += 200;
-
-      // Update business if exists
-      const biz = state.businesses.find(b => b.ownerId === userId);
-      if (biz) biz.isVerified = true;
-
-      // Add points transaction
-      state.goodPoints.push({
-        id: state.goodPoints.length + 1,
-        userId: user.id,
-        points: 200,
-        reason: 'Identity verification approved reward',
-        createdAt: new Date().toISOString(),
-      });
-
-      // Send verification notification
-      state.notifications.push({
-        id: state.notifications.length + 1,
-        userId: user.id,
-        title: 'Identity Verification Approved!',
-        message: 'Congratulations! Your identity has been verified. You received a gold trust badge, search ranking boost, and 200 GoodPoints!',
-        type: 'VERIFICATION',
-        isRead: false,
-        createdAt: new Date().toISOString()
-      });
-    }
-    saveDBState(state);
   },
 
   // Approve / Reject Verification (Admin tool)
@@ -1399,10 +1597,13 @@ export const dbOperations = {
     const order = state.orders.find(o => o.id === orderId);
     if (!order) return;
 
-    const reviewId = state.reviews.length + 1;
+    // Negative id = optimistic row until Supabase assigns the real one. The old
+    // `length + 1` id collided with real ids after a reload, which mis-keyed
+    // replies and helpful votes onto the wrong review.
     const newRev: Review = {
-      id: reviewId,
+      id: -Date.now(),
       orderId,
+      productId: order.productId,
       reviewerId: state.currentUser.id,
       reviewerName: state.currentUser.fullName,
       reviewerPhoto: state.profiles.find(p => p.userId === state.currentUser!.id)?.photoUrl || '',
@@ -1431,13 +1632,21 @@ export const dbOperations = {
     saveDBState(state);
 
     withClient(async (client) => {
-      await insertReview(client, {
+      const id = await insertReview(client, {
         orderId,
+        productId: order.productId,
         reviewerId: state.currentUser!.id,
         revieweeId: order.sellerId,
         rating,
         comment,
       });
+      // Re-key the optimistic row with the real DB id (also makes the rating show
+      // on the product page, which keys off product_id).
+      const local = getDBState().reviews.find((r) => r.id === newRev.id);
+      if (local && id != null && id !== local.id) {
+        local.id = id;
+        saveDBState(getDBState());
+      }
       await reloadFromSupabase();
     });
   },
@@ -1447,10 +1656,9 @@ export const dbOperations = {
     if (!state.currentUser) return;
 
     const product = state.products.find(p => p.id === productId);
-    const reviewId = state.reviews.length + 1;
     
     const newRev: Review = {
-      id: reviewId,
+      id: -Date.now(),
       productId,
       reviewerId: state.currentUser.id,
       reviewerName: state.currentUser.fullName,
@@ -1481,13 +1689,18 @@ export const dbOperations = {
     saveDBState(state);
 
     withClient(async (client) => {
-      await insertReview(client, {
+      const id = await insertReview(client, {
         productId,
         reviewerId: state.currentUser!.id,
         revieweeId: product?.sellerId,
         rating,
         comment,
       });
+      const local = getDBState().reviews.find((r) => r.id === newRev.id);
+      if (local && id != null && id !== local.id) {
+        local.id = id;
+        saveDBState(getDBState());
+      }
       await reloadFromSupabase();
     });
 
@@ -1525,6 +1738,25 @@ export const dbOperations = {
 
     review.replies.push(newReply);
     saveDBState(state);
+
+    // Persist the reply. The review_replies table existed but was never written,
+    // so every nested reply disappeared on the next reload. Only reviews that
+    // already have a real DB id can be replied to durably.
+    if (review.id > 0) {
+      const reviewDbId = review.id;
+      const author = {
+        authorId: state.currentUser.id,
+        authorName: state.currentUser.fullName,
+        authorPhoto: state.profiles.find(p => p.userId === state.currentUser!.id)?.photoUrl || '',
+        authorRole: roleStr,
+        comment: commentText,
+      };
+      withClient(async (client) => {
+        await insertReviewReply(client, { reviewId: reviewDbId, ...author });
+        await reloadFromSupabase();
+      });
+    }
+
     return newReply;
   },
 
@@ -1595,6 +1827,15 @@ export const dbOperations = {
   },
 
   createCustomNotification(userId: number, title: string, message: string, type: Notification['type']) {
+    // Respect the recipient's saved notification preferences for this category.
+    const prefKey = type === 'ORDER' || type === 'BID' ? 'orders'
+      : type === 'ESCROW' || type === 'POINTS' ? 'payments'
+      : type === 'CHAT' ? 'messages'
+      : type === 'DELIVERY' ? 'deliveries'
+      : type === 'STOCK' ? 'stock'
+      : type === 'PROMOTION' ? 'promotions'
+      : 'security';
+    if (!notificationAllowed(prefKey)) return;
     const state = getDBState();
     state.notifications.push({
       id: state.notifications.length + 1,
@@ -2477,7 +2718,7 @@ export const dbOperations = {
     return partner;
   },
 
-  createDeliveryJob(orderId: number, serviceType: 'ECONOMY' | 'STANDARD' | 'EXPRESS', deliveryFee: number) {
+  async createDeliveryJob(orderId: number, serviceType: 'ECONOMY' | 'STANDARD' | 'EXPRESS', deliveryFee: number) {
     const state = getDBState();
     const existing = state.deliveryJobs.find(j => j.orderId === orderId);
     if (existing) return existing;
@@ -2506,7 +2747,32 @@ export const dbOperations = {
 
     state.deliveryJobs.push(newJob);
     saveDBState(state);
-    return newJob;
+
+    // Persist so riders and buyers receive the request through Realtime.
+    const client = createClient();
+    if (!client) return newJob;
+    try {
+      const saved = await upsertDeliveryJob(client, {
+        order_id: newJob.orderId,
+        status: newJob.status,
+        service_type: newJob.serviceType,
+        delivery_fee: newJob.deliveryFee,
+        platform_commission: newJob.platformCommission,
+        courier_earnings: newJob.courierEarnings,
+        pin: newJob.pin,
+        tracking_history: newJob.trackingHistory,
+      });
+      const idx = state.deliveryJobs.findIndex((j) => j.id === newJob.id && j.orderId === orderId);
+      if (idx >= 0) {
+        state.deliveryJobs[idx] = saved;
+        saveDBState(state);
+      }
+      await reloadFromSupabase();
+      return saved;
+    } catch (err) {
+      console.error('Failed to persist delivery job:', err);
+      return newJob;
+    }
   },
 
   acceptDeliveryJob(jobId: number, partnerId: number) {
@@ -3395,13 +3661,41 @@ export const dbOperations = {
     return { success: true };
   },
 
+  /**
+   * Admin edit of any listing — price/stock plus the full detail set, photos
+   * and the optional product video. Media edits and deletions are unrestricted
+   * for admins (the seeded launch catalog has its own narrower guard in the
+   * seed API). Pass `videoUrl: ''` to clear the video.
+   */
   async adminUpdateProduct(
     productId: number,
-    patch: Partial<{ title: string; price: number; quantity: number; stockStatus: Product['stockStatus']; category: string }>
+    patch: Partial<{
+      title: string;
+      description: string;
+      price: number;
+      compareAtPrice: number;
+      quantity: number;
+      stockStatus: Product['stockStatus'];
+      moderationStatus: Product['moderationStatus'];
+      rejectionReason: string | undefined;
+      category: string;
+      brand: string;
+      condition: ProductCondition;
+      images: string[];
+      videoUrl: string;
+      warranty: string;
+      returnPolicy: string;
+      deliveryMethod: string;
+      dimensionsCm: string;
+      weightKg: number;
+      isNegotiable: boolean;
+      pickupAvailable: boolean;
+    }>
   ) {
     const state = dbOperations.requireAdmin();
     const product = state.products.find((p) => p.id === productId);
     if (!product) return { error: 'Product not found' };
+    const includesModeration = 'moderationStatus' in patch || 'rejectionReason' in patch;
     Object.assign(product, patch);
     dbOperations.addAuditLog(state.currentUser!.id, 'ADMIN_UPDATE_PRODUCT', 'PRODUCT', productId, JSON.stringify(patch));
     saveDBState(state);
@@ -3410,10 +3704,28 @@ export const dbOperations = {
     if (client) {
       await client.from('products').update({
         title: product.title,
+        description: product.description,
         price: product.price,
+        compare_at_price: product.compareAtPrice ?? null,
         quantity: product.quantity,
         stock_status: product.stockStatus,
+        // Only write moderation columns when the caller decided them, so admins
+        // can still edit listings on databases without migration 017.
+        ...(includesModeration
+          ? { moderation_status: product.moderationStatus ?? 'APPROVED', rejection_reason: product.rejectionReason ?? null }
+          : {}),
         category: product.category,
+        brand: product.brand,
+        condition: product.condition,
+        images: product.images || [],
+        video_url: product.videoUrl ? product.videoUrl : null,
+        warranty: product.warranty ?? null,
+        return_policy: product.returnPolicy ?? null,
+        delivery_method: product.deliveryMethod,
+        dimensions_cm: product.dimensionsCm ?? null,
+        weight_kg: product.weightKg ?? null,
+        is_negotiable: product.isNegotiable,
+        pickup_available: product.pickupAvailable,
       }).eq('id', productId);
       await reloadFromSupabase();
     }
@@ -3584,6 +3896,63 @@ export const dbOperations = {
         await reloadFromSupabase();
       } catch (err) {
         console.error('Failed to persist service area:', err);
+        return { error: 'Saved locally but could not reach the server. Try again.' };
+      }
+    }
+    return { success: true };
+  },
+
+  /**
+   * Admin edits an existing coverage area — rename its state/city or change the
+   * sales & delivery toggles in one go (used by the Edit action in Coverage).
+   */
+  async adminUpdateServiceArea(
+    id: number,
+    area: { state: string; city: string; salesEnabled: boolean; deliveryEnabled: boolean }
+  ) {
+    const state = dbOperations.requireAdmin();
+    const existing = state.serviceAreas.find((a) => a.id === id);
+    if (!existing) return { error: 'Area not found' };
+
+    const stateName = area.state.trim();
+    const city = area.city.trim();
+    if (!stateName || !city) return { error: 'State and city are both required.' };
+
+    const clash = state.serviceAreas.find(
+      (a) =>
+        a.id !== id &&
+        a.state.toLowerCase() === stateName.toLowerCase() &&
+        a.city.toLowerCase() === city.toLowerCase()
+    );
+    if (clash) return { error: `${city}, ${stateName} already exists.` };
+
+    const previous = `${existing.state} · ${existing.city}`;
+    existing.state = stateName;
+    existing.city = city;
+    existing.salesEnabled = area.salesEnabled;
+    existing.deliveryEnabled = area.deliveryEnabled;
+
+    dbOperations.addAuditLog(
+      state.currentUser!.id,
+      'ADMIN_UPDATE_SERVICE_AREA',
+      'SERVICE_AREA',
+      id,
+      `${previous} → ${stateName} · ${city} (sales ${area.salesEnabled ? 'on' : 'off'}, delivery ${area.deliveryEnabled ? 'on' : 'off'})`
+    );
+    saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      try {
+        await updateServiceAreaFlags(client, id, {
+          state: stateName,
+          city,
+          sales_enabled: area.salesEnabled,
+          delivery_enabled: area.deliveryEnabled,
+        });
+        await reloadFromSupabase();
+      } catch (err) {
+        console.error('Failed to update service area:', err);
         return { error: 'Saved locally but could not reach the server. Try again.' };
       }
     }

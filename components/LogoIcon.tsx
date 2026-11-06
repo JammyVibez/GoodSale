@@ -136,6 +136,8 @@ interface LogoProps {
   iconSize?: number;
   textColorClass?: string;
   subtitleColorClass?: string;
+  /** Wordmark gradient for the "Sale" half. Defaults to the jade brand gradient. */
+  accentClassName?: string;
   variant?: 'solid' | 'outline' | 'gold' | 'dark';
 }
 
@@ -144,6 +146,7 @@ export default function Logo({
   iconSize = 32,
   textColorClass = 'text-ink-950 dark:text-white',
   subtitleColorClass = 'text-ink-400 dark:text-ink-500',
+  accentClassName = 'from-[#1FB377] to-[#0A854B] dark:from-[#5CD89F] dark:to-[#1FB377]',
   variant = 'solid',
 }: LogoProps) {
   return (
@@ -152,7 +155,7 @@ export default function Logo({
       <div className="flex flex-col justify-center">
         {/* Geometric sans-serif with the single Aurora jade gradient wordmark */}
         <h1 className={`font-sans font-bold tracking-tight leading-none text-lg sm:text-xl ${textColorClass}`}>
-          Good<span className="bg-gradient-to-r from-[#1FB377] to-[#0A854B] dark:from-[#5CD89F] dark:to-[#1FB377] bg-clip-text text-transparent font-bold">Sale</span>
+          Good<span className={`bg-gradient-to-r ${accentClassName} bg-clip-text text-transparent font-bold`}>Sale</span>
         </h1>
         <p className={`text-[10px] tracking-wider leading-none mt-1 font-semibold ${subtitleColorClass}`}>
           Buy. Sell. Trust.

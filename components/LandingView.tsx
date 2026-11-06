@@ -1,15 +1,26 @@
 // components/LandingView.tsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { 
-  Search, Shield, Zap, Flame, Award, MapPin, CheckCircle, 
-  Sparkles, Star, Heart, Grid, ShoppingBag,
-  ChevronLeft, ChevronRight, Store, Truck, Lock, ShieldCheck,
-  Shirt, Cpu, Smartphone, Laptop, Armchair, Apple, Car, BookOpen, Gavel
+/**
+ * Marketplace home — the reference layout, driven entirely by live data.
+ *
+ * Design language: deep-jade hero with gold accents, circular category rail,
+ * Flash Deals with a real midnight countdown, a personalised "Recommended for
+ * you" rail, a trust strip and a dense catalog. Everything shown (discounts,
+ * ratings, stock, countdown) is derived from real rows — a discount badge only
+ * renders when the seller set a higher compare-at price.
+ */
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Star, Heart, ShoppingCart, Zap, ShieldCheck, Truck, Headphones,
+  BadgeCheck, ArrowRight, ChevronRight, Sparkles, Store, Flame, Gavel,
+  Shirt, Cpu, Smartphone, Laptop, Armchair, Apple, Car, BookOpen, LayoutGrid,
+  Package, SlidersHorizontal,
 } from 'lucide-react';
-import { Product, getDBState, UserRole, useDBState, dbOperations } from '../lib/store';
-import { SmartAvatar, SmartImage } from './ui/SmartImage';
+import { Product, UserRole, useDBState } from '../lib/store';
+import { trackProductMetric } from '@/lib/productMetrics';
+import { useWishlist } from '@/lib/hooks/useWishlist';
+import { SmartImage } from './ui/SmartImage';
 import EmptyState from './ui/EmptyState';
 import AdSlot from './AdSlot';
 
@@ -19,51 +30,47 @@ interface LandingViewProps {
   onNavigate: (view: string, payload?: any) => void;
   onAddToCart: (productId: number) => void;
   onOpenAuth?: (mode?: 'login' | 'register') => void;
+  /** Delivery-location filter, driven by the marketplace header. */
+  selectedState: string;
+  onSelectState: (state: string) => void;
+  wishlistOnly: boolean;
+  onWishlistOnlyChange: (value: boolean) => void;
 }
 
-const CATEGORIES = [
-  { name: 'Fashion', slug: 'fashion' },
-  { name: 'Electronics', slug: 'electronics' },
-  { name: 'Phones', slug: 'phones' },
-  { name: 'Laptops', slug: 'laptops' },
-  { name: 'Furniture', slug: 'furniture' },
-  { name: 'Groceries', slug: 'groceries' },
-  { name: 'Beauty', slug: 'beauty' },
-  { name: 'Vehicles', slug: 'vehicles' },
-  { name: 'Books', slug: 'books' },
-];
+type SortMode = 'smart' | 'rating' | 'price_asc' | 'price_desc' | 'newest';
 
-const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  fashion: Shirt,
-  electronics: Cpu,
-  phones: Smartphone,
-  laptops: Laptop,
-  furniture: Armchair,
-  groceries: Apple,
-  beauty: Sparkles,
-  vehicles: Car,
-  books: BookOpen,
+const CATEGORY_META: Record<string, { label: string; Icon: React.ComponentType<{ className?: string }> }> = {
+  phones: { label: 'Phones & Tablets', Icon: Smartphone },
+  laptops: { label: 'Laptops', Icon: Laptop },
+  electronics: { label: 'Electronics', Icon: Cpu },
+  fashion: { label: 'Fashion', Icon: Shirt },
+  furniture: { label: 'Home & Living', Icon: Armchair },
+  groceries: { label: 'Groceries', Icon: Apple },
+  beauty: { label: 'Beauty', Icon: Sparkles },
+  vehicles: { label: 'Vehicles', Icon: Car },
+  books: { label: 'Books', Icon: BookOpen },
 };
 
-// Real photography for the hero (delivery vans/riders + buyers). Hosted, CSP-allowed.
-export default function LandingView({
-  onSelectProduct,
-  searchQuery,
-  onNavigate,
-  onAddToCart,
-  onOpenAuth,
-}: LandingViewProps) {
-  const db = useDBState();
-  const [activeMainTab, setActiveMainTab] = useState<'marketplace' | 'flash_sale' | 'auction'>('marketplace');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [selectedCity, setSelectedCity] = useState<string | null>(null);
-  const [onlyVerified, setOnlyVerified] = useState<boolean>(false);
-  const [aiAnalysis, setAiAnalysis] = useState<any>(null);
-  const [isAiLoading, setIsAiLoading] = useState(false);
-  const [favorites, setFavorites] = useState<number[]>([]);
+function categoryMeta(category: string) {
+  return CATEGORY_META[category.trim().toLowerCase()] || {
+    label: category,
+    Icon: Package,
+  };
+}
 
-  // Real daily flash-sale countdown — resets at midnight, no fake offsets.
-  const getTimeToMidnight = () => {
+function naira(value: number): string {
+  return `₦${Math.round(Number(value) || 0).toLocaleString()}`;
+}
+
+/** Real discount percentage — null unless the compare-at price is genuinely higher. */
+function discountPercent(product: Product): number | null {
+  const compareAt = Number(product.compareAtPrice) || 0;
+  if (!compareAt || compareAt <= product.price) return null;
+  return Math.round(((compareAt - product.price) / compareAt) * 100);
+}
+
+function useCountdownToMidnight() {
+  const read = useCallback(() => {
     const now = new Date();
     const end = new Date(now);
     end.setHours(23, 59, 59, 999);
@@ -73,882 +80,896 @@ export default function LandingView({
       minutes: Math.floor((diff % 3.6e6) / 60000),
       seconds: Math.floor((diff % 60000) / 1000),
     };
-  };
-  const [timeLeft, setTimeLeft] = useState(getTimeToMidnight);
-
-  // Real escrow volume derived from live orders — shown in the marketplace header.
-  const liveStats = React.useMemo(() => {
-    const escrowHeld = (db.orders || [])
-      .filter(o => ['PAID_ESCROW', 'SHIPPED', 'OUT_FOR_DELIVERY', 'DISPUTED'].includes(String(o.status)))
-      .reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
-    return {
-      listings: db.products.length,
-      traders: db.users.length,
-      escrowHeld,
-    };
-  }, [db.products, db.users, db.orders]);
-
-  // Flash Sale Countdown Logic
-  useEffect(() => {
-    const interval = setInterval(() => setTimeLeft(getTimeToMidnight()), 1000);
-    return () => clearInterval(interval);
   }, []);
+  const [left, setLeft] = useState(read);
+  useEffect(() => {
+    const id = setInterval(() => setLeft(read()), 1000);
+    return () => clearInterval(id);
+  }, [read]);
+  return left;
+}
 
-  // Toggle user favorite
-  const toggleFavorite = (id: number, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setFavorites(prev => 
-      prev.includes(id) ? prev.filter(fId => fId !== id) : [...prev, id]
-    );
-  };
+function Rating({ average, count }: { average: number | null; count: number }) {
+  if (!average) {
+    return <span className="text-[10px] font-medium text-ink-400">No reviews yet</span>;
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] leading-none">
+      <Star className="h-3 w-3 fill-gold-400 text-gold-400" />
+      <span className="font-bold text-ink-700 dark:text-ink-200">{average.toFixed(1)}</span>
+      <span className="text-ink-400">
+        ({count >= 1000 ? `${(count / 1000).toFixed(1)}k` : count})
+      </span>
+    </span>
+  );
+}
 
-  // Trigger Gemini API search grounding & semantic recommendations
-  const handleAiSmartSearch = async () => {
-    if (!searchQuery.trim()) return;
-    setIsAiLoading(true);
-    setAiAnalysis(null);
-    try {
-      const response = await fetch('/api/ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'recommend',
-          payload: { query: searchQuery }
-        })
-      });
-      const res = await response.json();
-      if (res.success) {
-        setAiAnalysis(res.recommendations);
-      }
-    } catch (e) {
-      console.error('Failed to parse AI search recommendations:', e);
-    } finally {
-      setIsAiLoading(false);
-    }
-  };
+function CountdownBox({ value, label }: { value: number; label: string }) {
+  return (
+    <span className="flex flex-col items-center">
+      <span className="min-w-[26px] rounded-md bg-jade-900 px-1.5 py-1 text-center text-[11px] font-black tabular-nums leading-none text-white">
+        {String(value).padStart(2, '0')}
+      </span>
+      <span className="mt-0.5 text-[8px] font-bold uppercase tracking-wide text-ink-400">{label}</span>
+    </span>
+  );
+}
 
-  // Perform filtering logic
-  const filteredProducts = db.products.filter(product => {
-    // 1. Search Query filter
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchesText = product.title.toLowerCase().includes(q) || 
-                          product.description.toLowerCase().includes(q) ||
-                          product.category.toLowerCase().includes(q) ||
-                          (product.brand && product.brand.toLowerCase().includes(q));
-      if (!matchesText) return false;
-    }
+function ProductCard({
+  product,
+  rating,
+  reviewCount,
+  compact = false,
+  isFavorite,
+  onToggleFavorite,
+  onSelect,
+  onAdd,
+}: {
+  product: Product;
+  rating: number | null;
+  reviewCount: number;
+  compact?: boolean;
+  isFavorite: boolean;
+  onToggleFavorite: () => void;
+  onSelect: () => void;
+  onAdd: () => void;
+}) {
+  const discount = discountPercent(product);
+  const lowStock = product.quantity > 0 && product.quantity <= 8;
 
-    // 2. Category filter
-    if (selectedCategory && product.category.toLowerCase() !== selectedCategory.toLowerCase()) {
-      return false;
-    }
-
-    // 3. City/Location Filter
-    if (selectedCity) {
-      const sellerProfile = db.profiles.find(p => p.userId === product.sellerId);
-      if (sellerProfile && sellerProfile.city.toLowerCase() !== selectedCity.toLowerCase()) {
-        return false;
-      }
-    }
-
-    // 4. Verified Sellers Filter
-    if (onlyVerified) {
-      const seller = db.users.find(u => u.id === product.sellerId);
-      if (seller && seller.role !== UserRole.VERIFIED_SELLER && seller.role !== UserRole.VERIFIED_BUSINESS) {
-        return false;
-      }
-    }
-
-    return true;
-  });
+  useEffect(() => {
+    trackProductMetric(product.id, 'impression', true);
+  }, [product.id]);
 
   return (
-    <div className="bg-ink-50 dark:bg-ink-950 min-h-screen pb-16 transition-colors duration-300">
-      
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+    <article
+      onClick={onSelect}
+      className="group flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-ink-150 bg-white transition-all duration-200 hover:-translate-y-0.5 hover:border-jade-500/30 hover:shadow-lg dark:border-ink-800 dark:bg-ink-900"
+    >
+      <div className="relative aspect-square overflow-hidden bg-ink-50 dark:bg-ink-950">
+        <SmartImage
+          src={product.images?.[0]}
+          alt={product.title}
+          seed={`card-${product.id}`}
+          className="h-full w-full"
+          imgClassName="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+        />
 
-        {/* MARKETPLACE HEADER — commerce-first; the marketing story lives on the landing page */}
-        <section className="mb-8 rounded-[32px] border border-ink-200 bg-white p-6 shadow-sm sm:p-8 dark:border-ink-800 dark:bg-ink-900">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
-              <span className="text-sm font-semibold text-jade-600 dark:text-jade-400">
-                Marketplace
+        {discount !== null && (
+          <span className="absolute left-2 top-2 rounded-md bg-jade-600 px-1.5 py-0.5 text-[10px] font-black text-white shadow-sm">
+            -{discount}%
+          </span>
+        )}
+        {discount === null && lowStock && (
+          <span className="absolute left-2 top-2 rounded-md bg-jade-700/90 px-1.5 py-0.5 text-[10px] font-bold text-white shadow-sm">
+            {product.quantity} left
+          </span>
+        )}
+
+        <button
+          type="button"
+          aria-label={isFavorite ? 'Remove from wishlist' : 'Save to wishlist'}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleFavorite();
+          }}
+          className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-white/95 text-ink-500 shadow-sm transition-colors hover:text-jade-600 dark:bg-ink-900/95 dark:text-ink-300"
+        >
+          <Heart className={`h-3.5 w-3.5 ${isFavorite ? 'fill-jade-500 text-jade-500' : ''}`} />
+        </button>
+      </div>
+
+      <div className="flex flex-1 flex-col gap-1.5 p-2.5">
+        <h3 className={`line-clamp-2 font-bold leading-snug text-ink-900 dark:text-white ${compact ? 'text-[11px]' : 'text-xs'}`}>
+          {product.title}
+        </h3>
+
+        <div className="mt-auto space-y-1">
+          <div className="flex flex-wrap items-baseline gap-1.5">
+            <span className={`font-black tracking-tight text-ink-900 dark:text-white ${compact ? 'text-[13px]' : 'text-sm'}`}>
+              {naira(product.price)}
+            </span>
+            {discount !== null && (
+              <span className="text-[10px] font-medium text-ink-400 line-through">
+                {naira(Number(product.compareAtPrice))}
               </span>
-              <h1 className="mt-2 font-display text-2xl font-bold tracking-tight text-ink-900 sm:text-3xl dark:text-white">
-                Find it. Escrow it. Receive it.
-              </h1>
-              <p className="mt-2 max-w-xl text-sm leading-relaxed text-ink-500">
-                {liveStats.listings.toLocaleString()} live listings from{' '}
-                {liveStats.traders.toLocaleString()} buyers, merchants and couriers across Nigeria.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs font-semibold text-ink-500">
-                <span className="inline-flex items-center gap-1.5">
-                  <Lock className="h-3.5 w-3.5 text-jade-600 dark:text-jade-400" /> Escrow on every order
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <ShieldCheck className="h-3.5 w-3.5 text-jade-600 dark:text-jade-400" /> Verified sellers
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <Truck className="h-3.5 w-3.5 text-jade-600 dark:text-jade-400" /> Tracked delivery
-                </span>
-              </div>
-            </div>
-
-            <dl className="grid shrink-0 grid-cols-2 gap-3">
-              {[
-                { label: 'Live listings', value: liveStats.listings.toLocaleString() },
-                { label: 'Traders', value: liveStats.traders.toLocaleString() },
-                { label: 'Held in escrow', value: `₦${liveStats.escrowHeld.toLocaleString()}` },
-                { label: 'Escrow released', value: `${db.orders.filter((o) => String(o.status) === 'DELIVERED_SUCCESS').length}` },
-              ].map((stat) => (
-                <div
-                  key={stat.label}
-                  className="rounded-2xl border border-ink-100 bg-ink-50 px-4 py-3 dark:border-ink-800 dark:bg-ink-950/50"
-                >
-                  <dd className="text-lg font-semibold leading-none text-ink-900 dark:text-white">
-                    {stat.value}
-                  </dd>
-                  <dt className="mt-1 text-xs font-medium text-ink-500">
-                    {stat.label}
-                  </dt>
-                </div>
-              ))}
-            </dl>
-          </div>
-        </section>
-
-        {/* Sponsored: top-of-home placement */}
-        <AdSlot placement="HOME" onNavigate={onNavigate} className="mb-6" />
-
-        {/* PREMIUM MAIN VIEW TABS (MARKETPLACE, FLASH SALE, AUCTION) */}
-        <div className="w-full bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800/85 rounded-3xl p-1.5 sm:p-2 mb-6 sm:mb-8 flex gap-1 sm:gap-2 shadow-sm sticky top-[106px] md:top-16 z-20 backdrop-blur-md bg-white/95 dark:bg-ink-900/95 transition-all">
-          <button
-            onClick={() => setActiveMainTab('marketplace')}
-            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 py-2.5 sm:py-3.5 rounded-2xl font-semibold text-sm transition-all cursor-pointer ${
-              activeMainTab === 'marketplace'
-                ? 'bg-gradient-to-r from-jade-500 to-jade-600 text-white shadow-lg shadow-jade-500/20 scale-[1.01]'
-                : 'text-ink-600 dark:text-ink-400 hover:bg-ink-50 dark:hover:bg-ink-800 hover:text-ink-800'
-            }`}
-          >
-            <ShoppingBag className="w-4 h-4" />
-            <span className="hidden sm:inline">Marketplace Deals</span>
-            <span className="inline sm:hidden">Marketplace</span>
-            <span className={`ml-1 px-1 sm:px-1.5 py-0.5 rounded-md text-[10px] sm:text-xs ${activeMainTab === 'marketplace' ? 'bg-white/20 text-white' : 'bg-ink-100 dark:bg-ink-800 text-ink-500'}`}>
-              {db.products.filter(p => !p.isAuction).length}
-            </span>
-          </button>
-          
-          <button
-            onClick={() => setActiveMainTab('flash_sale')}
-            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 py-2.5 sm:py-3.5 rounded-2xl font-semibold text-sm transition-all cursor-pointer ${
-              activeMainTab === 'flash_sale'
-                ? 'bg-gradient-to-r from-jade-500 to-jade-600 text-white shadow-lg shadow-jade-500/20 scale-[1.01]'
-                : 'text-ink-600 dark:text-ink-400 hover:bg-ink-50 dark:hover:bg-ink-800 hover:text-ink-800'
-            }`}
-          >
-            <Zap className="w-4 h-4" />
-            <span className="hidden sm:inline">Flash Sales</span>
-            <span className="inline sm:hidden">Flash</span>
-            <span className={`ml-1 px-1 sm:px-1.5 py-0.5 rounded-md text-[10px] sm:text-xs ${activeMainTab === 'flash_sale' ? 'bg-white/20 text-white' : 'bg-ink-100 dark:bg-ink-800 text-ink-500'}`}>
-              {Math.min(db.products.filter(p => !p.isAuction).length, 4)}
-              <span className="hidden sm:inline"> Active</span>
-            </span>
-          </button>
-
-          <button
-            onClick={() => setActiveMainTab('auction')}
-            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 py-2.5 sm:py-3.5 rounded-2xl font-semibold text-sm transition-all cursor-pointer ${
-              activeMainTab === 'auction'
-                ? 'bg-gradient-to-r from-jade-500 to-jade-600 text-white shadow-lg shadow-jade-500/20 scale-[1.01]'
-                : 'text-ink-600 dark:text-ink-400 hover:bg-ink-50 dark:hover:bg-ink-800 hover:text-ink-800'
-            }`}
-          >
-            <Gavel className="w-4 h-4" />
-            <span className="hidden sm:inline">Auction Room</span>
-            <span className="inline sm:hidden">Auctions</span>
-            <span className={`ml-1 px-1 sm:px-1.5 py-0.5 rounded-md text-[10px] sm:text-xs ${activeMainTab === 'auction' ? 'bg-white/20 text-white' : 'bg-ink-100 dark:bg-ink-800 text-ink-500'}`}>
-              {db.products.filter(p => p.isAuction).length}
-            </span>
-          </button>
-        </div>
-
-        {activeMainTab === 'marketplace' && (
-          <>
-            {/* 2. JUMIA-STYLE INTERACTIVE PRODUCT CATEGORIES */}
-            <section id="categories-section" className="mb-10 bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800/80 p-6 sm:p-8 rounded-[32px] shadow-sm">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
-                <Grid className="w-5 h-5 text-ink-500 animate-spin-slow" />
-                Explore Categories
-              </h2>
-              <p className="text-xs text-ink-400 mt-1">Shop verified Nigerian deals by department</p>
-            </div>
-            {selectedCategory && (
-              <button 
-                onClick={() => setSelectedCategory(null)}
-                className="text-xs px-3 py-1.5 bg-ink-500/10 hover:bg-jade-500 text-ink-600 dark:text-ink-400 hover:text-white rounded-xl font-bold transition-all cursor-pointer press-scale focus-ring"
-              >
-                Show All Categories
-              </button>
             )}
           </div>
 
-          {/* Jumia Circular Grid / Flex Layout */}
-          <div className="flex overflow-x-auto gap-4 sm:gap-6 pb-4 scrollbar-hide justify-between items-center px-1">
-            {[
-              { name: 'Fashion', icon: Shirt, slug: 'fashion' },
-              { name: 'Electronics', icon: Cpu, slug: 'electronics' },
-              { name: 'Phones', icon: Smartphone, slug: 'phones' },
-              { name: 'Laptops', icon: Laptop, slug: 'laptops' },
-              { name: 'Furniture', icon: Armchair, slug: 'furniture' },
-              { name: 'Groceries', icon: Apple, slug: 'groceries' },
-              { name: 'Beauty', icon: Sparkles, slug: 'beauty' },
-              { name: 'Vehicles', icon: Car, slug: 'vehicles' },
-              { name: 'Books', icon: BookOpen, slug: 'books' },
-            ].map((cat) => {
-              const isSelected = selectedCategory === cat.slug;
+          <div className="flex items-center justify-between gap-1">
+            <Rating average={rating} count={reviewCount} />
+            <button
+              type="button"
+              aria-label="Add to cart"
+              disabled={product.quantity <= 0 || product.stockStatus === 'SOLD' || product.stockStatus === 'UNAVAILABLE' || product.stockStatus === 'OUT_OF_STOCK'}
+              onClick={(e) => {
+                e.stopPropagation();
+                onAdd();
+              }}
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-jade-500/10 text-jade-700 transition-all hover:bg-jade-500 hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 dark:text-jade-300"
+            >
+              <ShoppingCart className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
 
+export default function LandingView({
+  onSelectProduct,
+  searchQuery,
+  onNavigate,
+  onAddToCart,
+  onOpenAuth,
+  selectedState,
+  onSelectState,
+  wishlistOnly,
+  onWishlistOnlyChange,
+}: LandingViewProps) {
+  const db = useDBState();
+  const countdown = useCountdownToMidnight();
+  const { favorites, toggle: toggleFavorite } = useWishlist();
+
+  const [activeSlide, setActiveSlide] = useState(0);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [onlyVerified, setOnlyVerified] = useState(false);
+  const [dealsOnly, setDealsOnly] = useState(false);
+  const [sortMode, setSortMode] = useState<SortMode>('smart');
+
+  /* ---- indexes ---- */
+  const profilesByUserId = useMemo(() => {
+    const map = new Map<number, (typeof db.profiles)[number]>();
+    for (const profile of db.profiles) map.set(profile.userId, profile);
+    return map;
+  }, [db.profiles]);
+
+  const usersById = useMemo(() => {
+    const map = new Map<number, (typeof db.users)[number]>();
+    for (const user of db.users) map.set(user.id, user);
+    return map;
+  }, [db.users]);
+
+  const reviewStats = useMemo(() => {
+    const map = new Map<number, { total: number; count: number }>();
+    for (const review of db.reviews) {
+      if (!review.productId || !review.rating) continue;
+      const entry = map.get(review.productId) || { total: 0, count: 0 };
+      entry.total += review.rating;
+      entry.count += 1;
+      map.set(review.productId, entry);
+    }
+    const avg = new Map<number, { average: number; count: number }>();
+    map.forEach((value, key) => avg.set(key, { average: value.total / value.count, count: value.count }));
+    return avg;
+  }, [db.reviews]);
+
+  const stateOf = useCallback(
+    (sellerId: number) => profilesByUserId.get(sellerId)?.state || '',
+    [profilesByUserId]
+  );
+
+  const ratingOf = useCallback(
+    (productId: number) => reviewStats.get(productId)?.average ?? null,
+    [reviewStats]
+  );
+  const reviewCountOf = useCallback(
+    (productId: number) => reviewStats.get(productId)?.count ?? 0,
+    [reviewStats]
+  );
+
+  /* ---- categories (only real ones, with a representative photo) ---- */
+  const categories = useMemo(() => {
+    const byCategory = new Map<string, { name: string; count: number; image?: string }>();
+    for (const product of db.products) {
+      const key = product.category || 'Other';
+      const entry = byCategory.get(key) || { name: key, count: 0 };
+      entry.count += 1;
+      if (!entry.image && product.images?.[0]) entry.image = product.images[0];
+      byCategory.set(key, entry);
+    }
+    return Array.from(byCategory.values()).sort((a, b) => b.count - a.count);
+  }, [db.products]);
+
+  /* ---- states with listings ---- */
+  const states = useMemo(() => {
+    const set = new Set<string>();
+    for (const product of db.products) {
+      const state = stateOf(product.sellerId);
+      if (state) set.add(state);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [db.products, stateOf]);
+
+  /* ---- filtering ---- */
+  const filteredProducts = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    let list = db.products.filter((product) => {
+      if (query) {
+        const haystack = `${product.title} ${product.description} ${product.category} ${product.brand}`.toLowerCase();
+        if (!haystack.includes(query)) return false;
+      }
+      if (selectedCategory && product.category.toLowerCase() !== selectedCategory.toLowerCase()) return false;
+      if (selectedState && stateOf(product.sellerId) !== selectedState) return false;
+      if (onlyVerified) {
+        const seller = usersById.get(product.sellerId);
+        if (
+          seller?.role !== UserRole.VERIFIED_SELLER &&
+          seller?.role !== UserRole.VERIFIED_BUSINESS &&
+          seller?.role !== UserRole.BUSINESS
+        ) {
+          return false;
+        }
+      }
+      if (wishlistOnly && !favorites.includes(product.id)) return false;
+      if (dealsOnly && discountPercent(product) === null) return false;
+      return true;
+    });
+
+    list = [...list].sort((a, b) => {
+      switch (sortMode) {
+        case 'price_asc':
+          return a.price - b.price;
+        case 'price_desc':
+          return b.price - a.price;
+        case 'newest':
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        case 'rating':
+          return (ratingOf(b.id) || 0) - (ratingOf(a.id) || 0);
+        default:
+          return (ratingOf(b.id) || 0) * 10 + b.viewCount / 100 - ((ratingOf(a.id) || 0) * 10 + a.viewCount / 100);
+      }
+    });
+    return list;
+  }, [
+    db.products, searchQuery, selectedCategory, selectedState, onlyVerified, wishlistOnly,
+    dealsOnly, favorites, usersById, stateOf, sortMode, ratingOf,
+  ]);
+
+  /* ---- flash deals: real discounts first, then low stock ---- */
+  const flashDeals = useMemo(() => {
+    const discounted = db.products
+      .filter((p) => discountPercent(p) !== null)
+      .sort((a, b) => (discountPercent(b) || 0) - (discountPercent(a) || 0))
+      .slice(0, 6);
+    if (discounted.length >= 3) return discounted;
+    const filler = db.products
+      .filter((p) => !discounted.some((d) => d.id === p.id))
+      .sort((a, b) => a.quantity - b.quantity)
+      .slice(0, 6 - discounted.length);
+    return [...discounted, ...filler];
+  }, [db.products]);
+
+  /* ---- recommended: personalised by city + wishlist + rating ---- */
+  const recommended = useMemo(() => {
+    const favoriteCategories = new Set(
+      db.products.filter((p) => favorites.includes(p.id)).map((p) => p.category.toLowerCase())
+    );
+    const buyerState = db.profiles.find((p) => p.userId === db.currentUser?.id)?.state || '';
+    const scored = db.products
+      .filter((p) => !flashDeals.some((d) => d.id === p.id))
+      .map((product) => {
+        let score = (ratingOf(product.id) || 3) * 20 + product.viewCount / 20;
+        if (buyerState && stateOf(product.sellerId) === buyerState) score += 35;
+        if (favoriteCategories.has(product.category.toLowerCase())) score += 45;
+        if (product.stockStatus === 'LOW_STOCK') score += 5;
+        return { product, score };
+      })
+      .sort((a, b) => b.score - a.score);
+    return scored.slice(0, 6).map((s) => s.product);
+  }, [db.products, db.profiles, db.currentUser, favorites, flashDeals, ratingOf, stateOf]);
+
+  const auctions = useMemo(() => db.products.filter((p) => p.isAuction).slice(0, 4), [db.products]);
+
+  const verifiedSellers = useMemo(() => {
+    return db.users.filter(
+      (u) => u.role === UserRole.VERIFIED_SELLER || u.role === UserRole.VERIFIED_BUSINESS || u.role === UserRole.BUSINESS
+    ).slice(0, 6);
+  }, [db.users]);
+
+  /* ---- hero ---- */
+  const heroSlides = useMemo(
+    () => [
+      {
+        eyebrow: 'Best Deals',
+        title: 'Shop Smarter.',
+        highlight: 'Live Better.',
+        body: 'Great products, unbeatable prices, and complete peace of mind.',
+        cta: 'Shop Now',
+        action: () => {
+          setSelectedCategory(null);
+          onWishlistOnlyChange(false);
+          scrollToId('catalog-section');
+        },
+      },
+      {
+        eyebrow: 'Buyer Protection',
+        title: 'Your money waits',
+        highlight: 'until you confirm.',
+        body: 'Every order is escrow-backed. The seller is paid only after you receive what you ordered.',
+        cta: 'Browse protected deals',
+        action: () => {
+          setSelectedCategory(null);
+          scrollToId('catalog-section');
+        },
+      },
+      {
+        eyebrow: 'Verified Sellers',
+        title: 'Real stores.',
+        highlight: 'Real reviews.',
+        body: `${verifiedSellers.length} verified Nigerian merchants, with reviews tied to real orders.`,
+        cta: 'Meet the sellers',
+        action: () => scrollToId('sellers-section'),
+      },
+    ],
+    [verifiedSellers.length]
+  );
+
+  useEffect(() => {
+    const id = setInterval(() => setActiveSlide((s) => (s + 1) % heroSlides.length), 6500);
+    return () => clearInterval(id);
+  }, [heroSlides.length]);
+
+  const heroImages = useMemo(() => {
+    const picks = [...db.products]
+      .sort((a, b) => (ratingOf(b.id) || 0) - (ratingOf(a.id) || 0))
+      .filter((p) => p.images?.length)
+      .slice(0, 6);
+    if (!picks.length) return [] as Product[];
+    const out: Product[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      const value = picks[(activeSlide * 3 + i) % picks.length];
+      if (value) out.push(value);
+    }
+    return out;
+  }, [db.products, activeSlide, ratingOf]);
+
+  return (
+    <div className="min-h-screen bg-white pb-20 transition-colors duration-300 dark:bg-ink-950">
+      {/* ───────────────────────── Hero ───────────────────────── */}
+      <section className="relative overflow-hidden bg-jade-50 text-ink-900 transition-colors duration-300 dark:bg-jade-950 dark:text-white">
+        <div aria-hidden className="pointer-events-none absolute -left-24 top-10 h-72 w-72 rounded-full bg-jade-300/30 blur-3xl dark:bg-jade-500/25" />
+        <div aria-hidden className="pointer-events-none absolute -right-16 bottom-0 h-64 w-64 rounded-full bg-gold-300/25 blur-3xl dark:bg-gold-400/10" />
+
+        <div className="relative mx-auto max-w-7xl px-4 pb-6 pt-4 sm:px-6 sm:pb-8 lg:px-8">
+          {/* live trust line */}
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-[11px] font-semibold text-jade-800 dark:text-jade-200">
+            <span className="inline-flex items-center gap-1.5">
+              <Sparkles className="h-3.5 w-3.5 text-jade-600 dark:text-gold-300" />
+              {db.products.length} live listings across {states.length} states
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <ShieldCheck className="h-3.5 w-3.5 text-jade-600 dark:text-gold-300" />
+              Escrow on every order
+            </span>
+          </div>
+
+          {/* carousel card */}
+          <div className="relative overflow-hidden rounded-3xl border border-jade-200 bg-gradient-to-br from-white via-jade-50 to-jade-100 shadow-sm dark:border-white/10 dark:from-jade-800 dark:via-jade-900 dark:to-jade-950 dark:shadow-none">
+            <div className="grid items-center gap-4 p-4 sm:p-6 lg:grid-cols-[1.15fr_0.85fr]">
+              <div className="relative z-10">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-jade-600 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-white dark:bg-gold-300 dark:text-jade-950">
+                  <Flame className="h-3.5 w-3.5" />
+                  {heroSlides[activeSlide].eyebrow}
+                </span>
+
+                <h1 className="mt-3 font-display text-2xl font-black leading-[1.08] tracking-tight sm:text-3xl lg:text-4xl">
+                  {heroSlides[activeSlide].title}
+                  <br />
+                  <span className="text-jade-600 dark:text-gold-300">{heroSlides[activeSlide].highlight}</span>
+                </h1>
+
+                <p className="mt-2 max-w-md text-xs leading-relaxed text-ink-600 dark:text-jade-100/85 sm:text-sm">
+                  {heroSlides[activeSlide].body}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={heroSlides[activeSlide].action}
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl bg-jade-600 px-4 py-2.5 text-xs font-black text-white shadow-lg shadow-jade-900/20 transition-all hover:bg-jade-700 active:scale-95 dark:bg-gold-300 dark:text-jade-950 dark:shadow-black/20 dark:hover:bg-gold-200"
+                >
+                  {heroSlides[activeSlide].cta}
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+
+                <div className="mt-4 flex items-center gap-1.5">
+                  {heroSlides.map((slide, index) => (
+                    <button
+                      key={slide.eyebrow}
+                      type="button"
+                      aria-label={`Show ${slide.eyebrow}`}
+                      onClick={() => setActiveSlide(index)}
+                      className={`h-1.5 rounded-full transition-all ${
+                        index === activeSlide
+                          ? 'w-6 bg-jade-600 dark:bg-gold-300'
+                          : 'w-1.5 bg-ink-300 hover:bg-ink-400 dark:bg-white/35 dark:hover:bg-white/60'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* real product collage + protection seal */}
+              <div className="relative hidden h-48 sm:block lg:h-56">
+                <div className="absolute inset-0 flex items-end justify-center gap-2">
+                  {heroImages.map((product, index) => (
+                    <button
+                      key={product.id}
+                      type="button"
+                      onClick={() => onSelectProduct(product.id)}
+                      className={`relative overflow-hidden rounded-2xl border border-ink-200 bg-white shadow-lg transition-all hover:-translate-y-1 dark:border-white/20 dark:bg-white/10 dark:shadow-xl ${
+                        index === 1 ? 'h-40 w-28 sm:h-44 sm:w-32' : 'h-32 w-24 sm:h-36 sm:w-28'
+                      }`}
+                    >
+                      <SmartImage
+                        src={product.images?.[0]}
+                        alt={product.title}
+                        seed={`hero-${product.id}`}
+                        className="h-full w-full"
+                      />
+                    </button>
+                  ))}
+                </div>
+
+                <div className="absolute -right-1 top-0 flex flex-col items-center gap-0.5 rounded-xl border border-gold-400/60 bg-white/95 px-2.5 py-2 text-center backdrop-blur dark:border-gold-300/40 dark:bg-jade-950/80">
+                  <BadgeCheck className="h-4 w-4 text-gold-500 dark:text-gold-300" />
+                  <span className="text-[9px] font-bold leading-tight text-jade-800 dark:text-gold-200">
+                    Buyer<br />Protection
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <AdSlot placement="HOME" onNavigate={onNavigate} className="mt-4" />
+
+        {/* ───────────────────── Categories ───────────────────── */}
+        <section className="mt-5 rounded-3xl border border-ink-150 bg-white p-3 shadow-sm dark:border-ink-800 dark:bg-ink-900 sm:p-4">
+          <div className="flex items-center justify-between px-1">
+            <h2 className="font-display text-sm font-black text-ink-900 dark:text-white">Shop by category</h2>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedCategory(null);
+                scrollToId('catalog-section');
+              }}
+              className="inline-flex items-center gap-0.5 text-[11px] font-bold text-jade-600 hover:text-jade-700 dark:text-jade-400"
+            >
+              See all <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <div className="mt-3 flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-5">
+            {categories.map((category) => {
+              const { label, Icon } = categoryMeta(category.name);
+              const selected = selectedCategory?.toLowerCase() === category.name.toLowerCase();
               return (
                 <button
-                  key={cat.slug}
-                  onClick={() => setSelectedCategory(isSelected ? null : cat.slug)}
-                  className="flex flex-col items-center gap-2.5 group shrink-0 cursor-pointer focus:outline-none focus-ring rounded-2xl"
+                  key={category.name}
+                  type="button"
+                  onClick={() => {
+                    setSelectedCategory(selected ? null : category.name);
+                    scrollToId('catalog-section');
+                  }}
+                  className="group flex w-[68px] shrink-0 flex-col items-center gap-1.5"
                 >
-                  <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center border-2 transition-all relative ${
-                    isSelected
-                      ? 'border-jade-500 bg-jade-500 text-white shadow-lg shadow-jade-500/30 scale-105'
-                      : 'bg-jade-500/5 border-jade-500/20 text-jade-600 dark:text-jade-400 shadow-sm group-hover:scale-105 group-hover:shadow-md group-hover:border-jade-500/40'
-                  }`}>
-                    <cat.icon className="w-7 h-7 sm:w-8 sm:h-8" />
-
-                    {/* Selected Indicator Badge */}
-                    {isSelected && (
-                      <span className="absolute -top-1 -right-1 w-6 h-6 bg-jade-600 text-white rounded-full flex items-center justify-center border-2 border-white dark:border-ink-900 animate-nav-indicator">
-                        <CheckCircle className="w-3.5 h-3.5" />
-                      </span>
+                  <div
+                    className={`grid h-14 w-14 place-items-center overflow-hidden rounded-full ring-2 transition-all sm:h-16 sm:w-16 ${
+                      selected
+                        ? 'ring-jade-500 shadow-md shadow-jade-500/25'
+                        : 'ring-ink-100 group-hover:ring-jade-300 dark:ring-ink-800'
+                    } ${category.image ? 'bg-white' : 'bg-jade-500/10 text-jade-600 dark:text-jade-300'}`}
+                  >
+                    {category.image ? (
+                      <SmartImage
+                        src={category.image}
+                        alt={category.name}
+                        seed={`cat-${category.name}`}
+                        className="h-full w-full"
+                      />
+                    ) : (
+                      <Icon className="h-6 w-6" />
                     )}
                   </div>
-                  <span className={`text-xs font-sans font-bold tracking-tight transition-colors ${
-                    isSelected ? 'text-jade-600 dark:text-jade-400' : 'text-ink-700 dark:text-ink-300 group-hover:text-jade-600'
-                  }`}>
-                    {cat.name}
+                  <span
+                    className={`w-[68px] text-center text-[10px] font-bold leading-tight line-clamp-2 ${
+                      selected ? 'text-jade-600 dark:text-jade-400' : 'text-ink-700 dark:text-ink-300'
+                    }`}
+                  >
+                    {label}
                   </span>
                 </button>
               );
             })}
-          </div>
 
-          {/* Sponsored: category placement */}
-          <AdSlot placement="CATEGORY" onNavigate={onNavigate} />
-        </section>
-      </>
-    )}
-
-        {activeMainTab === 'flash_sale' && (
-          /* 3. REDESIGNED JUMIA-STYLE ACTIVE FLASH SALES */
-          <section id="flash-sales-section" className="mb-10 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 p-6 rounded-[32px] shadow-sm relative overflow-hidden">
-          
-          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-jade-400 via-jade-500 to-jade-600" />
-          
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-            <div className="flex items-center gap-2">
-              <div className="w-10 h-10 rounded-xl bg-jade-500/10 flex items-center justify-center text-jade-600 dark:text-jade-400 animate-pulse">
-                <Flame className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="font-display font-bold text-base text-ink-900 dark:text-white leading-tight">Today’s featured deals</h2>
-                <p className="text-xs text-ink-400">Hand-picked listings from verified merchants — escrow protected</p>
-              </div>
-            </div>
-            
-            {/* Countdown timer UI */}
-            <div className="flex items-center gap-2 bg-ink-50/80 dark:bg-ink-950/20 px-3 py-1.5 rounded-xl border border-ink-100 dark:border-ink-900/30 text-xs font-bold text-ink-600 dark:text-ink-400">
-              <span className="text-xs font-semibold text-ink-500">Ends in</span>
-              <span className="text-xs font-semibold tabular-nums">
-                {String(timeLeft.hours).padStart(2, '0')}h : {String(timeLeft.minutes).padStart(2, '0')}m : {String(timeLeft.seconds).padStart(2, '0')}s
-              </span>
-            </div>
-          </div>
- 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {db.products.filter(p => !p.isAuction).slice(0, 2).map((item) => {
-              // Honest signals derived from real data: units actually sold (paid
-              // orders) and the real remaining stock. No invented discounts.
-              const soldCount = (db.orders || []).filter(
-                (o) =>
-                  o.productId === item.id &&
-                  ['COMPLETED', 'DELIVERED', 'DELIVERED_SUCCESS', 'PAID_ESCROW', 'SHIPPED', 'OUT_FOR_DELIVERY'].includes(
-                    String(o.status)
-                  )
-              ).length;
-              const stockLeft = Math.max(0, item.quantity ?? 0);
-              const soldPercentage =
-                soldCount + stockLeft > 0 ? Math.min(100, Math.round((soldCount / (soldCount + stockLeft)) * 100)) : 0;
-              const discountedPrice = item.price;
-              
-              return (
-                <div 
-                  key={item.id}
-                  onClick={() => onSelectProduct(item.id)}
-                  className="flex gap-4 p-4 bg-ink-50/50 dark:bg-ink-800/20 rounded-2xl hover:bg-white dark:hover:bg-ink-800 hover:shadow-md cursor-pointer transition-all border border-ink-100 dark:border-ink-800/80 group relative overflow-hidden"
-                >
-                  {/* Left image wrapper */}
-                  <div className="w-28 h-28 rounded-xl bg-ink-200 dark:bg-ink-700 relative overflow-hidden shrink-0">
-                    <SmartImage
-                      src={item.images[0]}
-                      alt={item.title}
-                      seed={`deal-${item.id}`}
-                      className="h-full w-full"
-                      imgClassName="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                    
-                    {/* Flash Sale absolute tags */}
-                    <span className="absolute top-2 left-2 px-2 py-0.5 bg-jade-600 text-white text-xs font-semibold rounded-lg shadow-sm">
-                      Featured
-                    </span>
-                    <span className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/70 backdrop-blur-sm text-white text-[10px] font-bold rounded">
-                      FLASH DEAL
-                    </span>
-                  </div>
-
-                  {/* Right specifications & progressive indicators */}
-                  <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
-                    <div>
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <span className="text-xs font-medium text-ink-500">{item.category}</span>
-                        <span className="text-xs text-ink-400 dark:text-ink-500">@{item.brand || 'Vetted'}</span>
-                      </div>
-                      <h4 className="font-display font-bold text-sm text-ink-900 dark:text-white truncate group-hover:text-ink-500 transition-colors">{item.title}</h4>
-                      <p className="text-xs text-ink-500 dark:text-ink-400 line-clamp-1 mt-0.5">{item.description}</p>
-                    </div>
-                    
-                    {/* Progress Bar and Stock Tracker */}
-                    <div className="my-2.5 space-y-1">
-                      <div className="flex justify-between items-center text-xs font-bold">
-                        <span className="text-ink-400">Sold: {soldPercentage}%</span>
-                        <span className="text-ink-500 font-semibold">Only {stockLeft} left</span>
-                      </div>
-                      <div className="w-full bg-ink-200 dark:bg-ink-800 h-1.5 rounded-full overflow-hidden">
-                        <div className="bg-gradient-to-r from-jade-400 to-jade-600 h-full rounded-full" style={{ width: `${soldPercentage}%` }} />
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="font-display font-bold text-lg tracking-tight text-ink-900 dark:text-white">₦{discountedPrice.toLocaleString()}</span>
-                      </div>
-
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onAddToCart(item.id);
-                        }}
-                        className="px-3.5 py-1.5 bg-jade-500 hover:bg-jade-600 active:scale-95 text-white font-semibold text-xs rounded-xl transition-all shadow-md shadow-jade-500/20 cursor-pointer"
-                      >
-                        Buy Now
-                      </button>
-                    </div>
-
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-        )}
-
-        {activeMainTab === 'auction' && (
-          /* 4. PREMIUM REDESIGNED LIVE AUCTION BIDDING ZONE */
-          <section id="auctions-section" className="mb-10 bg-ink-950 text-white rounded-[32px] p-6 border border-ink-500/20 shadow-xl relative overflow-hidden">
-          
-          {/* Subtle live golden radial background */}
-          <div className="absolute top-0 right-0 w-80 h-80 bg-ink-500/5 rounded-full blur-3xl pointer-events-none" />
-          
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 relative z-10">
-            <div className="flex items-center gap-2">
-              <div className="w-10 h-10 rounded-xl bg-jade-500/10 flex items-center justify-center text-jade-400 border border-jade-500/20 animate-pulse">
-                <Zap className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="font-display font-bold text-base text-white leading-tight flex items-center gap-1.5">
-                  Live Auctions Escrow
-                  <span className="w-2.5 h-2.5 rounded-full bg-jade-500 animate-ping" />
-                </h2>
-                <p className="text-xs text-ink-400">Direct instant bidding on premium certified merchant stock</p>
-              </div>
-            </div>
-            
-            <div className="px-3 py-1 bg-ink-500/10 border border-ink-500/20 text-ink-400 rounded-full text-xs font-medium">
-              Live now
-            </div>
-          </div>
- 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 relative z-10">
-            {db.products.filter(p => p.isAuction).slice(0, 2).map((item) => {
-              const auction = db.auctions.find(a => a.productId === item.id);
-              const bids = db.bids.filter(b => b.auctionId === auction?.id).sort((a,b) => b.amount - a.amount);
-              const highestBid = bids.length > 0 ? bids[0].amount : (auction?.startingBid || 0);
- 
-              return (
-                <div 
-                  key={item.id}
-                  onClick={() => onSelectProduct(item.id)}
-                  className="bg-ink-900 border border-ink-800 hover:border-ink-500/30 rounded-2xl overflow-hidden hover:shadow-2xl transition-all cursor-pointer flex flex-col sm:flex-row group"
-                >
-                  {/* Left Column: Image with live indicator */}
-                  <div className="sm:w-44 h-48 bg-ink-800 relative overflow-hidden shrink-0">
-                    <SmartImage
-                      src={item.images[0]}
-                      alt={item.title}
-                      seed={`auction-${item.id}`}
-                      className="h-full w-full"
-                      imgClassName="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                    
-                    <div className="absolute top-2.5 left-2.5 px-2 py-0.5 bg-jade-500 text-white text-xs font-semibold rounded-full flex items-center gap-1 shadow-md">
-                      <Zap className="w-2.5 h-2.5 text-ink-950 fill-ink-950" />
-                      Live bid
-                    </div>
-                    <div className="absolute bottom-2.5 left-2.5 px-1.5 py-0.5 bg-black/60 text-white text-xs rounded">
-                      {bids.length} bids
-                    </div>
-                  </div>
- 
-                  {/* Right Column: Information, Bid Log, Quick Actions */}
-                  <div className="p-4 flex-1 flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <span className="text-xs font-medium text-ink-400">{item.brand || 'Premium'}</span>
-                        <span className="text-xs text-ink-400">Ends {auction ? new Date(auction.endsAt).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : ''}</span>
-                      </div>
-                      <h4 className="font-display font-bold text-sm text-white line-clamp-1 mb-1 group-hover:text-ink-400 transition-colors">{item.title}</h4>
-                      <p className="text-xs text-ink-400 line-clamp-1 leading-relaxed mb-3">{item.description}</p>
-                      
-                      {/* Interactive Bid Ticker */}
-                      <div className="bg-ink-950/60 border border-ink-800/60 p-2 rounded-xl mb-3">
-                        <span className="text-xs text-ink-500 block font-medium mb-1">Recent bids</span>
-                        {bids.slice(0, 2).length === 0 ? (
-                          <span className="text-xs italic text-ink-500 block">No bids casted yet. Join in!</span>
-                        ) : (
-                          <div className="space-y-1">
-                            {bids.slice(0, 2).map((b, idx) => (
-                              <div key={b.id} className="flex justify-between items-center text-xs">
-                                <span className="text-ink-400 truncate max-w-[80px]">@{b.username} {idx === 0 && <Star className="w-3 h-3 text-jade-500 inline" />}</span>
-                                <span className="font-semibold text-ink-400">₦{b.amount.toLocaleString()}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
- 
-                    <div className="border-t border-ink-800/80 pt-3 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <span className="text-xs text-ink-400 block font-medium leading-none mb-1">Highest bid</span>
-                          <span className="text-base font-bold text-white">₦{highestBid.toLocaleString()}</span>
-                        </div>
-                        
-                        <div className="text-right">
-                          <span className="text-xs text-ink-500 block font-medium">Minimum next</span>
-                          <span className="text-xs text-ink-500 font-semibold">₦{(highestBid + 5000).toLocaleString()}</span>
-                        </div>
-                      </div>
- 
-                      {/* QUICK DIRECT BID TRIGGERS */}
-                      <div className="flex gap-1.5 pt-1">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (!db.currentUser) {
-                              onOpenAuth?.('login');
-                              return;
-                            }
-                            if (auction) {
-                              dbOperations.submitBid(auction.id, highestBid + 5000);
-                            }
-                          }}
-                          className="flex-1 py-1.5 bg-ink-800 hover:bg-jade-500 hover:text-white border border-ink-700 hover:border-jade-500 text-ink-300 font-semibold text-xs rounded-lg transition-all text-center cursor-pointer active:scale-95"
-                          title="Place quick bid of +₦5,000"
-                        >
-                          +₦5,000
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (!db.currentUser) {
-                              onOpenAuth?.('login');
-                              return;
-                            }
-                            if (auction) {
-                              dbOperations.submitBid(auction.id, highestBid + 20000);
-                            }
-                          }}
-                          className="flex-1 py-1.5 bg-ink-800 hover:bg-jade-500 hover:text-white border border-ink-700 hover:border-jade-500 text-ink-300 font-semibold text-xs rounded-lg transition-all text-center cursor-pointer active:scale-95"
-                          title="Place quick bid of +₦20,000"
-                        >
-                          +₦20,000
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onSelectProduct(item.id);
-                          }}
-                          className="px-3 py-1.5 bg-jade-500 hover:bg-jade-600 text-white font-semibold text-xs rounded-lg transition-all cursor-pointer text-center"
-                        >
-                          Bid Info
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-        )}
-
-        {activeMainTab === 'marketplace' && (
-          <>
-        {/* 5. Filter Controls */}
-        <section className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-4 mb-8 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-2">
-            
-            {/* City Selector */}
-            <select
-              value={selectedCity || ''}
-              onChange={(e) => setSelectedCity(e.target.value || null)}
-              className="px-3 py-1.5 text-xs bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl text-ink-700 dark:text-ink-300 font-sans font-bold focus:outline-none"
-            >
-              <option value="">All Nigeria Cities</option>
-              <option value="Gbagada">Gbagada (Lagos)</option>
-              <option value="Ojo">Ojo (Lagos)</option>
-              <option value="Abuja CBD">Abuja CBD (FCT)</option>
-              <option value="Ikeja">Ikeja (Lagos)</option>
-            </select>
-
-            {/* Verified toggle */}
             <button
-              onClick={() => setOnlyVerified(!onlyVerified)}
-              className={`px-3 py-1.5 text-xs rounded-xl font-sans font-bold transition-all border ${onlyVerified ? 'bg-jade-500 border-jade-500 text-white shadow-sm' : 'bg-ink-50 dark:bg-ink-800 border-ink-200 dark:border-ink-700 text-ink-700 dark:text-ink-300'}`}
+              type="button"
+              onClick={() => {
+                setSelectedCategory(null);
+                onWishlistOnlyChange(false);
+                scrollToId('catalog-section');
+              }}
+              className="flex w-[68px] shrink-0 flex-col items-center gap-1.5"
             >
-              Only Verified Sellers
+              <div className="grid h-14 w-14 place-items-center rounded-full bg-jade-600 text-white ring-2 ring-jade-600 sm:h-16 sm:w-16">
+                <LayoutGrid className="h-6 w-6" />
+              </div>
+              <span className="text-[10px] font-bold text-ink-700 dark:text-ink-300">More</span>
             </button>
           </div>
-
-          <p className="text-xs text-ink-400">Found {filteredProducts.length} items</p>
         </section>
 
-        {/* 6. Marketplace Product Catalog (AliExpress/Temu/Jumia style dense cards grid) */}
-        {searchQuery.trim() && (
-          <AdSlot placement="SEARCH" onNavigate={onNavigate} className="mb-6" />
+        {/* ───────────────────── Flash deals ───────────────────── */}
+        {flashDeals.length > 0 && (
+          <section className="mt-6" id="flash-deals-section">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="grid h-7 w-7 place-items-center rounded-lg bg-gold-100 text-gold-600">
+                  <Zap className="h-4 w-4 fill-gold-400 text-gold-500" />
+                </span>
+                <h2 className="font-display text-lg font-black tracking-tight text-ink-900 dark:text-white sm:text-xl">
+                  Flash Deals
+                </h2>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="flex items-start gap-1 rounded-lg bg-white px-2 py-1 shadow-sm ring-1 ring-ink-150 dark:bg-ink-900 dark:ring-ink-800">
+                  <CountdownBox value={countdown.hours} label="hrs" />
+                  <span className="pt-0.5 text-[11px] font-black text-ink-300">:</span>
+                  <CountdownBox value={countdown.minutes} label="min" />
+                  <span className="pt-0.5 text-[11px] font-black text-ink-300">:</span>
+                  <CountdownBox value={countdown.seconds} label="sec" />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCategory(null);
+                    setDealsOnly(true);
+                    scrollToId('catalog-section');
+                  }}
+                  className="inline-flex items-center gap-0.5 text-[11px] font-bold text-jade-600 hover:text-jade-700 dark:text-jade-400"
+                >
+                  See All <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
+              {flashDeals.slice(0, 6).map((product) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  rating={ratingOf(product.id)}
+                  reviewCount={reviewCountOf(product.id)}
+                  isFavorite={favorites.includes(product.id)}
+                  onToggleFavorite={() => toggleFavorite(product.id)}
+                  onSelect={() => onSelectProduct(product.id)}
+                  onAdd={() => onAddToCart(product.id)}
+                />
+              ))}
+            </div>
+          </section>
         )}
 
-        <section id="catalog-section" className="mb-12">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-            <div>
-              <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
-                <ShoppingBag className="w-5 h-5 text-jade-500" />
-                Marketplace Super Deals
-              </h2>
-              <p className="text-xs text-ink-400 mt-1">Direct-from-merchant listings with escrow payment protection guarantee.</p>
+        {/* ───────────────────── Recommended ───────────────────── */}
+        {recommended.length > 0 && (
+          <section className="mt-6">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-gold-400" />
+                <h2 className="font-display text-lg font-black tracking-tight text-ink-900 dark:text-white sm:text-xl">
+                  Recommended for You
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSortMode('rating');
+                  scrollToId('catalog-section');
+                }}
+                className="inline-flex items-center gap-0.5 text-[11px] font-bold text-jade-600 hover:text-jade-700 dark:text-jade-400"
+              >
+                See All <ArrowRight className="h-3.5 w-3.5" />
+              </button>
             </div>
-            
-            {/* Quick Jumia style promo badge */}
-            <div className="px-3 py-1 bg-jade-500/10 border border-jade-500/20 rounded-xl text-jade-700 dark:text-jade-300 text-xs font-semibold flex items-center gap-1.5 self-start sm:self-center">
-              <span className="w-1.5 h-1.5 rounded-full bg-jade-500 animate-ping" />
-              Escrow protected
+
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
+              {recommended.map((product) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  rating={ratingOf(product.id)}
+                  reviewCount={reviewCountOf(product.id)}
+                  isFavorite={favorites.includes(product.id)}
+                  onToggleFavorite={() => toggleFavorite(product.id)}
+                  onSelect={() => onSelectProduct(product.id)}
+                  onAdd={() => onAddToCart(product.id)}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* ───────────────────── Trust strip ───────────────────── */}
+        <section className="mt-6 grid grid-cols-2 gap-2 rounded-2xl border border-ink-150 bg-white p-3 text-ink-900 shadow-sm sm:grid-cols-4 sm:gap-3 sm:p-4 dark:border-jade-800/60 dark:bg-jade-900 dark:text-white dark:shadow-none">
+          {[
+            { Icon: ShieldCheck, title: 'Secure Payments', body: 'Escrow protected' },
+            { Icon: Headphones, title: '24/7 Support', body: 'Real humans' },
+            { Icon: BadgeCheck, title: 'Verified Sellers', body: 'ID checked' },
+            { Icon: Truck, title: 'Fast Delivery', body: 'Tracked riders' },
+          ].map((item) => (
+            <div key={item.title} className="flex items-center gap-2">
+              <item.Icon className="h-6 w-6 shrink-0 text-jade-600 dark:text-gold-300" />
+              <div className="min-w-0">
+                <p className="truncate text-[11px] font-bold leading-tight">{item.title}</p>
+                <p className="truncate text-[10px] text-ink-500 dark:text-jade-200/80">{item.body}</p>
+              </div>
+            </div>
+          ))}
+        </section>
+
+        {/* ───────────────────── Catalog ───────────────────── */}
+        <section id="catalog-section" className="mt-7 scroll-mt-24">
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h2 className="font-display text-lg font-black tracking-tight text-ink-900 dark:text-white sm:text-xl">
+                {wishlistOnly
+                  ? 'Your wishlist'
+                  : dealsOnly
+                    ? 'Discounted deals'
+                    : selectedCategory
+                      ? categoryMeta(selectedCategory).label
+                      : searchQuery.trim()
+                        ? `Results for “${searchQuery.trim()}”`
+                        : 'All listings'}
+              </h2>
+              <p className="text-[11px] text-ink-400">
+                {filteredProducts.length} item{filteredProducts.length === 1 ? '' : 's'}
+                {selectedState ? ` · ${selectedState}` : ' · across Nigeria'}
+                {onlyVerified ? ' · verified sellers only' : ''}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => onWishlistOnlyChange(!wishlistOnly)}
+                className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition-colors ${
+                  wishlistOnly
+                    ? 'border-jade-500 bg-jade-500 text-white'
+                    : 'border-ink-200 bg-white text-ink-600 hover:border-jade-300 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300'
+                }`}
+              >
+                <Heart className={`h-3.5 w-3.5 ${wishlistOnly ? 'fill-white' : ''}`} />
+                Wishlist
+                {favorites.length > 0 && (
+                  <span className={`rounded-full px-1 text-[10px] ${wishlistOnly ? 'bg-white/20' : 'bg-jade-500/10 text-jade-700 dark:text-jade-300'}`}>
+                    {favorites.length}
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDealsOnly((v) => !v)}
+                className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition-colors ${
+                  dealsOnly
+                    ? 'border-jade-500 bg-jade-500 text-white'
+                    : 'border-ink-200 bg-white text-ink-600 hover:border-jade-300 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300'
+                }`}
+              >
+                <Flame className={`h-3.5 w-3.5 ${dealsOnly ? 'fill-white' : 'text-gold-500'}`} />
+                Deals
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setOnlyVerified((v) => !v)}
+                className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition-colors ${
+                  onlyVerified
+                    ? 'border-jade-500 bg-jade-500 text-white'
+                    : 'border-ink-200 bg-white text-ink-600 hover:border-jade-300 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300'
+                }`}
+              >
+                <BadgeCheck className="h-3.5 w-3.5" />
+                Verified
+              </button>
+
+              <label className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-[11px] font-bold text-ink-600 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300">
+                <SlidersHorizontal className="h-3.5 w-3.5 text-ink-400" />
+                <select
+                  aria-label="Sort listings"
+                  value={sortMode}
+                  onChange={(e) => setSortMode(e.target.value as SortMode)}
+                  className="cursor-pointer bg-transparent pr-1 outline-none"
+                >
+                  <option value="smart">Recommended</option>
+                  <option value="rating">Top rated</option>
+                  <option value="price_asc">Price: low to high</option>
+                  <option value="price_desc">Price: high to low</option>
+                  <option value="newest">Newest</option>
+                </select>
+              </label>
             </div>
           </div>
 
           {filteredProducts.length === 0 ? (
             db.products.length === 0 ? (
-              /* Fresh marketplace — no listings exist yet, so invite the first seller */
-              <div className="bg-white dark:bg-ink-900 rounded-[32px] border border-dashed border-ink-300 dark:border-ink-700 shadow-sm">
+              <div className="rounded-3xl border border-dashed border-ink-300 bg-white shadow-sm dark:border-ink-700 dark:bg-ink-900">
                 <EmptyState
                   state="empty-cart"
                   icon={<Store />}
                   title="The marketplace is just getting started"
-                  description={
-                    <>
-                      No listings yet. Create an account to sell the first item — every order is protected by
-                      GoodSale escrow, released only when the buyer confirms delivery with their PIN.
-                    </>
-                  }
+                  description="No listings yet. Create an account to sell the first item — every order is protected by GoodSale escrow."
                   action={
                     <button
                       type="button"
                       onClick={() => onOpenAuth?.('register')}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-jade-500 hover:bg-jade-600 text-white text-xs font-semibold rounded-xl shadow-lg shadow-jade-500/20 transition-all cursor-pointer press-scale focus-ring"
+                      className="inline-flex items-center gap-2 rounded-xl bg-jade-500 px-5 py-2.5 text-xs font-bold text-white shadow-lg shadow-jade-500/20 transition-all hover:bg-jade-600"
                     >
-                      <ShoppingBag className="w-4 h-4" />
+                      <ShoppingCart className="h-4 w-4" />
                       List the first item
                     </button>
                   }
                 />
               </div>
             ) : (
-              <div className="bg-white dark:bg-ink-900 rounded-[32px] border border-ink-200 dark:border-ink-800 shadow-sm">
+              <div className="rounded-3xl border border-ink-200 bg-white shadow-sm dark:border-ink-800 dark:bg-ink-900">
                 <EmptyState
                   state="empty-search"
-                  icon={<Search />}
-                  title="No products found"
-                  description="Try loosening your search query or location filter."
+                  icon={<Heart />}
+                  title={wishlistOnly ? 'Your wishlist is empty' : 'No products found'}
+                  description={
+                    wishlistOnly
+                      ? 'Tap the heart on any listing to save it here.'
+                      : 'Try loosening your search, location or category filters.'
+                  }
                 />
               </div>
             )
           ) : (
-            /* DENSE MULTI-COLUMN INTERACTIVE PRODUCT GRID (TEMU & ALIEXPRESS INSPIRED) */
-            <div
-              className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4"
-              id="products-catalog-grid"
-            >
-              {filteredProducts.map((product) => {
-                const seller = db.users.find(u => u.id === product.sellerId);
-                const sellerProfile = db.profiles.find(p => p.userId === product.sellerId);
-                const isSellerVerified = seller?.role === UserRole.VERIFIED_SELLER || seller?.role === UserRole.VERIFIED_BUSINESS;
-                
-                const productReviews = (db.reviews || []).filter(
-                  (r) => r.productId === product.id && r.rating > 0
-                );
-                const avgRating =
-                  productReviews.length > 0
-                    ? (
-                        productReviews.reduce((sum, r) => sum + r.rating, 0) / productReviews.length
-                      ).toFixed(1)
-                    : null;
-                const soldCount = (db.orders || []).filter(
-                  (o) =>
-                    o.productId === product.id &&
-                    ['COMPLETED', 'DELIVERED', 'PAID_ESCROW', 'SHIPPED', 'OUT_FOR_DELIVERY'].includes(
-                      String(o.status)
-                    )
-                ).length;
-                const stockLeft = Math.max(0, product.quantity ?? 0);
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4 xl:grid-cols-5">
+              {filteredProducts.map((product) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  rating={ratingOf(product.id)}
+                  reviewCount={reviewCountOf(product.id)}
+                  isFavorite={favorites.includes(product.id)}
+                  onToggleFavorite={() => toggleFavorite(product.id)}
+                  onSelect={() => onSelectProduct(product.id)}
+                  onAdd={() => onAddToCart(product.id)}
+                  compact
+                />
+              ))}
+            </div>
+          )}
 
-                const handleQuickAddToCart = (e: React.MouseEvent) => {
-                  e.stopPropagation();
-                  onAddToCart(product.id);
-                };
+          <AdSlot placement="SEARCH" onNavigate={onNavigate} className="mt-6" />
+        </section>
 
+        {/* ───────────────────── Auctions (only when live) ───────────────────── */}
+        {auctions.length > 0 && (
+          <section className="mt-8">
+            <div className="mb-3 flex items-center gap-2">
+              <span className="grid h-7 w-7 place-items-center rounded-lg bg-jade-500/10 text-jade-600 dark:text-jade-300">
+                <Gavel className="h-4 w-4" />
+              </span>
+              <h2 className="font-display text-lg font-black tracking-tight text-ink-900 dark:text-white">
+                Live auctions
+              </h2>
+            </div>
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4">
+              {auctions.map((product) => {
+                const auction = db.auctions.find((a) => a.productId === product.id);
+                const bids = db.bids.filter((b) => b.auctionId === auction?.id);
+                const highest = bids.length ? Math.max(...bids.map((b) => b.amount)) : auction?.startingBid || 0;
                 return (
-                  <div 
+                  <button
                     key={product.id}
+                    type="button"
                     onClick={() => onSelectProduct(product.id)}
-                    className="bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 rounded-2xl hover:border-jade-500/40 dark:hover:border-jade-500/30 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group cursor-pointer flex flex-col overflow-hidden relative"
+                    className="group overflow-hidden rounded-2xl border border-ink-150 bg-white text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg dark:border-ink-800 dark:bg-ink-900"
                   >
-                    
-                    {/* A. Square Image Block with badges */}
-                    <div className="aspect-square bg-ink-50 dark:bg-ink-950/40 relative overflow-hidden shrink-0 border-b border-ink-100 dark:border-ink-800/60">
+                    <div className="relative aspect-square bg-ink-50 dark:bg-ink-950">
                       <SmartImage
-                        src={product.images[0]}
+                        src={product.images?.[0]}
                         alt={product.title}
-                        seed={`product-${product.id}`}
+                        seed={`auction-${product.id}`}
                         className="h-full w-full"
-                        imgClassName="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        imgClassName="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                       />
-                      
-                      {/* Discount banner only when seller set a compare-at style deal via low stock flash */}
-                      {product.stockStatus === 'LOW_STOCK' && (
-                        <div className="absolute top-1.5 left-1.5 px-2 py-0.5 bg-jade-600 dark:bg-jade-500 text-white text-xs font-semibold rounded shadow-md flex items-center gap-0.5">
-                          <span>Low stock</span>
-                        </div>
-                      )}
-
-                      {stockLeft > 0 && stockLeft <= 5 && (
-                        <div className="absolute bottom-1.5 right-1.5 px-2 py-0.5 bg-jade-500 text-white text-xs font-semibold rounded shadow-sm">
-                          Only {stockLeft} left
-                        </div>
-                      )}
-
-                      {/* Small Escrow lock overlay */}
-                      <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 bg-ink-900/90 backdrop-blur-md text-xs font-medium text-jade-400 rounded-md border border-jade-500/20 shadow flex items-center gap-1">
-                        <Shield className="w-2.5 h-2.5 text-jade-400" />
-                        <span>Escrow</span>
-                      </div>
-
-                      {/* Favorite Heart Button */}
-                      <button 
-                        onClick={(e) => toggleFavorite(product.id, e)}
-                        className="absolute top-1.5 right-1.5 p-1.5 bg-white/95 dark:bg-ink-900/95 backdrop-blur-sm rounded-full text-ink-500 dark:text-ink-400 hover:text-ink-500 dark:hover:text-ink-400 transition-colors cursor-pointer shadow z-10"
-                      >
-                        <Heart className={`h-3 w-3 ${favorites.includes(product.id) ? 'fill-jade-500 text-jade-500' : ''}`} />
-                      </button>
+                      <span className="absolute left-2 top-2 rounded-md bg-jade-600 px-1.5 py-0.5 text-[10px] font-black text-white">
+                        Live bid
+                      </span>
                     </div>
-
-                    {/* B. Details text block — roomy spacing so lines don't collapse */}
-                    <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between gap-3.5 text-xs">
-                      
-                      <div className="space-y-3">
-                        
-                        {/* 1. Vendor Username & Link with Store icon */}
-                        <div className="flex items-center justify-between text-xs bg-ink-50 dark:bg-ink-800/40 p-1.5 rounded-xl border border-ink-100 dark:border-ink-800/60 font-sans">
-                          <div 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onNavigate('seller-profile', { sellerId: product.sellerId });
-                            }}
-                            className="flex items-center gap-1 hover:text-jade-500 cursor-pointer min-w-0 flex-1"
-                            title="View Vendor Storefront"
-                          >
-                            <Store className="w-3.5 h-3.5 text-jade-500 shrink-0" />
-                            <span className="font-semibold text-ink-700 dark:text-ink-300 truncate text-xs">
-                              @{seller?.username || 'vendor'}
-                            </span>
-                            {isSellerVerified && (
-                              <CheckCircle className="w-3 h-3 shrink-0 text-jade-500" />
-                            )}
-                          </div>
-                          <span className="text-xs font-medium text-ink-400 shrink-0 bg-white dark:bg-ink-900 px-1 py-0.5 rounded border border-ink-150 dark:border-ink-800 ml-1">
-                            {sellerProfile?.city || 'Nigeria'}
-                          </span>
-                        </div>
-
-                        {/* 2. Category name */}
-                        <div className="text-xs font-medium text-ink-400">
-                          {product.category}
-                        </div>
-
-                        {/* 3. Headline with 2-line clamp */}
-                        <h4 className="font-display font-bold text-sm sm:text-base text-ink-900 dark:text-white line-clamp-2 leading-snug tracking-tight group-hover:text-jade-600 dark:group-hover:text-jade-400 transition-colors min-h-[2.75rem]">
-                          {product.title}
-                        </h4>
-
-                        {/* 4. Rating & sold metrics from real reviews/orders */}
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-1 text-xs text-ink-500 dark:text-ink-400 font-sans">
-                            {avgRating ? (
-                              <>
-                                <div className="flex text-ink-500 text-xs">
-                                  {Array.from({ length: Math.round(parseFloat(avgRating)) }).map((_, i) => (
-                            <Star key={i} className="star-filled w-3.5 h-3.5" />
-                          ))}
-                                  {Array.from({ length: Math.max(0, 5 - Math.round(parseFloat(avgRating))) }).map((_, i) => (
-                            <Star key={i} className="star-empty h-3.5 w-3.5" />
-                          ))}
-                                </div>
-                                <span className="text-xs font-bold text-ink-700 dark:text-ink-200">
-                                  {avgRating}
-                                </span>
-                                <span className="text-ink-400 text-xs">
-                                  ({productReviews.length})
-                                </span>
-                              </>
-                            ) : (
-                              <span className="text-ink-400 text-xs">No reviews yet</span>
-                            )}
-                            {soldCount > 0 && (
-                              <span className="text-ink-400 text-xs ml-auto">{soldCount} sold</span>
-                            )}
-                          </div>
-                          
-                          {/* Escrow Delivery Badge */}
-                          <div className="flex items-center justify-between text-xs mt-0.5">
-                            <span className="text-jade-600 dark:text-jade-400 font-sans font-medium flex items-center gap-0.5">
-                              Escrow Delivery
-                            </span>
-                          </div>
-                        </div>
-
-                        {stockLeft > 0 && stockLeft <= 8 && (
-                          <div className="pt-0.5">
-                            <div className="flex items-center justify-between text-xs text-ink-400">
-                              <span className="text-ink-600 dark:text-ink-400 font-bold">
-                                {stockLeft} in stock
-                              </span>
-                              {soldCount > 0 && <span>{soldCount} sold</span>}
-                            </div>
-                            <div className="w-full bg-ink-150 dark:bg-ink-800 h-1 rounded-full overflow-hidden mt-1">
-                              <div
-                                className="bg-jade-500 h-full rounded-full transition-all duration-500"
-                                style={{
-                                  width: `${Math.min(100, Math.max(8, (stockLeft / Math.max(stockLeft + soldCount, 1)) * 100))}%`,
-                                }}
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        {/* 6. Price */}
-                        <div className="pt-1">
-                          <div className="flex items-baseline gap-1.5 flex-wrap">
-                            <span className="font-display font-bold text-base sm:text-lg leading-none tracking-tight text-ink-900 dark:text-white">
-                              ₦{product.price.toLocaleString()}
-                            </span>
-                          </div>
-                        </div>
-
-                      </div>
-
-                      {/* C. Direct Action Footer */}
-                      <div className="pt-2 border-t border-ink-100 dark:border-ink-800/80 flex items-center justify-between gap-1">
-                        <span className="text-xs font-medium text-jade-500 dark:text-jade-400 block">
-                          Escrow protected
-                        </span>
-                        
-                        <button 
-                          onClick={handleQuickAddToCart}
-                          className="h-9 w-9 bg-jade-500 hover:bg-jade-600 text-white rounded-full transition-all flex items-center justify-center shrink-0 shadow-sm shadow-jade-500/20 cursor-pointer"
-                          title="Add to Shopping Cart"
-                        >
-                          <ShoppingBag className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-
+                    <div className="space-y-1 p-2.5">
+                      <h3 className="line-clamp-2 text-xs font-bold text-ink-900 dark:text-white">{product.title}</h3>
+                      <p className="text-[11px] font-black text-jade-700 dark:text-jade-300">
+                        Highest {naira(highest)}
+                      </p>
+                      <p className="text-[10px] text-ink-400">{bids.length} bid{bids.length === 1 ? '' : 's'}</p>
                     </div>
-
-                  </div>
+                  </button>
                 );
               })}
             </div>
-          )}
-        </section>
+          </section>
+        )}
 
-        {/* 7. Featured Verified Businesses */}
-        <section id="businesses-section" className="mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="font-display font-bold text-base text-ink-900 dark:text-white">
-              Featured verified stores
-            </h2>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {db.businesses.map((biz) => (
-              <div 
-                key={biz.id}
-                onClick={() => onNavigate('seller-profile', { sellerId: biz.ownerId })}
-                className="p-5 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl flex items-center gap-4 hover:shadow-md cursor-pointer transition-all relative overflow-hidden group hover:border-jade-500/40"
-              >
-                <div className="w-14 h-14 rounded-full bg-jade-500/10 flex items-center justify-center overflow-hidden shrink-0 border border-ink-100 dark:border-ink-800">
-                  <SmartAvatar src={biz.logoUrl} name={biz.name} seed={`biz-${biz.id}`} className="h-full w-full" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <h4 className="font-display font-bold text-sm text-ink-900 dark:text-white truncate">{biz.name}</h4>
-                    <span title="Premium Business Badge">
-                      <CheckCircle className="h-4 w-4 shrink-0 text-jade-500" />
+        {/* ───────────────────── Verified stores ───────────────────── */}
+        {verifiedSellers.length > 0 && (
+          <section id="sellers-section" className="mt-8 scroll-mt-24">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2 className="font-display text-lg font-black tracking-tight text-ink-900 dark:text-white">
+                Verified stores
+              </h2>
+              <span className="inline-flex items-center gap-1 rounded-full bg-jade-500/10 px-2 py-1 text-[10px] font-bold text-jade-700 dark:text-jade-300">
+                <ShieldCheck className="h-3 w-3" /> ID checked
+              </span>
+            </div>
+            <div className="flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {verifiedSellers.map((seller) => {
+                const profile = profilesByUserId.get(seller.id);
+                const listings = db.products.filter((p) => p.sellerId === seller.id).length;
+                return (
+                  <button
+                    key={seller.id}
+                    type="button"
+                    onClick={() => onNavigate('seller-profile', { sellerId: seller.id })}
+                    className="flex w-40 shrink-0 flex-col items-center gap-1.5 rounded-2xl border border-ink-150 bg-white p-3 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-ink-800 dark:bg-ink-900"
+                  >
+                    <div className="grid h-14 w-14 place-items-center overflow-hidden rounded-full bg-jade-500/10 ring-2 ring-jade-500/20">
+                      <SmartImage
+                        src={profile?.photoUrl}
+                        alt={seller.fullName}
+                        seed={`seller-${seller.id}`}
+                        className="h-full w-full"
+                      />
+                    </div>
+                    <span className="flex items-center gap-1 text-[11px] font-bold text-ink-900 dark:text-white">
+                      <span className="truncate">{seller.fullName}</span>
+                      <BadgeCheck className="h-3 w-3 shrink-0 text-jade-500" />
                     </span>
-                  </div>
-                  <p className="text-xs text-ink-500 dark:text-ink-400 line-clamp-1 mb-2 leading-relaxed">{biz.description}</p>
-                  
-                  <div className="flex items-center gap-4 text-xs text-ink-400">
-                    <span className="flex items-center gap-1">
-                      <Star className="star-filled w-3 h-3" />
-                      {biz.rating} ({biz.reviewsCount})
-                    </span>
-                    <span>Followers: {biz.followers}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      </>
-    )}
-
+                    <span className="text-[10px] text-ink-400">{listings} listings</span>
+                    {profile?.state && <span className="text-[10px] text-ink-400">{profile.state}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );
+}
+
+/** Smooth-scroll to a section on the home page. */
+function scrollToId(id: string) {
+  if (typeof document === 'undefined') return;
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }

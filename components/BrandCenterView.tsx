@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import Logo, { LogoIcon } from './LogoIcon';
 
-// Mock our beautiful generated images using premium placeholder URLs
+// Preview the generated brand assets using the uploaded image URLs
 const packagingImg = { src: 'https://images.unsplash.com/photo-1589939705384-5185137a7f0f?q=80&w=800&auto=format&fit=crop' };
 const uniformImg = { src: 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?q=80&w=800&auto=format&fit=crop' };
 

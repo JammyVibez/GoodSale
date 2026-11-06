@@ -14,6 +14,12 @@
      8. `supabase/migrations/008_platform_fee_toggle.sql` (admin-controlled platform fee — OFF at launch)
      9. `supabase/migrations/009_admin_ads.sql` (admin ads: image/video upload + placements)
      10. `supabase/migrations/010_announcements.sql` (admin popup shown on app entry)
+    11. `supabase/migrations/011_self_service_roles.sql`
+    12. `supabase/migrations/012_community_trust_areas.sql` (service coverage, reports, calls)
+    13. `supabase/migrations/013_seeded_catalog.sql` (`is_seeded` markers for the launch catalog)
+    14. `supabase/migrations/014_products_video.sql` (optional product video)
+    15. `supabase/migrations/015_resync_id_sequences.sql` (safe bulk re-seeding)
+    16. `supabase/migrations/016_compare_at_price.sql` (seller compare-at price for real discount badges)
    - Or automate it: add a direct Postgres connection string as `DATABASE_URL`
      (Project Settings → Database → Connection string), **or** a `SUPABASE_ACCESS_TOKEN`
      (a [personal access token](https://supabase.com/dashboard/account/tokens)),
@@ -78,6 +84,10 @@ See **`.env.example`** for the complete variable list.
 | Ads: admin create (image/video upload) + placement choice, shown app-wide | Done (migration 009) |
 | Admin announcements popup on app entry | Done (migration 010) |
 | Role-aware nav (Buy / Sell / Business / Admin) + role badge + visible Log out | Done |
+| Launch catalog seeding + admin manage of seeded sellers/listings (photos included) | Done (migration 013) |
+| Monogram avatars (no third-party stock faces) + realistic product-linked reviews | Done |
+| Admin edit of any listing: media (photo/video), full details, delete | Done (migration 014) |
+| Order & product reviews persisted with nested replies (review_replies) | Done |
 
 ## After secrets are set
 

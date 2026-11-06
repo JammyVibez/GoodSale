@@ -23,6 +23,7 @@ import {
   VerificationKind,
   VerificationDocument,
   Review,
+  ReviewReply,
   IdentityVerification,
   VerificationStatus,
   DocumentType,
@@ -125,10 +126,12 @@ export function mapProduct(row: Record<string, unknown>): Product {
     brand: s(row.brand),
     condition: (s(row.condition, 'GOOD') as ProductCondition) || ProductCondition.GOOD,
     price: n(row.price),
+    compareAtPrice: row.compare_at_price != null ? n(row.compare_at_price) : undefined,
     isNegotiable: b(row.is_negotiable),
     quantity: n(row.quantity, 1),
     stockStatus: (s(row.stock_status, 'IN_STOCK') as Product['stockStatus']) || 'IN_STOCK',
     images: arr<string>(row.images),
+    videoUrl: row.video_url != null ? s(row.video_url) : undefined,
     barcode: row.barcode != null ? s(row.barcode) : undefined,
     qrCode: row.qr_code != null ? s(row.qr_code) : undefined,
     deliveryMethod: s(row.delivery_method),
@@ -139,6 +142,14 @@ export function mapProduct(row: Record<string, unknown>): Product {
     dimensionsCm: row.dimensions_cm != null ? s(row.dimensions_cm) : undefined,
     isAuction: b(row.is_auction),
     viewCount: n(row.view_count),
+    // Trust/analytics counters added in migration 017; tolerated when absent.
+    impressions: row.impressions != null ? n(row.impressions) : 0,
+    likes: row.likes != null ? n(row.likes) : 0,
+    cartAdds: row.cart_adds != null ? n(row.cart_adds) : 0,
+    moderationStatus: row.moderation_status != null
+      ? (s(row.moderation_status) as Product['moderationStatus'])
+      : 'APPROVED',
+    rejectionReason: row.rejection_reason != null ? s(row.rejection_reason) : undefined,
     createdAt: s(row.created_at, new Date().toISOString()),
     paymentMethods: arr<string>(row.payment_methods),
     partialPercent: row.partial_percent != null ? n(row.partial_percent) : undefined,
@@ -157,10 +168,12 @@ export function productToRow(p: Product): Record<string, unknown> {
     brand: p.brand,
     condition: p.condition,
     price: p.price,
+    compare_at_price: p.compareAtPrice ?? null,
     is_negotiable: p.isNegotiable,
     quantity: p.quantity,
     stock_status: p.stockStatus,
     images: p.images || [],
+    video_url: p.videoUrl ?? null,
     barcode: p.barcode ?? null,
     qr_code: p.qrCode ?? null,
     delivery_method: p.deliveryMethod,
@@ -346,7 +359,7 @@ export function mapMessage(row: Record<string, unknown>): Message {
   };
 }
 
-export function mapReview(row: Record<string, unknown>): Review {
+export function mapReview(row: Record<string, unknown>, replies: ReviewReply[] = []): Review {
   return {
     id: n(row.id),
     productId: row.product_id != null ? n(row.product_id) : undefined,
@@ -361,8 +374,42 @@ export function mapReview(row: Record<string, unknown>): Review {
     sellerReply: row.seller_reply != null ? s(row.seller_reply) : undefined,
     isHelpfulVotes: n(row.is_helpful_votes),
     createdAt: s(row.created_at, new Date().toISOString()),
-    replies: [],
+    replies,
   };
+}
+
+export function mapReviewReply(row: Record<string, unknown>): ReviewReply {
+  return {
+    id: n(row.id),
+    authorId: row.author_id != null ? n(row.author_id) : 0,
+    authorName: s(row.author_name),
+    authorPhoto: s(row.author_photo),
+    authorRole: s(row.author_role, 'BUYER'),
+    comment: s(row.comment),
+    createdAt: s(row.created_at, new Date().toISOString()),
+  };
+}
+
+/**
+ * Reviews + their nested replies assembled in one pass, so a product page shows
+ * the full conversation in a single load (replies used to be dropped on reload).
+ */
+export function buildReviews(
+  reviewRows: Record<string, unknown>[],
+  replyRows: Record<string, unknown>[]
+): Review[] {
+  const byReview = new Map<number, ReviewReply[]>();
+  for (const row of replyRows) {
+    if (row.review_id == null) continue;
+    const reviewId = n(row.review_id);
+    const list = byReview.get(reviewId) || [];
+    list.push(mapReviewReply(row));
+    byReview.set(reviewId, list);
+  }
+  for (const list of byReview.values()) {
+    list.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  }
+  return reviewRows.map((row) => mapReview(row, byReview.get(n(row.id)) || []));
 }
 
 export function mapVerification(row: Record<string, unknown>): IdentityVerification {

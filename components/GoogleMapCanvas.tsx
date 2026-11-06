@@ -67,11 +67,11 @@ export default function GoogleMapCanvas({
           streetViewControl: false,
           fullscreenControl: false,
           styles: [
-            { elementType: 'geometry', stylers: [{ color: '#0b0f0d' }] },
-            { elementType: 'labels.text.stroke', stylers: [{ color: '#0b0f0d' }] },
-            { elementType: 'labels.text.fill', stylers: [{ color: '#717D78' }] },
-            { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#29302d' }] },
-            { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0b0f0d' }] },
+            { elementType: 'geometry', stylers: [{ color: '#032214' }] },
+            { elementType: 'labels.text.stroke', stylers: [{ color: '#032214' }] },
+            { elementType: 'labels.text.fill', stylers: [{ color: '#93a49c' }] },
+            { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#064728' }] },
+            { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#053720' }] },
             {
               featureType: 'poi',
               stylers: [{ visibility: 'off' }],
@@ -122,7 +122,7 @@ export default function GoogleMapCanvas({
               scale: m.pulse ? 10 : 8,
               fillColor: m.color,
               fillOpacity: 1,
-              strokeColor: '#0b0f0d',
+              strokeColor: '#032214',
               strokeWeight: 2,
             }
           : undefined,

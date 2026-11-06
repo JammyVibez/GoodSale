@@ -3,13 +3,11 @@
  * Docs: https://paystack.com/docs/transfers/single-transfers
  */
 
-import { logger } from '@/lib/logger';
-
 const PAYSTACK_BASE = 'https://api.paystack.co';
 
 async function paystackFetch(path: string, init?: RequestInit) {
   const secret = process.env.PAYSTACK_SECRET_KEY;
-  if (!secret) return { ok: false as const, demo: true, error: 'PAYSTACK_SECRET_KEY missing' };
+  if (!secret) return { ok: false as const, error: 'PAYSTACK_SECRET_KEY missing' };
 
   const res = await fetch(`${PAYSTACK_BASE}${path}`, {
     ...init,
@@ -38,9 +36,8 @@ export async function createTransferRecipient(opts: {
 }) {
   if (!process.env.PAYSTACK_SECRET_KEY) {
     return {
-      ok: true as const,
-      demo: true,
-      recipientCode: `RCP_DEMO_${opts.accountNumber}`,
+      ok: false as const,
+      error: 'PAYSTACK_SECRET_KEY missing — cannot create a real transfer recipient.',
     };
   }
 
@@ -71,9 +68,10 @@ export async function initiateTransfer(opts: {
   reference?: string;
 }) {
   if (!process.env.PAYSTACK_SECRET_KEY) {
-    const ref = opts.reference || `DEMO_TRF_${Date.now()}`;
-    logger.info('Demo Paystack transfer recorded', { ref, amount: opts.amountNaira });
-    return { ok: true as const, demo: true, reference: ref, transferCode: `TRF_DEMO_${Date.now()}` };
+    return {
+      ok: false as const,
+      error: 'PAYSTACK_SECRET_KEY missing — cannot send a real bank transfer.',
+    };
   }
 
   const result = await paystackFetch('/transfer', {

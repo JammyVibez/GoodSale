@@ -130,7 +130,7 @@ export async function initiatePaystackRefund(opts: {
 }) {
   const secret = process.env.PAYSTACK_SECRET_KEY;
   if (!secret) {
-    return { success: false, demo: true, message: 'Paystack not configured — refund recorded as PENDING' };
+    return { success: false, message: 'Paystack is not configured — refund left PENDING' };
   }
 
   const body: Record<string, unknown> = {

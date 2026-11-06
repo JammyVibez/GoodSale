@@ -8,7 +8,9 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET() {
   const env = getEnvStatus();
-  const healthy = env.demoMode || env.missingForProduction.length === 0;
+  // The service is live as soon as the database is reachable; payment/map keys
+  // are reported separately so a missing Paystack key does not fail liveness.
+  const healthy = env.supabaseConfigured;
 
   return NextResponse.json(
     {
@@ -16,7 +18,6 @@ export async function GET() {
       service: 'goodsale',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
-      demoMode: env.demoMode,
       integrations: {
         gemini: env.geminiConfigured,
         supabase: env.supabaseConfigured,

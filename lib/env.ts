@@ -1,14 +1,8 @@
 /**
  * Central environment helpers for GoodSale.
- * Demo mode stays available for local prototyping; production disables unsafe paths.
+ * The app always runs against the real Supabase / Paystack / Maps backends —
+ * there is no demo mode.
  */
-
-export function isDemoMode(): boolean {
-  // Demo behaviour is strictly opt-in. Anything other than an explicit
-  // NEXT_PUBLIC_DEMO_MODE=true (including unset, dev, or preview builds) runs
-  // against the real Supabase backend, never against fabricated data.
-  return process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
-}
 
 export function getRequiredEnv(name: string): string {
   const value = process.env[name];
@@ -23,7 +17,6 @@ export function getOptionalEnv(name: string, fallback = ''): string {
 }
 
 export type EnvStatus = {
-  demoMode: boolean;
   geminiConfigured: boolean;
   supabaseConfigured: boolean;
   paystackPublicConfigured: boolean;
@@ -37,7 +30,6 @@ export type EnvStatus = {
  * Reports which integrations are configured. Used by /api/health and startup checks.
  */
 export function getEnvStatus(): EnvStatus {
-  const demoMode = isDemoMode();
   const geminiConfigured = Boolean(process.env.GEMINI_API_KEY);
   const supabaseConfigured = Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -47,34 +39,30 @@ export function getEnvStatus(): EnvStatus {
   const mapsConfigured = Boolean(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
 
   const missingForProduction: string[] = [];
-  if (!demoMode) {
-    if (!supabaseConfigured) missingForProduction.push('NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY');
-    if (!paystackPublicConfigured) missingForProduction.push('NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY');
-    if (!paystackSecretConfigured) missingForProduction.push('PAYSTACK_SECRET_KEY');
-  }
+  if (!supabaseConfigured) missingForProduction.push('NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY');
+  if (!paystackPublicConfigured) missingForProduction.push('NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY');
+  if (!paystackSecretConfigured) missingForProduction.push('PAYSTACK_SECRET_KEY');
 
   return {
-    demoMode,
     geminiConfigured,
     supabaseConfigured,
     paystackPublicConfigured,
     paystackSecretConfigured,
     mapsConfigured,
-    productionReady: !demoMode && missingForProduction.length === 0,
+    productionReady: missingForProduction.length === 0,
     missingForProduction: [...new Set(missingForProduction)],
   };
 }
 
 /**
- * Fail fast when starting in production without required secrets.
+ * Fail fast when starting without required secrets.
  * Call from server entry points (health, payments).
  */
 export function assertProductionConfig(): void {
-  if (isDemoMode()) return;
   const status = getEnvStatus();
   if (status.missingForProduction.length > 0) {
     throw new Error(
-      `Production config incomplete. Missing: ${status.missingForProduction.join(', ')}`
+      `Config incomplete. Missing: ${status.missingForProduction.join(', ')}`
     );
   }
 }

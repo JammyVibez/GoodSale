@@ -39,6 +39,86 @@ export function deliveryStates(): string[] {
 }
 
 /**
+ * Well-known cities per state, used by the address / onboarding pickers when an
+ * admin has not configured coverage for that state yet. Keys are the state name
+ * without the trailing “State”; lookups are case- and suffix-insensitive.
+ * Admin-configured coverage always takes priority over this list.
+ */
+export const DEFAULT_CITIES_BY_STATE: Record<string, string[]> = {
+  abia: ['Umuahia', 'Aba', 'Arochukwu', 'Ohafia'],
+  adamawa: ['Yola', 'Jimeta', 'Mubi', 'Numan'],
+  'akwa ibom': ['Uyo', 'Ikot Ekpene', 'Eket', 'Oron'],
+  anambra: ['Awka', 'Onitsha', 'Nnewi', 'Ekwulobia'],
+  bauchi: ['Bauchi', 'Azare', 'Misau', 'Jama’are'],
+  bayelsa: ['Yenagoa', 'Ogbia', 'Sagbama', 'Brass'],
+  benue: ['Makurdi', 'Gboko', 'Otukpo', 'Katsina-Ala'],
+  borno: ['Maiduguri', 'Biu', 'Bama', 'Konduga'],
+  'cross river': ['Calabar', 'Ikom', 'Ogoja', 'Ugep'],
+  delta: ['Asaba', 'Warri', 'Sapele', 'Ughelli', 'Agbor'],
+  ebonyi: ['Abakaliki', 'Afikpo', 'Onueke', 'Ishieke'],
+  edo: ['Benin City', 'Auchi', 'Ekpoma', 'Uromi'],
+  ekiti: ['Ado-Ekiti', 'Ikere-Ekiti', 'Ijero-Ekiti', 'Ikole-Ekiti'],
+  enugu: ['Enugu', 'Nsukka', 'Awgu', 'Udi'],
+  'fct abuja': ['Abuja CBD', 'Garki', 'Wuse', 'Maitama', 'Asokoro', 'Gwagwalada', 'Kubwa', 'Lugbe'],
+  gombe: ['Gombe', 'Kaltungo', 'Billiri', 'Dukku'],
+  imo: ['Owerri', 'Orlu', 'Okigwe', 'Mbaise'],
+  jigawa: ['Dutse', 'Hadejia', 'Gumel', 'Birnin Kudu'],
+  kaduna: ['Kaduna', 'Zaria', 'Kafanchan', 'Sabon Gari'],
+  kano: ['Kano', 'Gwale', 'Fagge', 'Nassarawa', 'Wudil'],
+  katsina: ['Katsina', 'Daura', 'Funtua', 'Malumfashi'],
+  kebbi: ['Birnin Kebbi', 'Argungu', 'Yauri', 'Zuru'],
+  kogi: ['Lokoja', 'Okene', 'Idah', 'Anyigba'],
+  kwara: ['Ilorin', 'Offa', 'Omu-Aran', 'Jebba'],
+  lagos: ['Ikeja', 'Lekki', 'Victoria Island', 'Ikoyi', 'Yaba', 'Surulere', 'Gbagada', 'Maryland', 'Agege', 'Ajah', 'Ikorodu'],
+  nasarawa: ['Lafia', 'Keffi', 'Akwanga', 'Karu'],
+  niger: ['Minna', 'Bida', 'Suleja', 'Kontagora', 'Chanchaga', 'Lapai', 'New Bussa'],
+  ogun: ['Abeokuta', 'Sagamu', 'Ijebu-Ode', 'Ota', 'Ilaro'],
+  ondo: ['Akure', 'Ondo City', 'Owo', 'Ikare', 'Okitipupa'],
+  osun: ['Osogbo', 'Ile-Ife', 'Ilesa', 'Ede'],
+  oyo: ['Ibadan', 'Ogbomosho', 'Oyo Town', 'Iseyin', 'Akinyele'],
+  plateau: ['Jos', 'Bukuru', 'Pankshin', 'Shendam'],
+  rivers: ['Port Harcourt', 'Obio-Akpor', 'Eleme', 'Bonny Island', 'Okrika'],
+  sokoto: ['Sokoto', 'Tambuwal', 'Illela', 'Gwadabawa'],
+  taraba: ['Jalingo', 'Wukari', 'Bali', 'Serti'],
+  yobe: ['Damaturu', 'Potiskum', 'Gashua', 'Nguru'],
+  zamfara: ['Gusau', 'Kaura Namoda', 'Talata Mafara', 'Anka'],
+};
+
+/** Common alternative spellings mapped onto the canonical city-list keys. */
+const STATE_ALIASES: Record<string, string> = {
+  abuja: 'fct abuja',
+  fct: 'fct abuja',
+  'federal capital territory': 'fct abuja',
+};
+
+function stateKey(stateName: string): string {
+  return stateName.trim().toLowerCase().replace(/\s+state$/, '').replace(/\s+/g, ' ');
+}
+
+/**
+ * Every state offered by the address / onboarding pickers: the full Nigerian
+ * list plus anything an admin has added to Service coverage, so a state an
+ * admin creates shows up for users immediately.
+ */
+export function addressStates(): string[] {
+  const merged = new Set<string>([...NG_STATES, ...dbOperations.serviceStates()]);
+  return Array.from(merged).sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Cities offered for a state in the address / onboarding pickers. Admin coverage
+ * wins; otherwise we fall back to the state's well-known cities (e.g. Minna for
+ * Niger State) so the picker is never empty.
+ */
+export function addressCitiesFor(stateName: string): string[] {
+  if (!stateName || !stateName.trim()) return [];
+  const configured = salesCitiesFor(stateName);
+  if (configured.length) return configured;
+  const key = stateKey(stateName);
+  return DEFAULT_CITIES_BY_STATE[key] || DEFAULT_CITIES_BY_STATE[STATE_ALIASES[key]] || [];
+}
+
+/**
  * Cities within a state where selling is enabled. Falls back to the state's
  * coverage list when sales are switched off everywhere, so the picker is never
  * empty but still prefers exactly what the admin configured.

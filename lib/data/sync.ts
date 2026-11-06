@@ -57,6 +57,7 @@ export async function loadMarketplaceState(
     reports,
     serviceAreas,
     reviews,
+    reviewReplies,
     verifications,
     goodPoints,
     referrals,
@@ -98,6 +99,7 @@ export async function loadMarketplaceState(
     selectAll(client, 'reports'),
     selectAll(client, 'service_areas'),
     selectAll(client, 'reviews'),
+    selectAll(client, 'review_replies'),
     selectAll(client, 'identity_verifications'),
     selectAll(client, 'good_points_transactions'),
     selectAll(client, 'referrals'),
@@ -140,7 +142,7 @@ export async function loadMarketplaceState(
   state.calls = calls.map(M.mapCall);
   state.reports = reports.map(M.mapReport);
   state.serviceAreas = serviceAreas.map(M.mapServiceArea);
-  state.reviews = reviews.map(M.mapReview);
+  state.reviews = M.buildReviews(reviews, reviewReplies);
   state.verifications = verifications.map(M.mapVerification);
   state.goodPoints = goodPoints.map(M.mapGoodPoints);
   state.referrals = referrals.map(M.mapReferral);
@@ -222,6 +224,9 @@ export function subscribeMarketplaceRealtime(
     .on('postgres_changes', { event: '*', schema: 'public', table: 'bids' }, handlers.onChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, handlers.onChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'escrows' }, handlers.onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'businesses' }, handlers.onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'reviews' }, handlers.onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'review_replies' }, handlers.onChange)
     .subscribe();
 
   return () => {

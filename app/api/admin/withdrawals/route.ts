@@ -100,7 +100,6 @@ export async function POST(req: NextRequest) {
             recipientCode: recipient.recipientCode,
             transferReference: transfer.reference,
             transferCode: transfer.transferCode,
-            demo: 'demo' in transfer ? transfer.demo : false,
           };
 
           await admin

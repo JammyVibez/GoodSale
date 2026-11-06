@@ -222,10 +222,10 @@ export async function POST(req: NextRequest) {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (!user && process.env.NEXT_PUBLIC_DEMO_MODE !== "true") {
+      if (!user) {
         return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
       }
-    } else if (process.env.NEXT_PUBLIC_DEMO_MODE !== "true") {
+    } else {
       return NextResponse.json({ success: false, error: "Auth unavailable" }, { status: 503 });
     }
 

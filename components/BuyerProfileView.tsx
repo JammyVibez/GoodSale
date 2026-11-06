@@ -5,18 +5,18 @@ import React, { useState } from 'react';
 import { 
   Shield, Award, MapPin, CheckCircle, Package, Clock, AlertTriangle, 
   ChevronRight, Calendar, Star, ArrowLeft, Key, CreditCard, Lock,
-  Download, Check, Compass, Sliders, Truck, Store, Camera, Loader2
+  Download, Check, Compass, Sliders, Truck, Store, Camera, Loader2, ShieldCheck
 } from 'lucide-react';
 import { useDBState, dbOperations, OrderStatus, Order, UserRole } from '../lib/store';
 import LiveSafeMeetMap from './LiveSafeMeetMap';
-import LiveDispatchMap from './LiveDispatchMap';
-import { SmartAvatar } from './ui/SmartImage';
+import OrderTrackingCard, { hasLiveTracking } from './OrderTrackingCard';
+import { SmartAvatar, SmartImage } from './ui/SmartImage';
 import Card from './ui/Card';
 import Chip from './ui/Chip';
 import Button from './ui/Button';
 import EmptyState from './ui/EmptyState';
-import { bestCoords } from '@/lib/geo';
 import { toast, confirmDialog } from '@/lib/feedback';
+import { computeSellerTrust } from '@/lib/trust';
 
 interface BuyerProfileViewProps {
   onBack?: () => void;
@@ -27,6 +27,7 @@ interface BuyerProfileViewProps {
 export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: BuyerProfileViewProps) {
   const db = useDBState();
   const currentUser = db.currentUser;
+  const myTrust = currentUser ? computeSellerTrust(db, currentUser.id) : null;
   
   const currentProfile = currentUser 
     ? db.profiles.find(p => p.userId === currentUser.id) 
@@ -55,7 +56,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
     ? db.reviews.filter(r => r.reviewerId === currentUser.id) 
     : [];
 
-  // Active PIN Verification Simulation State
+  // Active PIN verification state
   const [selectedOrderForPin, setSelectedOrderForPin] = useState<number | null>(null);
   const [typedPin, setTypedPin] = useState('');
   const [uploadingCover, setUploadingCover] = useState(false);
@@ -220,6 +221,9 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
       [OrderStatus.OUT_FOR_DELIVERY]: { label: 'Out for delivery', tone: 'jade' },
       [OrderStatus.DELIVERED_SUCCESS]: { label: 'Escrow released', tone: 'jade' },
       [OrderStatus.DISPUTED]: { label: 'Disputed', tone: 'neutral' },
+      [OrderStatus.REFUND_REQUESTED]: { label: 'Refund requested', tone: 'neutral' },
+      [OrderStatus.REFUNDED]: { label: 'Refunded', tone: 'outline' },
+      [OrderStatus.CANCELLED]: { label: 'Cancelled', tone: 'outline' },
     };
     const entry = map[status] || { label: status.replace(/_/g, ' '), tone: 'outline' as const };
     return (
@@ -389,7 +393,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
         {/* Account vitals */}
         <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
           {[
-            { label: 'Trust score', value: `${currentUser.trustScore}%`, icon: Shield },
+            { label: 'Trust score', value: myTrust ? `${myTrust.score}/100` : '—', icon: Shield },
             { label: 'Escrow held', value: `₦${escrowHeldAsBuyer.toLocaleString()}`, icon: Lock },
             { label: 'Escrow released', value: `₦${escrowReleasedAsBuyer.toLocaleString()}`, icon: CheckCircle },
             { label: 'GoodPoints', value: currentUser.goodPoints.toLocaleString(), icon: Award },
@@ -472,6 +476,25 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
               </p>
             </div>
           </button>
+
+          {/* Support & buyer protection */}
+          <button
+            type="button"
+            onClick={() => onNavigate?.('support')}
+            className="flex items-center gap-3 p-3.5 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 hover:border-jade-500 dark:hover:border-jade-500 rounded-2xl shadow-xs text-left cursor-pointer transition-all group"
+          >
+            <div className="p-2.5 rounded-xl bg-jade-500/10 text-jade-600 dark:text-jade-400 group-hover:bg-jade-500 group-hover:text-white transition-all">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-ink-900 dark:text-white group-hover:text-jade-500 transition-colors">
+                Support &amp; refunds
+              </h4>
+              <p className="text-xs text-ink-400 mt-0.5 leading-snug">
+                Cancel an order, request a refund or open a ticket.
+              </p>
+            </div>
+          </button>
         </div>
       </Card>
 
@@ -545,8 +568,12 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                       {/* Content details */}
                       <div className="flex gap-4 p-4">
                         <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-ink-100 dark:bg-ink-800">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={order.productImage} alt={order.productTitle} className="h-full w-full object-cover" />
+                          <SmartImage
+                            src={order.productImage}
+                            alt={order.productTitle}
+                            seed={`order-${order.id}`}
+                            className="h-full w-full"
+                          />
                         </div>
 
                         <div className="min-w-0 flex-1">
@@ -756,28 +783,17 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                       {isSelected && (
                         <div className="border-t border-ink-200 dark:border-ink-500/20 p-5 bg-ink-500/[0.02] space-y-4">
                           {order.deliveryMethod === 'GOODSALE_PARTNER' &&
-                            [OrderStatus.OUT_FOR_DELIVERY, OrderStatus.SHIPPED].includes(order.status) && (() => {
+                            hasLiveTracking(db.deliveryJobs.find((j) => j.orderId === order.id)) && (() => {
                               const job = db.deliveryJobs.find((j) => j.orderId === order.id);
-                              const dest = bestCoords(
-                                { lat: order.deliveryLat, lng: order.deliveryLng },
-                                null,
-                                order.deliveryCity,
-                                order.deliveryState,
-                                order.deliveryAddress
-                              );
-                              const pickup = bestCoords({ lat: order.pickupLat, lng: order.pickupLng }, null);
-                              const rider =
-                                job?.currentLat != null && job?.currentLng != null
-                                  ? { lat: job.currentLat, lng: job.currentLng }
-                                  : null;
+                              const partner = job?.partnerId
+                                ? db.deliveryPartners.find((p) => p.id === job.partnerId)
+                                : undefined;
                               return (
-                                <LiveDispatchMap
-                                  rider={rider}
-                                  destination={dest}
-                                  pickup={pickup}
-                                  speedKmh={job?.currentSpeed}
-                                  statusLabel={rider ? 'Your dispatch rider is live' : 'Waiting for rider GPS'}
-                                  height="220px"
+                                <OrderTrackingCard
+                                  order={order}
+                                  job={job}
+                                  partnerName={partner?.fullName}
+                                  height="340px"
                                 />
                               );
                             })()}

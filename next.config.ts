@@ -51,6 +51,8 @@ const securityHeaders = [
       `script-src ${scriptSrc}`,
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "img-src 'self' data: blob: https: http:",
+      // Product/chat/ads video (Supabase Storage or Cloudinary) plus local blobs.
+      "media-src 'self' blob: https: http:",
       "font-src 'self' data: https://fonts.gstatic.com",
       `connect-src ${connectSrc}`,
       "frame-src 'self' https://js.paystack.co https://checkout.paystack.com https://*.paystack.co https://www.google.com https://maps.google.com https://www.google.com/maps/ https://maps.googleapis.com",

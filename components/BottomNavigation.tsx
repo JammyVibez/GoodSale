@@ -109,7 +109,7 @@ export default function BottomNavigation({
       id: 'marketplace',
       label: 'Home',
       icon: Home,
-      active: currentView === 'marketplace' || currentView === 'landing',
+      active: currentView === 'marketplace',
       onClick: () => {
         onSearchChange('');
         onNavigate('marketplace');

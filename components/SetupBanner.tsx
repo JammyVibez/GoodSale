@@ -6,7 +6,7 @@ import { Shield, ArrowRight, Database } from 'lucide-react';
 /**
  * Aurora alert bar — shown when the live Supabase backend is not configured.
  * Deep ink surface with a jade aurora wash: a system notice, not decoration.
- * (Mock data was removed — credentials are required for auth & marketplace data.)
+ * (Credentials are required for auth & marketplace data.)
  */
 export default function SetupBanner() {
   if (isSupabaseConfigured()) return null;

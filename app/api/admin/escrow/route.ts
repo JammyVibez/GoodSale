@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { initiatePaystackRefund } from '@/lib/data/payments';
 import { logger, publicErrorMessage } from '@/lib/logger';
 import { rateLimit, clientIpFromRequest } from '@/lib/rate-limit';
 
@@ -44,7 +46,41 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: error.message }, { status: 400 });
     }
 
-    return NextResponse.json({ success: true, data });
+    // When Paystack holds the original charge, return the money through the
+    // provider and close the ledger row. Demo / bank transfers stay pending
+    // for manual finance processing.
+    let providerRefund: { success?: boolean } | null = null;
+    if (action === 'REFUND_BUYER') {
+      const admin = createAdminClient();
+      const refundId = (data as { refund_id?: number } | null)?.refund_id;
+      if (admin) {
+        const { data: tx } = await admin
+          .from('payment_transactions')
+          .select('transaction_id, amount')
+          .eq('order_id', orderId)
+          .eq('status', 'SUCCESS')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (tx?.transaction_id && !String(tx.transaction_id).startsWith('DEMO_')) {
+          providerRefund = await initiatePaystackRefund({
+            transactionReference: String(tx.transaction_id).split('#')[0],
+            amountKobo: Math.round(Number(tx.amount) * 100),
+            reason: notes || 'Admin refund',
+          });
+          if (providerRefund?.success && refundId) {
+            await admin.rpc('mark_refund_completed', {
+              p_refund_id: refundId,
+              p_provider_reference:
+                (providerRefund as { data?: { transaction_reference?: string } }).data?.transaction_reference ||
+                tx.transaction_id,
+            });
+          }
+        }
+      }
+    }
+
+    return NextResponse.json({ success: true, data, providerRefund });
   } catch (error) {
     logger.error('Admin escrow error', { error: String(error) });
     return NextResponse.json(

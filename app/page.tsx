@@ -6,8 +6,8 @@ import Link from 'next/link';
 import {
   ShieldCheck, Facebook, Instagram, Twitter, Linkedin, Mail,
 } from 'lucide-react';
-import Header from '../components/Header';
-import MarketingLanding from '../components/MarketingLanding';
+import MarketplaceHeader from '../components/MarketplaceHeader';
+import { useWishlist } from '@/lib/hooks/useWishlist';
 import LandingView from '../components/LandingView';
 import WalletView from '../components/WalletView';
 import ProductDetailView from '../components/ProductDetailView';
@@ -23,6 +23,8 @@ import BrandCenterView from '../components/BrandCenterView';
 import SellerProfileView from '../components/SellerProfileView';
 import SettingsView from '../components/SettingsView';
 import BuyerProfileView from '../components/BuyerProfileView';
+import TrustSafetyView from '../components/TrustSafetyView';
+import SupportCenterView from '../components/SupportCenterView';
 import AuthModal from '../components/AuthModal';
 import BottomNavigation from '../components/BottomNavigation';
 import SetupBanner from '../components/SetupBanner';
@@ -32,6 +34,7 @@ import CallHost from '../components/CallHost';
 import LottieAnimation from '../components/ui/LottieAnimation';
 import goodsaleLoader from '../lib/lottie/goodsale-loader.json';
 import { getDBState, useDBState } from '../lib/store';
+import { trackProductMetric } from '../lib/productMetrics';
 import { toast } from '../lib/feedback';
 
 function BootSplash() {
@@ -60,7 +63,11 @@ function BootSplash() {
 
 export default function Home() {
   const db = useDBState();
-  const [currentView, setCurrentView] = useState<string>('landing');
+  // The marketplace is the whole app — it is the first screen every visitor sees.
+  const [currentView, setCurrentView] = useState<string>('marketplace');
+  const wishlist = useWishlist();
+  const [marketState, setMarketState] = useState<string>('');
+  const [wishlistOnly, setWishlistOnly] = useState(false);
   // Full-screen transition beat: the goodsale-loader Lottie owns this moment only.
   const [booted, setBooted] = useState(false);
 
@@ -68,6 +75,7 @@ export default function Home() {
     const t = setTimeout(() => setBooted(true), 450);
     return () => clearTimeout(t);
   }, []);
+
   const [isAuthModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
   const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
@@ -102,6 +110,7 @@ export default function Home() {
         return prev;
       }
       triggerToast('Item added to shopping cart securely!');
+      trackProductMetric(productId, 'cart');
       return [...prev, productId];
     });
   };
@@ -134,6 +143,7 @@ export default function Home() {
       'wallet',
       'verification',
       'checkout',
+      'support',
     ];
     if (!db.currentUser && authRequired.includes(view)) {
       setAuthModalMode(view === 'cart' || view === 'checkout' ? 'register' : 'login');
@@ -185,26 +195,38 @@ export default function Home() {
       setHistory(old => old.slice(0, -1));
       setCurrentView(prev);
     } else {
-      setCurrentView('landing');
+      setCurrentView('marketplace');
     }
   };
 
   if (!booted) return <BootSplash />;
 
   return (
-    <div className="bg-ink-50 dark:bg-ink-950 text-ink-900 dark:text-ink-100 min-h-screen transition-colors duration-300">
+    <div className="bg-white dark:bg-ink-950 text-ink-900 dark:text-ink-100 min-h-screen transition-colors duration-300">
       <SetupBanner />
       
-      {/* Header element */}
-      <Header
-        currentView={currentView}
-        onNavigate={handleNavigate}
+      {/* One header for the whole app — the marketplace shopping bar. */}
+      <MarketplaceHeader
         searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
+        onSearchChange={(query) => {
+          setSearchQuery(query);
+          if (query && currentView !== 'marketplace') setCurrentView('marketplace');
+        }}
         cartCount={cart.length}
+        wishlistCount={wishlist.count}
+        selectedState={marketState}
+        onSelectState={setMarketState}
+        onNavigate={handleNavigate}
         onOpenAuth={(mode?: 'login' | 'register') => {
           setAuthModalMode(mode || 'login');
           setAuthModalOpen(true);
+        }}
+        onOpenWishlist={() => {
+          setWishlistOnly(true);
+          setCurrentView('marketplace');
+          setTimeout(() => {
+            document.getElementById('catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 60);
         }}
       />
 
@@ -218,24 +240,16 @@ export default function Home() {
       <main className="min-h-[calc(100vh-4rem)] pb-[68px] md:pb-0">
         {/* Screen-push transition: each view enters from the trailing edge */}
         <div key={currentView} className="animate-screen-push">
-        {currentView === 'landing' && (
-          <MarketingLanding
-            onNavigate={handleNavigate}
-            onSelectProduct={handleSelectProduct}
-            onSearchChange={setSearchQuery}
-            onOpenAuth={(mode?: 'login' | 'register') => {
-              setAuthModalMode(mode || 'login');
-              setAuthModalOpen(true);
-            }}
-          />
-        )}
-
         {currentView === 'marketplace' && (
           <LandingView
             onSelectProduct={handleSelectProduct}
             searchQuery={searchQuery}
             onNavigate={handleNavigate}
             onAddToCart={handleAddToCart}
+            selectedState={marketState}
+            onSelectState={setMarketState}
+            wishlistOnly={wishlistOnly}
+            onWishlistOnlyChange={setWishlistOnly}
             onOpenAuth={(mode?: 'login' | 'register') => {
               setAuthModalMode(mode || 'login');
               setAuthModalOpen(true);
@@ -265,6 +279,7 @@ export default function Home() {
             sellerId={selectedSellerId}
             onBack={handleGoBack}
             onNavigate={handleNavigate}
+            onAddToCart={handleAddToCart}
           />
         )}
 
@@ -320,6 +335,18 @@ export default function Home() {
         {currentView === 'buyer-profile' && (
           <BuyerProfileView onBack={handleGoBack} onNavigate={handleNavigate} onOpenAuth={() => setAuthModalOpen(true)} />
         )}
+
+        {currentView === 'trust-safety' && (
+          <TrustSafetyView onBack={handleGoBack} onNavigate={handleNavigate} />
+        )}
+
+        {currentView === 'support' && (
+          <SupportCenterView
+            onBack={handleGoBack}
+            onNavigate={handleNavigate}
+            onOpenAuth={() => { setAuthModalMode('login'); setAuthModalOpen(true); }}
+          />
+        )}
         </div>
 
         {/* Professional footer — suppressed inside the chat workspace, where a
@@ -367,7 +394,6 @@ export default function Home() {
                 <ul className="mt-4 space-y-3 text-sm">
                   <li><button onClick={() => handleNavigate('marketplace')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Browse listings</button></li>
                   <li><button onClick={() => handleNavigate('marketplace')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Categories</button></li>
-                  <li><button onClick={() => handleNavigate('landing')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">How it works</button></li>
                   <li><button onClick={() => handleNavigate('cart')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Your cart</button></li>
                 </ul>
               </div>
@@ -387,7 +413,8 @@ export default function Home() {
               <div>
                 <p className="text-sm font-semibold text-ink-900 dark:text-white">Support</p>
                 <ul className="mt-4 space-y-3 text-sm">
-                  <li><button onClick={() => handleNavigate('settings')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Help centre</button></li>
+                  <li><button onClick={() => handleNavigate('trust-safety')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Trust &amp; Safety Centre</button></li>
+                  <li><button onClick={() => handleNavigate('support')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Help centre</button></li>
                   <li><button onClick={() => handleNavigate('chats')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Chat with a seller</button></li>
                   <li><button onClick={() => handleNavigate('settings')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Delivery &amp; tracking</button></li>
                   <li>
@@ -405,7 +432,7 @@ export default function Home() {
                   <li><Link href="/terms" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Terms of Service</Link></li>
                   <li><Link href="/privacy" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Privacy Policy</Link></li>
                   <li><button onClick={() => handleNavigate('settings')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Escrow agreement</button></li>
-                  <li><button onClick={() => handleNavigate('settings')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Dispute policy</button></li>
+                  <li><button onClick={() => handleNavigate('trust-safety')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Trust &amp; dispute policy</button></li>
                 </ul>
               </div>
             </div>

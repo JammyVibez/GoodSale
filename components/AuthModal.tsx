@@ -8,6 +8,7 @@ import {
   MapPin, Globe, Languages, Camera, RefreshCw, Lock, AlertTriangle, Cpu
 } from 'lucide-react';
 import { useDBState, dbOperations, UserRole, getDBState, saveDBState, reloadFromSupabase } from '../lib/store';
+import { addressCitiesFor, addressStates } from '@/lib/serviceAreas';
 import { createClient } from '@/lib/supabase/client';
 import { SmartImage } from './ui/SmartImage';
 import Meter from './ui/Meter';
@@ -20,7 +21,7 @@ interface AuthModalProps {
   initialMode?: 'login' | 'register';
 }
 
-type AuthMode = 'login' | 'register' | 'forgot_password' | 'reset_password_otp' | 'new_password' | 'otp_verify' | 'onboarding';
+type AuthMode = 'login' | 'register' | 'forgot_password' | 'new_password' | 'onboarding';
 
 export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: AuthModalProps) {
   const db = useDBState();
@@ -56,12 +57,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
   const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.BUYER);
   const [referralCode, setReferralCode] = useState('');
 
-  // 3. OTP & VERIFICATION STATE
-  const [generatedOtp, setGeneratedOtp] = useState('');
-  const [otpCode, setOtpCode] = useState('');
-  const [otpCountdown, setOtpCountdown] = useState(120); // 2 minutes
-  const [otpPurpose, setOtpPurpose] = useState<'REGISTER' | 'FORGOT_PASSWORD'>('REGISTER');
-
   // 4. FORGOT & RESET PASSWORD STATE
   const [forgotIdentifier, setForgotIdentifier] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -69,53 +64,24 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
 
   // 5. ONBOARDING STATE
   const [onboardingPhoto, setOnboardingPhoto] = useState('');
-  const [onboardingState, setOnboardingState] = useState('Lagos');
+  const [onboardingState, setOnboardingState] = useState('Lagos State');
   const [onboardingCity, setOnboardingCity] = useState('Ikeja');
   const [onboardingAddress, setOnboardingAddress] = useState('');
   const [onboardingLanguage, setOnboardingLanguage] = useState('English');
   const [onboardingDeliveryPref, setOnboardingDeliveryPref] = useState('GOODSALE_PARTNER');
 
-  // 6. JWT SESSION MANAGEMENT (Maximum Fidelity Simulation)
-  const [jwtExpiry, setJwtExpiry] = useState(900); // 15 minutes
-  const [activeJwtToken, setActiveJwtToken] = useState('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsImV4cCI6MTgwMDAwMDB9');
-  const [sessionIp, setSessionIp] = useState('102.89.23.41');
-  const [sessionLocation, setSessionLocation] = useState('Lagos, Nigeria');
-  const [userAgent, setUserAgent] = useState('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36');
-
-  // Countdown timer for OTP and JWT Expirations
-  useEffect(() => {
-    let timer: any;
-    if (isOpen) {
-      timer = setInterval(() => {
-        // Count down OTP
-        setOtpCountdown((prev) => (prev > 0 ? prev - 1 : 0));
-        // Count down JWT
-        setJwtExpiry((prev) => (prev > 0 ? prev - 1 : 900)); // Reset after expire or simulate
-      }, 1000);
-    }
-    return () => clearInterval(timer);
-  }, [isOpen, mode]);
-
   if (!isOpen) return null;
 
-  // Preset Nigerian geographical state combinations
-  const nigerianGeos: Record<string, string[]> = {
-    Lagos: ['Ikeja', 'Lekki', 'Victoria Island', 'Surulere', 'Yaba', 'Maryland', 'Agege'],
-    Abuja: ['Wuse', 'Garki', 'Maitama', 'Asokoro', 'Gwagwalada', 'Kubwa'],
-    Rivers: ['Port Harcourt', 'Obio-Akpor', 'Eleme', 'Bonny Island'],
-    Oyo: ['Ibadan', 'Ogbomosho', 'Oyo Town', 'Akinyele'],
-    Kano: ['Kano City', 'Gwale', 'Nassarawa', 'Fagge'],
-    Enugu: ['Enugu City', 'Nsukka', 'Udi'],
-    Delta: ['Asaba', 'Warri', 'Sapele', 'Agbor'],
-    Kaduna: ['Kaduna City', 'Zaria', 'Sabon Gari']
-  };
+  // Every Nigerian state (incl. Niger State) plus any state an admin added in
+  // Service coverage, with cities coming from admin coverage first and then a
+  // well-known city list (e.g. Minna for Niger State).
+  const stateOptions = addressStates();
+  const cityOptions = addressCitiesFor(onboardingState);
 
   const handleStateChangeGeo = (stateVal: string) => {
     setOnboardingState(stateVal);
-    const cities = nigerianGeos[stateVal] || [];
-    if (cities.length > 0) {
-      setOnboardingCity(cities[0]);
-    }
+    const cities = addressCitiesFor(stateVal);
+    setOnboardingCity(cities.length > 0 ? cities[0] : '');
   };
 
   // Helper password strength checker
@@ -238,38 +204,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
       setErrorMsg(err instanceof Error ? err.message : 'Registration failed');
       setIsSubmitting(false);
     }
-  };
-
-  // OTP Verification (password reset flow only — registration uses Supabase Auth directly)
-  const handleVerifyOtpSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg('');
-    setSuccessMsg('');
-
-    if (otpCode.length !== 6) {
-      setErrorMsg('Verification code must be exactly 6 digits.');
-      return;
-    }
-
-    if (otpCode !== generatedOtp) {
-      setErrorMsg('Incorrect OTP token.');
-      return;
-    }
-
-    setIsSubmitting(true);
-    setTimeout(() => {
-      if (otpPurpose === 'FORGOT_PASSWORD') {
-        setSuccessMsg('Account verified. Set your new password.');
-        setTimeout(() => {
-          setSuccessMsg('');
-          setIsSubmitting(false);
-          setMode('new_password');
-        }, 800);
-      } else {
-        setIsSubmitting(false);
-        setErrorMsg('Use the Sign Up form — registration no longer uses simulated OTP.');
-      }
-    }, 400);
   };
 
   // Forgot Password — Supabase reset email
@@ -429,14 +363,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
     }, 1200);
   };
 
-  // JWT Token manual Refresh handler
-  const handleRefreshJwtToken = () => {
-    setJwtExpiry(900);
-    const randStr = Math.random().toString(36).substring(2, 15);
-    setActiveJwtToken(`eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsImV4cCI6MTgwMDAwMDB9.${randStr}`);
-    toast.info('Session token refreshed successfully.');
-  };
-
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       {/* Backdrop */}
@@ -467,16 +393,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
             <X className="w-5 h-5" />
           </button>
         </div>
-
-        {/* Dynamic OTP notification alert if generated */}
-        {generatedOtp && (mode === 'otp_verify' || mode === 'reset_password_otp') && (
-          <div className="bg-jade-500 text-white px-6 py-2.5 flex items-center justify-between text-xs font-semibold shadow-md animate-pulse">
-            <span>Demo verification code</span>
-            <span className="bg-white text-jade-600 px-3 py-1 rounded-lg text-sm font-bold">
-              {generatedOtp}
-            </span>
-          </div>
-        )}
 
         {/* Content - Scrollable */}
         <div className="p-6 overflow-y-auto space-y-5 flex-1 scrollbar-thin scrollbar-thumb-ink-200">
@@ -611,16 +527,31 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                 </p>
 
                 <div className="flex gap-2 pt-1.5">
-                  <button 
-                    onClick={handleRefreshJwtToken} 
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const { createClient } = await import('@/lib/supabase/client');
+                      const client = createClient();
+                      if (!client) {
+                        toast.error('Supabase is not configured.');
+                        return;
+                      }
+                      const { error } = await client.auth.refreshSession();
+                      if (error) toast.error(error.message);
+                      else toast.success('Session refreshed.');
+                    }}
                     className="flex-1 py-1.5 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 hover:border-jade-500 text-xs font-bold text-ink-600 dark:text-ink-300 hover:text-jade-500 rounded-lg transition-colors flex items-center justify-center gap-1 cursor-pointer"
                   >
                     <RefreshCw className="w-3 h-3" />
                     Refresh session
                   </button>
                   {db.currentUser && (
-                    <button 
-                      onClick={() => {
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const { createClient } = await import('@/lib/supabase/client');
+                        const client = createClient();
+                        await client?.auth.signOut();
                         const state = getDBState();
                         state.currentUser = null;
                         saveDBState(state);
@@ -895,77 +826,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
             </div>
           )}
 
-          {/* STEP 3: OTP VERIFICATION VIEW */}
-          {(mode === 'otp_verify' || mode === 'reset_password_otp') && (
-            <form onSubmit={handleVerifyOtpSubmit} className="space-y-5 py-4">
-              <div className="text-center space-y-2">
-                <div className="w-12 h-12 bg-jade-500/10 text-jade-500 rounded-full flex items-center justify-center mx-auto border border-jade-500/20">
-                  <Shield className="w-6 h-6" />
-                </div>
-                <h4 className="font-display font-bold text-ink-900 dark:text-white text-base">Verify Your Identity</h4>
-                <p className="text-xs text-ink-500 dark:text-ink-400 max-w-sm mx-auto leading-relaxed">
-                  Enter the 6-digit verification code sent to <strong className="text-ink-800 dark:text-ink-200">{otpPurpose === 'REGISTER' ? email : forgotIdentifier}</strong>.
-                </p>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-ink-600 dark:text-ink-300 block mb-2 text-center font-mono">6-Digit Verification PIN (OTP)</label>
-                <input
-                  type="text"
-                  required
-                  maxLength={6}
-                  value={otpCode}
-                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
-                  placeholder="3 9 2 0 1 0"
-                  className="w-full text-center tracking-[0.8em] font-mono text-lg font-bold px-4 py-3 bg-ink-50 dark:bg-ink-950 border border-ink-200 dark:border-ink-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-jade-500 text-ink-800 dark:text-white"
-                />
-              </div>
-
-              {/* OTP countdown timer */}
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-ink-400">Code expires in:</span>
-                <span className="font-mono font-bold text-ink-700 dark:text-ink-300">
-                  {Math.floor(otpCountdown / 60)}:{(otpCountdown % 60).toString().padStart(2, '0')}
-                </span>
-              </div>
-
-              {/* Resend Actions */}
-              <div className="text-center pt-2">
-                <button
-                  type="button"
-                  disabled={otpCountdown > 0}
-                  onClick={() => {
-                    const nextCode = Math.floor(100000 + Math.random() * 900000).toString();
-                    setGeneratedOtp(nextCode);
-                    setOtpCountdown(120);
-                    toast.info(`A fresh verification code was generated: ${nextCode}`);
-                  }}
-                  className="text-xs font-bold text-jade-500 hover:underline disabled:opacity-50 disabled:no-underline cursor-pointer"
-                >
-                  Didn&apos;t receive code? Resend OTP
-                </button>
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setMode(otpPurpose === 'REGISTER' ? 'register' : 'forgot_password')}
-                  className="flex-1 py-3 bg-ink-100 hover:bg-ink-200 dark:bg-ink-800 dark:hover:bg-ink-700 text-ink-700 dark:text-ink-300 font-semibold text-sm rounded-xl transition-all cursor-pointer text-center"
-                >
-                  Back
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting || otpCode.length !== 6}
-                  className="flex-1 py-3 bg-jade-500 hover:bg-jade-600 text-white font-semibold text-sm rounded-xl cursor-pointer transition-all disabled:opacity-50 text-center flex items-center justify-center gap-2"
-                >
-                  {isSubmitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Confirm Code'}
-                </button>
-              </div>
-            </form>
-          )}
-
-          {/* STEP 4: FORGOT PASSWORD REQUEST MODE */}
+          {/* FORGOT PASSWORD REQUEST MODE */}
           {mode === 'forgot_password' && (
             <form onSubmit={handleForgotPasswordSubmit} className="space-y-4 py-3">
               <div className="text-center space-y-1.5">
@@ -1134,7 +995,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                     onChange={(e) => handleStateChangeGeo(e.target.value)}
                     className="w-full px-3 py-2 text-xs bg-white dark:bg-ink-950 border border-ink-200 dark:border-ink-800 rounded-xl text-ink-800 dark:text-white focus:outline-none"
                   >
-                    {Object.keys(nigerianGeos).map((stateName) => (
+                    {stateOptions.map((stateName) => (
                       <option key={stateName} value={stateName}>{stateName}</option>
                     ))}
                   </select>
@@ -1147,7 +1008,10 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode }: A
                     onChange={(e) => setOnboardingCity(e.target.value)}
                     className="w-full px-3 py-2 text-xs bg-white dark:bg-ink-950 border border-ink-200 dark:border-ink-800 rounded-xl text-ink-800 dark:text-white focus:outline-none"
                   >
-                    {(nigerianGeos[onboardingState] || []).map((cityName) => (
+                    {onboardingCity && !cityOptions.includes(onboardingCity) && (
+                      <option value={onboardingCity}>{onboardingCity}</option>
+                    )}
+                    {cityOptions.map((cityName) => (
                       <option key={cityName} value={cityName}>{cityName}</option>
                     ))}
                   </select>

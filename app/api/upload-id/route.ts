@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import fs from 'fs';
-import path from 'path';
-import { isDemoMode } from '@/lib/env';
 import { logger, publicErrorMessage } from '@/lib/logger';
 import { rateLimit, clientIpFromRequest } from '@/lib/rate-limit';
 
@@ -46,8 +43,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Production requires Supabase private storage — no public FS / base64 fallbacks
-    if (!isDemoMode() && !supabase) {
+    // Identity documents require private Supabase storage — no public FS / base64 fallbacks
+    if (!supabase) {
       return NextResponse.json(
         {
           success: false,
@@ -95,7 +92,7 @@ export async function POST(req: NextRequest) {
         });
 
         if (!error) {
-          // Prefer signed URLs (private bucket). Fall back to public URL only in demo mode.
+          // Prefer short-lived signed URLs for the private bucket.
           const { data: signed, error: signError } = await supabase.storage
             .from(bucket)
             .createSignedUrl(fileName, 60 * 60);
@@ -103,10 +100,6 @@ export async function POST(req: NextRequest) {
           if (!signError && signed?.signedUrl) {
             uploadedUrl = signed.signedUrl;
             uploadSource = 'supabase-signed';
-          } else if (isDemoMode()) {
-            const { data: publicUrlData } = supabase.storage.from(bucket).getPublicUrl(fileName);
-            uploadedUrl = publicUrlData.publicUrl;
-            uploadSource = 'supabase-public-demo';
           } else {
             logger.warn('Could not create signed URL for ID upload', {
               message: signError?.message,
@@ -117,26 +110,6 @@ export async function POST(req: NextRequest) {
         }
       } catch (err) {
         logger.warn('Supabase storage upload exception', { error: String(err) });
-      }
-    }
-
-    // Local / base64 fallbacks are demo-only — never store government IDs in /public in production
-    if (!uploadedUrl && isDemoMode()) {
-      try {
-        const publicUploadsDir = path.join(process.cwd(), 'public', 'uploads');
-        if (!fs.existsSync(publicUploadsDir)) {
-          fs.mkdirSync(publicUploadsDir, { recursive: true });
-        }
-        const localPath = path.join(publicUploadsDir, fileName);
-        await fs.promises.writeFile(localPath, fileBuffer);
-        uploadedUrl = `/uploads/${fileName}`;
-        uploadSource = 'local-file-system-demo';
-      } catch (fsError) {
-        logger.warn('Local FS write failed, using base64 demo fallback', {
-          error: String(fsError),
-        });
-        uploadedUrl = `data:${file.type};base64,${fileBuffer.toString('base64')}`;
-        uploadSource = 'base64-fallback-demo';
       }
     }
 
@@ -152,7 +125,7 @@ export async function POST(req: NextRequest) {
       url: uploadedUrl,
       source: uploadSource,
       fileName,
-      pendingReview: !isDemoMode(),
+      pendingReview: true,
     });
   } catch (error) {
     logger.error('Error in upload-id route', { error: String(error) });

@@ -7,7 +7,6 @@ import {
   Sparkles, Award, Info, Building2, Camera, MapPin, IdCard,
 } from 'lucide-react';
 import { getDBState, dbOperations, UserRole, DocumentType, VerificationKind } from '../lib/store';
-import { isDemoMode } from '@/lib/demo';
 import { toast } from '@/lib/feedback';
 import { salesStates, salesCitiesFor } from '@/lib/serviceAreas';
 
@@ -217,12 +216,6 @@ export default function VerificationBadgeView() {
         return;
       }
 
-      // Instant verify is demo-only; production always waits for admin review.
-      if (isDemoMode()) {
-        const targetRole =
-          userRoleSelection === 'SELLER' ? UserRole.VERIFIED_SELLER : UserRole.VERIFIED_BUSINESS;
-        dbOperations.verifyUserImmediately(user.id, targetRole);
-      }
       toast.success('Application submitted. Our team reviews every document before approving.', 'Under review');
       setIsSubmitted(true);
     })();

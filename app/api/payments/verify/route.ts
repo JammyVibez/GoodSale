@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isDemoMode } from '@/lib/env';
 import { logger, publicErrorMessage } from '@/lib/logger';
 import { rateLimit, clientIpFromRequest } from '@/lib/rate-limit';
 import { reconcilePaystackPayment } from '@/lib/data/payments';
@@ -32,48 +31,10 @@ export async function POST(req: NextRequest) {
     const secret = process.env.PAYSTACK_SECRET_KEY;
 
     if (!secret) {
-      if (!isDemoMode()) {
-        return NextResponse.json(
-          { success: false, error: 'Paystack is not configured' },
-          { status: 503 }
-        );
-      }
-      if (
-        !reference.startsWith('DEMO_') &&
-        !reference.startsWith('PAY_REF_') &&
-        !/^GS_\d+_/i.test(reference)
-      ) {
-        return NextResponse.json(
-          { success: false, error: 'Invalid demo payment reference' },
-          { status: 400 }
-        );
-      }
-      if (!orderId && !(orderIds && orderIds.length)) {
-        return NextResponse.json(
-          { success: false, error: 'orderId is required to reconcile payment' },
-          { status: 400 }
-        );
-      }
-      const reconciliation = await reconcilePaystackPayment({
-        orderId,
-        orderIds,
-        reference,
-        amountKobo: null,
-        channel: 'demo',
-      });
-
-      return NextResponse.json({
-        success: Boolean(reconciliation.reconciled),
-        demo: true,
-        reconciliation,
-        data: {
-          status: reconciliation.reconciled ? 'success' : 'failed',
-          reference,
-          amount: null,
-          currency: 'NGN',
-          paid_at: new Date().toISOString(),
-        },
-      });
+      return NextResponse.json(
+        { success: false, error: 'Paystack is not configured. Add PAYSTACK_SECRET_KEY to enable payments.' },
+        { status: 503 }
+      );
     }
 
     const verifyRes = await fetch(

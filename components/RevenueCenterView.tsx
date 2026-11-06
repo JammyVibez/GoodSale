@@ -11,8 +11,6 @@ import { motion } from 'motion/react';
 import { 
   getDBState, saveDBState, dbOperations, RevenueSettings, Wallet, WalletTransaction, UserRole
 } from '../lib/store';
-import { isDemoMode } from '@/lib/demo';
-
 export default function RevenueCenterView() {
   const [db, setDb] = useState(getDBState());
   const [activeSubTab, setActiveSubTab] = useState<'wallet' | 'subscriptions' | 'listings' | 'ads'>('wallet');
@@ -81,22 +79,12 @@ export default function RevenueCenterView() {
     e.preventDefault();
     if (!user || !wallet) return;
 
-    if (!isDemoMode()) {
-      setWalletError('Wallet top-ups require verified Paystack checkout in production. Demo deposits are disabled.');
-      return;
-    }
-
-    const amt = parseFloat(depositAmount);
-    if (isNaN(amt) || amt <= 0) {
-      setWalletError('Please enter a valid deposit amount.');
-      return;
-    }
-
-    setWalletError(null);
-    dbOperations.depositToWallet(user.id, amt);
-    setWalletSuccess(`Success! ₦${amt.toLocaleString()} has been added to your wallet (demo mode).`);
-    setDepositAmount('15000');
-    setTimeout(() => setWalletSuccess(null), 5000);
+    // Wallet funding happens through verified Paystack checkout, which is only
+    // live once the Paystack keys are configured. No balance is credited locally.
+    setWalletSuccess(null);
+    setWalletError(
+      'Wallet top-ups are processed through verified Paystack checkout. Payments are not enabled in this deployment yet.'
+    );
   };
 
   // Withdraw Cash from Wallet Form Submit
@@ -245,12 +233,6 @@ export default function RevenueCenterView() {
     }
   };
 
-  // Interactive CPC Campaign Click Simulator
-  const simulateAdClick = (adId: number) => {
-    dbOperations.interactSponsoredAd(adId, 'CLICK');
-    setDb(getDBState());
-  };
-
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 font-sans" id="revenue-center">
       
@@ -384,7 +366,7 @@ export default function RevenueCenterView() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     
-                    {/* Deposit Simulator Panel */}
+                    {/* Wallet Funding Panel */}
                     <div className="space-y-4">
                       <h4 className="text-xs font-bold tracking-wider font-mono text-jade-600 dark:text-jade-400">Funding Deposit Portal</h4>
                       
@@ -597,7 +579,7 @@ export default function RevenueCenterView() {
                           className={`px-5 py-2.5 rounded-xl font-bold text-xs cursor-pointer flex items-center gap-1 transition-all ${
                             isVerifiedPlus 
                               ? 'bg-ink-200 dark:bg-ink-800 text-ink-400 cursor-not-allowed' 
-                              : 'bg-ink-500 hover:bg-ink-600 text-white shadow-md active:scale-95'
+                              : 'bg-jade-600 hover:bg-jade-700 text-white shadow-md shadow-jade-600/25 active:scale-95'
                           }`}
                         >
                           {isVerifiedPlus ? 'Already Active' : 'Subscribe Now'}
@@ -869,13 +851,13 @@ export default function RevenueCenterView() {
                       </form>
                     </div>
 
-                    {/* Active Ad Campaign reports & Interactive CPC Click Simulator */}
+                    {/* Active Ad Campaign reports */}
                     <div className="space-y-4">
                       <h4 className="text-xs font-bold tracking-wider font-mono text-ink-500">Active CPC Ad Campaigns</h4>
                       
                       {myCampaigns.length === 0 ? (
                         <p className="text-xs text-ink-400 italic py-8 text-center bg-ink-50 dark:bg-ink-950/50 rounded-2xl border border-dashed border-ink-100 dark:border-ink-800">
-                          No active target ad campaigns running. Construct one on the left to verify impressions and clicked simulations!
+                          No active ad campaigns running yet. Create one on the left to start tracking impressions and clicks.
                         </p>
                       ) : (
                         <div className="space-y-4">
@@ -902,7 +884,7 @@ export default function RevenueCenterView() {
                               <div className="grid grid-cols-3 gap-2 text-center text-xs bg-white dark:bg-ink-900 p-2.5 rounded-xl border border-ink-100 dark:border-ink-800 font-mono">
                                 <div>
                                   <span className="text-xs text-ink-400 block">Impressions</span>
-                                  <span className="font-semibold text-jade-500">{ad.impressions || Math.floor(Math.random() * 200) + 120}</span>
+                                  <span className="font-semibold text-jade-500">{ad.impressions || 0}</span>
                                 </div>
                                 <div>
                                   <span className="text-xs text-ink-400 block">Clicks</span>
@@ -914,16 +896,6 @@ export default function RevenueCenterView() {
                                 </div>
                               </div>
 
-                              {/* CPC Campaign click simulation button */}
-                              {ad.status === 'ACTIVE' && (
-                                <button
-                                  onClick={() => simulateAdClick(ad.id)}
-                                  className="w-full py-1.5 bg-jade-500 hover:bg-jade-600 text-white font-bold text-xs rounded-lg cursor-pointer transition-transform active:scale-95 flex items-center justify-center gap-1.5"
-                                >
-                                  <MousePointerClick className="w-3.5 h-3.5 animate-bounce" />
-                                  Simulate Organic Customer Click (-₦{settings.adCpcPrice} CPC)
-                                </button>
-                              )}
 
                             </div>
                           ))}

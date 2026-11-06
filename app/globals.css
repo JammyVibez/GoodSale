@@ -95,19 +95,31 @@
 
   .dark {
     color-scheme: dark;
-    --surface-0: #0b0f0d;
-    --surface-1: #1a201e;
-    --surface-2: #222826;
-    --surface-3: #29302d;
-    --edge: #29302d;
-    --edge-soft: #222826;
+    /* One green in the dark theme: the neutral surface ramp is retoned onto the
+       same jade ladder as the header bar, so page, cards, inputs and chrome all
+       sit on the header's green instead of a second near-black green. */
+    --color-ink-950: #032214; /* page — identical to the header bar */
+    --color-ink-900: #053720; /* cards, sheets */
+    --color-ink-850: #05492a; /* nested panels */
+    --color-ink-800: #064728; /* borders, chips */
+    --color-ink-750: #07512e; /* hover lifts */
+    --color-ink-700: #085c34; /* active / pressed surfaces */
+    /* Secondary copy lifted a touch so muted text keeps its contrast on green. */
+    --color-ink-400: #93a49c;
+
+    --surface-0: #032214;
+    --surface-1: #053720;
+    --surface-2: #064728;
+    --surface-3: #07512e;
+    --edge: #064728;
+    --edge-soft: #053720;
     --aurora-1: rgb(31 179 119 / 0.14);
     --aurora-2: rgb(10 133 75 / 0.12);
     --aurora-3: rgb(8 92 52 / 0.2);
   }
 
   body {
-    @apply bg-ink-50 text-ink-900 font-sans transition-colors duration-300;
+    @apply bg-white text-ink-900 font-sans transition-colors duration-300;
   }
 
   .dark body {
@@ -132,7 +144,7 @@
   @apply text-gold-400 fill-gold-400;
 }
 .star-empty {
-  @apply text-ink-250 dark:text-ink-700;
+  @apply text-ink-250 dark:text-ink-500;
 }
 
 /* ─── Scrollbar styling (ink only) ─── */
@@ -524,8 +536,8 @@
   box-shadow: 0 8px 32px rgb(11 15 13 / 0.06);
 }
 .dark .glass {
-  background-color: rgb(26 32 30 / 0.72);
-  border-color: rgb(41 48 45 / 0.8);
+  background-color: rgb(5 55 32 / 0.72);
+  border-color: rgb(6 71 40 / 0.8);
   box-shadow: 0 8px 32px rgb(0 0 0 / 0.35);
 }
 

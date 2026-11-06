@@ -7,7 +7,7 @@ import Button from './ui/Button';
 import Card from './ui/Card';
 import Chip from './ui/Chip';
 import Sheet from './ui/Sheet';
-import { SmartAvatar } from './ui/SmartImage';
+import { SmartAvatar, SmartImage } from './ui/SmartImage';
 import LottieAnimation from './ui/LottieAnimation';
 import AdSlot from './AdSlot';
 import escrowShield from '../lib/lottie/escrow-shield.json';
@@ -449,11 +449,11 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
                       onClick={() => onNavigate?.('product', { id: chatProduct.id })}
                       className="hidden items-center gap-2 rounded-2xl border border-jade-500/20 bg-jade-500/[0.06] p-1.5 pr-3 text-left transition-colors hover:border-jade-500/50 sm:flex cursor-pointer"
                     >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
+                      <SmartImage
                         src={chatProduct.images?.[0]}
-                        alt=""
-                        className="h-9 w-9 rounded-xl object-cover"
+                        alt={chatProduct.title}
+                        seed={`chat-product-${chatProduct.id}`}
+                        className="h-9 w-9 shrink-0 rounded-xl"
                       />
                       <span className="max-w-[10rem]">
                         <span className="block truncate text-xs font-bold text-ink-900 dark:text-white">

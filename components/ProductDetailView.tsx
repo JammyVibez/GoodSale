@@ -2,17 +2,19 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
-  ArrowLeft, Shield, MapPin, CheckCircle, MessageSquare, 
-  ShoppingCart, Star, Zap, Trash, Clock, Award, Tag, Send,
-  Bell, BellOff, Check, TrendingDown, ThumbsUp, CornerDownRight,
-  Share2, Sparkles
+import {
+  ArrowLeft, Shield, ShieldCheck, MapPin, CheckCircle, MessageSquare,
+  ShoppingCart, Star, Zap, Clock, Award, Tag, Send,
+  Bell, BellOff, Check, ThumbsUp, CornerDownRight, X,
+  Share2, Sparkles, Play, Truck, RotateCcw, ChevronRight, Flame
 } from 'lucide-react';
-import { 
-  Product, UserRole, getDBState, saveDBState, dbOperations, OrderStatus 
+import {
+  UserRole, getDBState, saveDBState, dbOperations
 } from '../lib/store';
 import { SmartAvatar, SmartImage } from './ui/SmartImage';
 import { toast } from '@/lib/feedback';
+import { trackProductMetric } from '@/lib/productMetrics';
+import { computeSellerTrust } from '@/lib/trust';
 import AdSlot from './AdSlot';
 
 interface ProductDetailViewProps {
@@ -23,6 +25,8 @@ interface ProductDetailViewProps {
   onOpenAuth?: () => void;
 }
 
+type DetailTab = 'overview' | 'specs' | 'reviews' | 'qa';
+
 export default function ProductDetailView({
   productId,
   onBack,
@@ -32,9 +36,11 @@ export default function ProductDetailView({
 }: ProductDetailViewProps) {
   const [db, setDb] = useState(getDBState());
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [showVideo, setShowVideo] = useState(false);
+  const [activeTab, setActiveTab] = useState<DetailTab>('overview');
   const [negotiateOffer, setNegotiateOffer] = useState('');
   const [showNegotiateDrawer, setShowNegotiateDrawer] = useState(false);
-  
+
   // Interactive Hover Zoom state
   const [isZooming, setIsZooming] = useState(false);
   const [zoomCoords, setZoomCoords] = useState({ x: 0, y: 0 });
@@ -45,7 +51,7 @@ export default function ProductDetailView({
     const y = ((e.clientY - top) / height) * 100;
     setZoomCoords({ x, y });
   };
-  
+
   // Auction specific bidding states
   const [customBidAmount, setCustomBidAmount] = useState('');
   const [bidError, setBidError] = useState<string | null>(null);
@@ -64,6 +70,10 @@ export default function ProductDetailView({
   // Comments, Q&A, and Reviews States
   const [newCommentText, setNewCommentText] = useState('');
   const [newCommentRating, setNewCommentRating] = useState(5); // 0 means just question/comment, 1-5 means rating review
+  const [showReport, setShowReport] = useState(false);
+  const [reportReason, setReportReason] = useState('');
+  const [reportDetails, setReportDetails] = useState('');
+  const [reportBusy, setReportBusy] = useState(false);
   const [activeReviewFilter, setActiveReviewFilter] = useState<'all' | 'verified' | 'qa'>('all');
   const [replyingToReviewId, setReplyingToReviewId] = useState<number | null>(null);
   const [replyText, setReplyText] = useState('');
@@ -141,10 +151,10 @@ export default function ProductDetailView({
   const togglePriceAlert = (customThreshold?: number) => {
     const targetProduct = db.products.find(p => p.id === productId);
     if (!targetProduct) return;
-    
+
     let newList = [...priceAlertsList];
     const index = newList.findIndex(item => item.productId === productId);
-    
+
     if (index >= 0) {
       // Unsubscribe
       newList.splice(index, 1);
@@ -159,7 +169,7 @@ export default function ProductDetailView({
     }
     setPriceAlertsList(newList);
     localStorage.setItem('goodsale_price_alerts', JSON.stringify(newList));
-    
+
     // Dispatch standard custom event
     window.dispatchEvent(new Event('goodsale_price_alerts_change'));
   };
@@ -169,11 +179,18 @@ export default function ProductDetailView({
   const sellerProfile = product ? db.profiles.find(p => p.userId === product.sellerId) : null;
   const business = (product && product.businessId) ? db.businesses.find(b => b.id === product.businessId) : null;
   const isSellerVerified = seller ? (seller.role === UserRole.VERIFIED_SELLER || seller.role === UserRole.VERIFIED_BUSINESS) : false;
+  const sellerTrust = product ? computeSellerTrust(db, product.sellerId) : null;
 
   // Auction metadata
   const auction = (product && product.isAuction) ? db.auctions.find(a => a.productId === product.id) : null;
   const bids = auction ? db.bids.filter(b => b.auctionId === auction.id).sort((a,b) => b.amount - a.amount) : [];
   const currentHighestBid = bids.length > 0 ? bids[0].amount : (auction?.startingBid || 0);
+
+  // Record a unique listing view for seller analytics (best-effort, never blocking).
+  useEffect(() => {
+    if (product) trackProductMetric(product.id, 'view', true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productId]);
 
   // Initial form values
   useEffect(() => {
@@ -192,7 +209,7 @@ export default function ProductDetailView({
     const updateTimer = () => {
       const latestDB = getDBState();
       const latestAuction = latestDB.auctions.find(a => a.id === auction.id);
-      
+
       if (!latestAuction) {
         return;
       }
@@ -210,7 +227,7 @@ export default function ProductDetailView({
       if (diff <= 0) {
         setIsAuctionEnded(true);
         setTimeLeft('CLOSED');
-        
+
         // Trigger auction closure in DB!
         const closeRes = dbOperations.closeAuction(latestAuction.id);
         if (closeRes) {
@@ -283,7 +300,7 @@ export default function ProductDetailView({
     const roomId = await dbOperations.getOrCreateChatRoom(product.id);
     if (roomId) {
       await dbOperations.sendMessage(
-        roomId, 
+        roomId,
         `SENT PROPOSED NEGOTIATION OFFER: ₦${amount.toLocaleString()}. I would like to purchase via GoodSale Escrow!`
       );
       setShowNegotiateDrawer(false);
@@ -316,7 +333,7 @@ export default function ProductDetailView({
     const shareUrl = typeof window !== 'undefined'
       ? `${window.location.origin}/?product=${product.id}`
       : `https://goodsale.ng/product/${product.id}`;
-    
+
     navigator.clipboard.writeText(shareUrl).then(() => {
       toast.success('Link copied! Product URL loaded to clipboard.');
     }).catch(err => {
@@ -330,20 +347,34 @@ export default function ProductDetailView({
       return;
     }
     if (!newCommentText.trim()) return;
-    
+
     dbOperations.submitProductComment(product.id, newCommentRating, newCommentText);
-    
+
     setNewCommentText('');
     setNewCommentRating(5);
     setReviewSubmitFeedback('Comment posted successfully! +15 GoodPoints awarded.');
     setTimeout(() => setReviewSubmitFeedback(null), 4000);
   };
 
+  const handlePostQuestion = () => {
+    if (!db.currentUser) {
+      onOpenAuth?.();
+      return;
+    }
+    if (!newCommentText.trim()) return;
+
+    dbOperations.submitProductComment(product.id, 0, newCommentText);
+
+    setNewCommentText('');
+    setReviewSubmitFeedback('Question posted. The seller and other buyers can now reply.');
+    setTimeout(() => setReviewSubmitFeedback(null), 4000);
+  };
+
   const handleAddReply = (reviewId: number) => {
     if (!replyText.trim()) return;
-    
+
     dbOperations.submitReplyToReview(reviewId, replyText);
-    
+
     setReplyText('');
     setReplyingToReviewId(null);
   };
@@ -359,829 +390,1141 @@ export default function ProductDetailView({
 
   // Filter reviews: general comments/reviews for this product, or reviews of this vendor
   const productReviews = db.reviews.filter(r => r.productId === product.id || r.revieweeId === product.sellerId);
-  
+
   // Calculate average rating
   const reviewsWithRating = productReviews.filter(r => r.rating > 0);
-  const averageRating = reviewsWithRating.length > 0 
+  const averageRating = reviewsWithRating.length > 0
     ? (reviewsWithRating.reduce((sum, r) => sum + r.rating, 0) / reviewsWithRating.length).toFixed(1)
     : '5.0';
 
-  // Filters
+  // Filtered views per tab
+  const qaReviews = productReviews.filter(r => r.rating === 0);
   const filteredReviews = productReviews.filter(r => {
     if (activeReviewFilter === 'verified') {
-      // verified buyer means has orderId or rating > 0
+      // verified buyer means has order id or a rating
       return r.rating > 0 && r.orderId !== undefined;
     }
-    if (activeReviewFilter === 'qa') {
-      return r.rating === 0;
-    }
-    return true; // 'all'
+    return r.rating > 0;
   });
 
-  return (
-    <div className="bg-ink-50 dark:bg-ink-950 min-h-screen py-8 px-4 sm:px-6 lg:px-8 transition-colors duration-300">
-      <div className="max-w-7xl mx-auto">
-        
-        {/* Back navigation header */}
-        <div className="flex justify-between items-center mb-6">
-          <button 
-            onClick={onBack}
-            className="inline-flex items-center gap-1 text-xs font-sans font-bold text-ink-700 dark:text-ink-300 hover:text-jade-500 mb-0 cursor-pointer bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 px-3 py-1.5 rounded-xl transition-all"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Marketplace
-          </button>
+  // Reference layout helpers — honest, computed from the listing itself.
+  const discountPercent = product.compareAtPrice && product.compareAtPrice > product.price
+    ? Math.round(((product.compareAtPrice - product.price) / product.compareAtPrice) * 100)
+    : 0;
+  const savingsAmount = discountPercent > 0 ? Number(product.compareAtPrice) - product.price : 0;
+  const stockLeft = product.quantity;
+  const isLowStock = stockLeft > 0 && stockLeft <= 5;
+  const unavailableStatus = product.stockStatus === 'SOLD'
+    ? 'Sold'
+    : product.stockStatus === 'UNAVAILABLE'
+      ? 'Unavailable'
+      : product.stockStatus === 'OUT_OF_STOCK'
+        ? 'Out of stock'
+        : null;
+  const inStock = !unavailableStatus && stockLeft > 0;
+  const prettyWords = (value: string) =>
+    value.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+  const conditionLabel = prettyWords(product.condition);
+  const deliveryLabel = prettyWords(product.deliveryMethod);
+  const returnDays = product.returnPolicy?.match(/(\d+)\s*[- ]?day/i)?.[1];
+  const returnsLabel = returnDays ? `${returnDays} Days` : 'Seller policy';
+  const subtitle = (() => {
+    const first = product.description.split(/(?<=[.!?])\s/)[0] || product.description;
+    return first.length > 96 ? `${first.slice(0, 93)}…` : first;
+  })();
+  const sellerLocation = sellerProfile?.city
+    ? `${sellerProfile.city}${sellerProfile.state ? `, ${sellerProfile.state}` : ''}`
+    : 'Nigeria';
+  const galleryCount = product.images.length || 1;
 
+  return (
+    <div className="min-h-screen bg-white pb-24 transition-colors duration-300 dark:bg-ink-950">
+
+      {/* Back row */}
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 pt-4 sm:px-6 lg:px-8">
+        <button
+          onClick={onBack}
+          className="inline-flex items-center gap-2 text-sm font-semibold text-ink-700 transition-colors hover:text-jade-600 dark:text-ink-300 dark:hover:text-jade-400 cursor-pointer"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to marketplace
+        </button>
+        <div className="flex items-center gap-3">
+          <span className="hidden text-xs font-semibold uppercase tracking-wide text-ink-400 sm:block">
+            {product.category}
+          </span>
           <button
-            onClick={handleShareProduct}
-            className="inline-flex items-center gap-1.5 text-xs font-sans font-bold text-ink-700 dark:text-ink-300 hover:text-jade-500 cursor-pointer bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 px-3.5 py-1.5 rounded-xl transition-all"
-            title="Copy unique link to clipboard"
+            onClick={() => setShowReport(true)}
+            className="inline-flex items-center gap-1.5 rounded-full border border-ink-200 px-2.5 py-1 text-[11px] font-semibold text-ink-500 transition-colors hover:border-jade-500/50 hover:text-jade-700 dark:border-ink-800 dark:text-ink-400 dark:hover:text-jade-300 cursor-pointer"
           >
-            <Share2 className="w-4 h-4 text-ink-400 group-hover:text-jade-500" />
-            Share Product
+            <Shield className="h-3 w-3" /> Report
           </button>
         </div>
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          
-          {/* A. Left side: Image Gallery & Previews (5 Cols) */}
-          <div className="lg:col-span-5 min-w-0 space-y-4">
-            
-            <div 
+      <div className="mx-auto max-w-6xl px-0 pt-3 sm:px-6 lg:px-8">
+        <div className="grid gap-6 lg:grid-cols-2 lg:gap-10">
+
+          {/* ══ Gallery ══ */}
+          <div className="min-w-0">
+            <div
               onMouseEnter={() => setIsZooming(true)}
               onMouseLeave={() => setIsZooming(false)}
               onMouseMove={handleMouseMove}
-              className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl overflow-hidden shadow-sm relative h-96 flex items-center justify-center cursor-zoom-in group"
+              className="group relative aspect-[4/3] w-full overflow-hidden bg-ink-100 sm:rounded-3xl lg:aspect-[4/5] dark:bg-ink-900"
             >
               <div
                 className="absolute inset-0 transition-transform duration-100 ease-out"
                 style={
-                  isZooming
+                  isZooming && !showVideo
                     ? { transform: 'scale(1.8)', transformOrigin: `${zoomCoords.x}% ${zoomCoords.y}%` }
                     : undefined
                 }
               >
-                <SmartImage
-                  src={product.images[activeImageIndex]}
-                  alt={product.title}
-                  seed={`product-${product.id}`}
-                  className="h-full w-full"
-                />
-              </div>
-              
-              {product.isAuction && (
-                <div className="absolute top-4 left-4 px-3 py-1 bg-jade-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1 shadow-lg shadow-jade-500/25 pointer-events-none">
-                  <Zap className="w-3.5 h-3.5 text-white fill-white" />
-                  Live Auction Event
-                </div>
-              )}
-            </div>
-
-            {/* Gallery Previews horizontal list */}
-            {product.images.length > 1 && (
-              <div className="flex gap-2">
-                {product.images.map((img, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setActiveImageIndex(idx)}
-                    className={`w-20 h-20 rounded-xl border overflow-hidden relative cursor-pointer ${activeImageIndex === idx ? 'border-jade-500 ring-2 ring-jade-500/20' : 'border-ink-200 dark:border-ink-800'}`}
-                  >
-                    <SmartImage
-                      src={img}
-                      alt={`Preview ${idx + 1}`}
-                      seed={`preview-${product.id}-${idx}`}
-                      className="absolute inset-0"
-                    />
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Premium Escrow explanation Box */}
-            <div className="p-4 bg-jade-50 dark:bg-jade-950/20 border border-jade-500/20 rounded-2xl flex items-start gap-3">
-              <Shield className="w-5 h-5 text-jade-500 shrink-0 mt-0.5" />
-              <div>
-                <h5 className="font-sans font-bold text-xs text-jade-800 dark:text-jade-400">Escrow Security Shield Active</h5>
-                <p className="text-xs text-jade-700 dark:text-jade-300/80 leading-relaxed mt-0.5">
-                  Your funds are secure! GoodSale holds the payment neutral in escrow. The seller only receives payout once you receive delivery and verify your secret PIN.
-                </p>
-              </div>
-            </div>
-
-          </div>
-
-          {/* B. Right side: Dynamic buy & information details (7 Cols) */}
-          <div className="lg:col-span-7 min-w-0 space-y-6">
-            
-            <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-6 shadow-sm space-y-4">
-              
-              {/* Product Header Row */}
-              <div>
-                <div className="flex items-center gap-2 mb-1.5">
-                  <span className="px-2.5 py-0.5 bg-ink-100 dark:bg-ink-800 text-ink-800 dark:text-ink-300 text-xs font-semibold rounded tracking-tight">
-                    {product.condition.replace('_', ' ')}
-                  </span>
-                  <span className="text-xs font-semibold text-jade-500 tracking-tight">{product.category}</span>
-                </div>
-                <h1 className="font-sans font-semibold text-2xl text-ink-900 dark:text-white leading-snug">
-                  {product.title}
-                </h1>
-                
-                {/* Location indicator */}
-                <div className="flex items-center gap-1.5 text-xs text-ink-400 mt-1">
-                  <MapPin className="w-3.5 h-3.5 text-jade-500" />
-                  <span>{sellerProfile?.city || 'Lagos'}, {sellerProfile?.state || 'Lagos State'} • Nigeria</span>
-                </div>
-              </div>
-
-              {/* Pricing section or Auction Bid info */}
-              {!product.isAuction ? (
-                <div className="space-y-3">
-                  <div className="p-4 bg-ink-50 dark:bg-ink-800/40 rounded-2xl flex items-center justify-between">
-                    <div>
-                      <span className="text-xs text-ink-400 tracking-tight block font-medium">Escrow Purchase Price</span>
-                      <span className="font-sans font-semibold text-2xl text-ink-900 dark:text-white">₦{product.price.toLocaleString()}</span>
-                    </div>
-                    {product.isNegotiable && (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-ink-500/10 border border-ink-500/20 rounded-lg text-xs font-bold text-ink-600 dark:text-ink-400">
-                        <Tag className="w-3.5 h-3.5" />
-                        Price Negotiable
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Price alert subscription panel */}
-                  <div className={`p-4 rounded-2xl border transition-all duration-300 ${isAlertSubscribed ? 'bg-jade-500/5 border-jade-500/20 dark:border-jade-500/30' : 'bg-ink-50 dark:bg-ink-800/10 border-ink-100 dark:border-ink-800/60'}`}>
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-all duration-300 ${isAlertSubscribed ? 'bg-jade-500/10 text-jade-500 ring-4 ring-jade-500/5' : 'bg-ink-100 dark:bg-ink-800 text-ink-400'}`}>
-                          {isAlertSubscribed ? <Bell className="w-4 h-4 animate-pulse" /> : <BellOff className="w-4 h-4" />}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <h4 className="text-xs font-bold text-ink-800 dark:text-ink-200">Price Drop Alerts</h4>
-                          <p className="text-xs text-ink-400 leading-normal mt-0.5 truncate">
-                            {isAlertSubscribed 
-                              ? `Subscribed to drops below ₦${Number(alertThreshold).toLocaleString()}` 
-                              : 'Get an instant in-app alert when this price drops.'}
-                          </p>
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={() => {
-                          if (isAlertSubscribed) {
-                            togglePriceAlert();
-                          } else {
-                            setShowThresholdForm(!showThresholdForm);
-                          }
-                        }}
-                        className={`px-3 py-1.5 font-bold text-xs rounded-lg transition-all cursor-pointer select-none shrink-0 ${isAlertSubscribed ? 'bg-jade-500/10 hover:bg-jade-500/20 text-ink-500 border border-ink-500/15' : 'bg-jade-500 hover:bg-jade-600 text-white shadow-sm shadow-jade-500/10'}`}
-                      >
-                        {isAlertSubscribed ? 'Unsubscribe' : 'Notify Me'}
-                      </button>
-                    </div>
-
-                    {/* Threshold custom input form */}
-                    {showThresholdForm && !isAlertSubscribed && (
-                      <div className="mt-3 pt-3 border-t border-ink-100 dark:border-ink-800/60 flex flex-col gap-2">
-                        <p className="text-xs font-medium text-ink-500 dark:text-ink-400">
-                          Set target price (defaults to current: ₦{product.price.toLocaleString()}):
-                        </p>
-                        <div className="flex gap-2">
-                          <div className="relative flex-1">
-                            <span className="absolute left-2.5 top-2 text-xs text-ink-400 font-mono">₦</span>
-                            <input
-                              type="number"
-                              value={alertThreshold}
-                              onChange={(e) => setAlertThreshold(e.target.value)}
-                              placeholder={product.price.toString()}
-                              className="w-full pl-6 pr-3 py-1.5 text-xs bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-jade-500 text-ink-800 dark:text-white"
-                            />
-                          </div>
-                          <button
-                            onClick={() => {
-                              const val = alertThreshold.trim() ? Number(alertThreshold) : product.price;
-                              togglePriceAlert(val);
-                              setShowThresholdForm(false);
-                            }}
-                            className="px-3 py-1.5 bg-jade-500 hover:bg-jade-600 text-white text-xs font-bold rounded-lg cursor-pointer flex items-center gap-1 shrink-0"
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                            Active Alert
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="p-4 bg-ink-500/5 border border-ink-500/20 rounded-2xl space-y-4">
-                  {/* Live Countdown Timer */}
-                  <div className="flex items-center justify-between p-3 bg-ink-900 text-white rounded-xl border border-ink-500/30 shadow-md">
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4 text-ink-500 animate-pulse" />
-                      <span className="text-xs font-medium text-ink-400">
-                        {auction?.isActive ? 'AUCTION COUNTDOWN' : 'AUCTION STATUS'}
-                      </span>
-                    </div>
-                    <div className="font-mono text-xs font-bold tracking-widest text-ink-400">
-                      {auction?.isActive ? (timeLeft || 'Calculating...') : 'CLOSED'}
-                    </div>
-                  </div>
-
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <span className="text-xs text-ink-500 tracking-tight font-bold flex items-center gap-1">
-                        <Zap className="w-3.5 h-3.5" /> {auction?.isActive ? 'Current Top Bid' : 'Winning Bid'}
-                      </span>
-                      <span className="font-sans font-semibold text-2xl text-ink-900 dark:text-white block mt-1">
-                        ₦{currentHighestBid.toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-xs text-ink-400 block">Starting Bid</span>
-                      <span className="font-sans font-semibold text-xs text-ink-500 dark:text-ink-400">₦{auction?.startingBid.toLocaleString()}</span>
-                    </div>
-                  </div>
-
-                  {auction?.isActive ? (
-                    <>
-                      {/* Bidding interactive form */}
-                      <div className="space-y-3">
-                        <div className="flex gap-2">
-                          <input
-                            type="number"
-                            value={customBidAmount}
-                            onChange={(e) => setCustomBidAmount(e.target.value)}
-                            placeholder="Enter bid amount (₦)"
-                            className="flex-1 px-3 py-2 text-sm bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-ink-500 text-ink-800 dark:text-white"
-                          />
-                          <button
-                            onClick={handlePlaceBid}
-                            className="px-5 py-2 bg-jade-500 hover:bg-jade-600 text-white font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer shrink-0"
-                          >
-                            Place Bid
-                          </button>
-                        </div>
-                        {bidError && <p className="text-xs font-bold text-ink-500">{bidError}</p>}
-                        {bidSuccess && <p className="text-xs font-bold text-jade-500 flex items-center gap-1">Bid Placed Successfully!</p>}
-                      </div>
-
-                      {/* Fast-Forward Simulator */}
-                      <div className="pt-1 flex justify-end">
-                        <button
-                          onClick={() => {
-                            if (auction) {
-                              const closeRes = dbOperations.closeAuction(auction.id);
-                              if (closeRes) {
-                                setDb(getDBState());
-                                toast.success('Auction force-closed and pending escrow order generated.');
-                              }
-                            }
-                          }}
-                          className="px-2 py-1 bg-jade-500/10 hover:bg-jade-500/20 text-ink-500 text-xs font-mono tracking-tight border border-ink-500/25 rounded-lg cursor-pointer"
-                          title="Simulate timer hitting 0 immediately"
-                        >
-                          Simulate Fast-Forward End
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="p-3 bg-jade-500/10 border border-jade-500/20 rounded-xl text-center">
-                      <span className="text-xs text-jade-600 dark:text-jade-400 font-semibold tracking-tight block mb-1">
-                        Auction Concluded
-                      </span>
-                      {bids.length > 0 ? (
-                        <div className="space-y-2 mt-1">
-                          <p className="text-xs font-bold text-ink-800 dark:text-white">
-                            Winner: <span className="text-jade-500">@{bids[0].username}</span> with top bid of <span className="font-mono text-jade-600 dark:text-jade-400">₦{bids[0].amount.toLocaleString()}</span>!
-                          </p>
-                          <p className="text-xs text-ink-400 leading-normal">
-                            A pending escrow order has been automatically generated for @{bids[0].username} to complete deposit.
-                          </p>
-                          {db.currentUser?.id === bids[0].userId && (
-                            <button
-                              onClick={() => onNavigate('profile')}
-                              className="mt-1.5 px-3 py-1.5 bg-jade-500 hover:bg-jade-600 text-white text-xs font-bold tracking-tight rounded-lg cursor-pointer inline-block"
-                            >
-                              Go to My Purchases & Pay
-                            </button>
-                          )}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-ink-400 mt-1">Closed with no active bids.</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Primary C2C CTA Buttons */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                {!product.isAuction ? (
-                  <>
-                    <button
-                      onClick={handleBuyNow}
-                      className="w-full py-3 bg-jade-500 hover:bg-jade-600 text-white font-sans font-semibold text-sm rounded-xl transition-all shadow-lg shadow-jade-500/10 cursor-pointer"
-                    >
-                      Buy Now (Escrow)
-                    </button>
-                    
-                    <button
-                      onClick={() => onAddToCart(product.id)}
-                      className="w-full py-3 bg-white dark:bg-ink-900 text-ink-900 dark:text-white border border-ink-200 dark:border-ink-800 font-sans font-bold text-sm rounded-xl hover:bg-ink-50 transition-all cursor-pointer flex items-center justify-center gap-1"
-                    >
-                      <ShoppingCart className="w-4 h-4 text-jade-500" />
-                      Add to Shopping Cart
-                    </button>
-                  </>
+                {showVideo && product.videoUrl ? (
+                  <video
+                    src={product.videoUrl}
+                    controls
+                    autoPlay
+                    playsInline
+                    preload="metadata"
+                    className="h-full w-full bg-black object-contain"
+                  />
                 ) : (
-                  <div className="sm:col-span-2 p-3 bg-ink-50 dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-2xl">
-                    <span className="text-xs font-semibold text-ink-400 tracking-tight block mb-2">Bid History Log ({bids.length})</span>
-                    {bids.length === 0 ? (
-                      <p className="text-xs text-ink-400 italic">No bids placed yet. Be the first!</p>
-                    ) : (
-                      <div className="space-y-2 max-h-32 overflow-y-auto divide-y divide-ink-100 dark:divide-ink-800">
-                        {bids.map((b) => (
-                          <div key={b.id} className="flex justify-between items-center text-xs pt-1.5 first:pt-0 font-sans text-ink-700 dark:text-ink-300">
-                            <span className="font-bold flex items-center gap-1.5">
-                              <SmartAvatar src={b.userAvatar} name={b.username} className="h-4 w-4" />
-                              @{b.username}
-                            </span>
-                            <span className="font-mono font-bold text-ink-950 dark:text-white">₦{b.amount.toLocaleString()}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <SmartImage
+                    src={product.images[activeImageIndex]}
+                    alt={product.title}
+                    seed={`product-${product.id}`}
+                    className="h-full w-full"
+                  />
                 )}
               </div>
 
-              {/* Negotiation offering drawer triggers */}
-              {product.isNegotiable && !product.isAuction && (
-                <div className="pt-2">
-                  <button
-                    onClick={() => setShowNegotiateDrawer(!showNegotiateDrawer)}
-                    className="w-full py-2 bg-jade-500/10 hover:bg-jade-500/20 text-ink-500 border border-ink-500/20 font-bold text-xs rounded-xl transition-all cursor-pointer"
-                  >
-                    Submit Negotiation Custom Offer Price
-                  </button>
-                  
-                  {showNegotiateDrawer && (
-                    <div className="mt-3 p-4 bg-ink-500/5 border border-ink-500/20 rounded-2xl flex gap-2">
-                      <input
-                        type="number"
-                        value={negotiateOffer}
-                        onChange={(e) => setNegotiateOffer(e.target.value)}
-                        placeholder="Offer price in ₦ (e.g. 110000)"
-                        className="flex-1 px-3 py-2 text-xs bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-xl focus:ring-1 focus:ring-ink-500 focus:outline-none text-ink-800 dark:text-white"
-                      />
-                      <button
-                        onClick={handleSendOffer}
-                        className="px-4 bg-jade-500 hover:bg-jade-600 text-white font-bold text-xs rounded-xl flex items-center gap-1 cursor-pointer"
-                      >
-                        <Send className="w-3.5 h-3.5" />
-                        Send Offer
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Chat with Merchant connector */}
-              <button
-                onClick={handleStartChat}
-                className="w-full py-2.5 bg-ink-100 dark:bg-ink-800 text-ink-700 dark:text-ink-300 font-bold text-xs rounded-xl hover:bg-ink-200 dark:hover:bg-ink-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <MessageSquare className="w-4 h-4 text-jade-500" />
-                Chat Real-Time with Seller
-              </button>
-
-            </div>
-
-            {/* C. Seller Information Widget */}
-            <div 
-              onClick={() => seller && onNavigate('seller-profile', { sellerId: seller.id })}
-              className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-5 shadow-sm flex items-center justify-between gap-4 cursor-pointer hover:border-jade-500/50 hover:shadow-md transition-all group"
-              title="Click to view seller storefront"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-jade-500/10 overflow-hidden relative">
-                  <SmartAvatar src={sellerProfile?.photoUrl} name={seller?.fullName || 'GoodSale Seller'} className="w-full h-full" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-1">
-                    <span className="font-sans font-bold text-sm text-ink-950 dark:text-white group-hover:text-jade-500 transition-colors">{seller?.fullName || 'GoodSale Seller'}</span>
-                    {isSellerVerified && <CheckCircle className="h-4 w-4 text-jade-500" />}
-                  </div>
-                  <span className="text-xs text-ink-400 font-mono">Level: {seller?.sellerLevel} • Trust Score: {seller?.trustScore}% • View Storefront</span>
-                </div>
-              </div>
-
-              {business ? (
-                <div className="text-right border-l border-ink-100 dark:border-ink-800 pl-4 hidden sm:block">
-                  <span className="text-xs text-jade-500 tracking-tight font-bold block">Business Merchant</span>
-                  <span className="font-sans font-bold text-xs text-ink-800 dark:text-ink-300 group-hover:text-jade-500 transition-colors">{business.name}</span>
-                </div>
-              ) : (
-                <span className="text-xs text-jade-500 font-bold group-hover:underline flex items-center gap-1 font-mono tracking-tight">
-                  View Store
+              {isSellerVerified && (
+                <span className="pointer-events-none absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-jade-700/95 px-3 py-1.5 text-[11px] font-bold text-white shadow-lg backdrop-blur-sm">
+                  <CheckCircle className="h-3.5 w-3.5" />
+                  Verified Seller
                 </span>
               )}
-            </div>
 
-            {/* D. Specifications & Descriptions Sheet */}
-            <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-6 shadow-sm space-y-4">
-              <h3 className="font-sans font-bold text-sm text-ink-900 dark:text-white border-b border-ink-100 dark:border-ink-800 pb-2">
-                Item Specifications & Description
-              </h3>
-              
-              <p className="text-xs text-ink-600 dark:text-ink-400 leading-relaxed">
-                {product.description}
-              </p>
+              <span className="pointer-events-none absolute right-3 top-3 rounded-lg bg-ink-950/60 px-2.5 py-1 text-[11px] font-bold text-white backdrop-blur-sm">
+                {showVideo ? 'Video' : `${activeImageIndex + 1} / ${galleryCount}`}
+              </span>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                <div className="space-y-2">
-                  <div className="flex justify-between py-1 border-b border-ink-50 dark:border-ink-800">
-                    <span className="text-ink-400">Brand</span>
-                    <span className="font-bold text-ink-800 dark:text-ink-200">{product.brand || 'Generic'}</span>
-                  </div>
-                  <div className="flex justify-between py-1 border-b border-ink-50 dark:border-ink-800">
-                    <span className="text-ink-400">Condition</span>
-                    <span className="font-bold text-ink-800 dark:text-ink-200">{product.condition}</span>
-                  </div>
-                  <div className="flex justify-between py-1 border-b border-ink-50 dark:border-ink-800">
-                    <span className="text-ink-400">Barcode</span>
-                    <span className="font-mono font-bold text-ink-800 dark:text-ink-200">{product.barcode || 'N/A'}</span>
-                  </div>
-                </div>
+              {product.isAuction && (
+                <span className="pointer-events-none absolute bottom-10 left-3 inline-flex items-center gap-1 rounded-lg bg-jade-600 px-2.5 py-1 text-[11px] font-bold text-white shadow-lg">
+                  <Zap className="h-3 w-3 fill-white" />
+                  Live auction
+                </span>
+              )}
 
-                <div className="space-y-2">
-                  <div className="flex justify-between py-1 border-b border-ink-50 dark:border-ink-800">
-                    <span className="text-ink-400">Delivery</span>
-                    <span className="font-bold text-ink-800 dark:text-ink-200">{product.deliveryMethod.replace('_', ' ')}</span>
-                  </div>
-                  <div className="flex justify-between py-1 border-b border-ink-50 dark:border-ink-800">
-                    <span className="text-ink-400">Warranty</span>
-                    <span className="font-bold text-ink-800 dark:text-ink-200">{product.warranty || 'No Warranty'}</span>
-                  </div>
-                  <div className="flex justify-between py-1 border-b border-ink-50 dark:border-ink-800">
-                    <span className="text-ink-400">Return Policy</span>
-                    <span className="font-bold text-ink-800 dark:text-ink-200">{product.returnPolicy || 'No Returns'}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+              {product.videoUrl && (
+                <button
+                  onClick={() => setShowVideo(v => !v)}
+                  className="absolute bottom-9 right-3 inline-flex items-center gap-1.5 rounded-full bg-ink-950/60 px-3 py-1.5 text-[11px] font-bold text-white backdrop-blur-sm transition-colors hover:bg-ink-950/80 cursor-pointer"
+                >
+                  <Play className="h-3 w-3 fill-white" />
+                  {showVideo ? 'Photos' : 'Video'}
+                </button>
+              )}
 
-          </div>
-
-        </div>
-
-        {/* Sponsored: product-detail placement */}
-        <AdSlot placement="DETAIL" onNavigate={onNavigate} className="mt-8" />
-
-        {/* E. Product Reviews, Comments & Vendor QA Section */}
-        <div id="product-reviews-section" className="mt-12 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-6 sm:p-8 shadow-sm space-y-8">
-          
-          <div className="border-b border-ink-100 dark:border-ink-800 pb-5">
-            <h2 className="font-sans font-semibold text-xl text-ink-900 dark:text-white flex items-center gap-2">
-              <MessageSquare className="w-5 h-5 text-jade-500" />
-              Customer Reviews & Verified Merchant QA
-            </h2>
-            <p className="text-xs text-ink-400 mt-1">
-              Read verified purchase reviews, ask product questions, or discuss delivery options with other verified members.
-            </p>
-          </div>
-
-          {/* Metrics summary widget */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center bg-ink-50 dark:bg-ink-900/50 p-6 rounded-3xl border border-ink-100 dark:border-ink-800/80">
-            <div className="md:col-span-4 text-center md:text-left space-y-1 border-r border-ink-100 dark:border-ink-800 pr-0 md:pr-6">
-              <span className="text-xs text-ink-400 tracking-tight font-bold">Overall Rating</span>
-              <div className="flex items-baseline justify-center md:justify-start gap-2">
-                <span className="font-sans font-semibold text-4xl text-ink-950 dark:text-white">{averageRating}</span>
-                <span className="text-xs text-ink-400">out of 5</span>
-              </div>
-              <div className="flex items-center justify-center md:justify-start gap-1 text-ink-500 my-1">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Star 
-                    key={i} 
-                    className={`h-4 w-4 ${i < Math.round(Number(averageRating)) ? 'star-filled' : 'star-empty'}`} 
+              {/* Dots */}
+              <div className="absolute inset-x-0 bottom-3 flex items-center justify-center gap-1.5">
+                {product.images.map((_, idx) => (
+                  <button
+                    key={idx}
+                    aria-label={`Show image ${idx + 1}`}
+                    onClick={() => { setShowVideo(false); setActiveImageIndex(idx); }}
+                    className={`h-1.5 rounded-full transition-all cursor-pointer ${
+                      !showVideo && activeImageIndex === idx
+                        ? 'w-5 bg-gold-300'
+                        : 'w-1.5 bg-white/75 hover:bg-white'
+                    }`}
                   />
                 ))}
               </div>
-              <span className="text-xs text-ink-400 block font-mono">Based on {reviewsWithRating.length} verified ratings</span>
-            </div>
-
-            {/* Progress Bars */}
-            <div className="md:col-span-5 space-y-2 border-r border-ink-100 dark:border-ink-800 pr-0 md:pr-6">
-              {[5, 4, 3, 2, 1].map(stars => {
-                const count = reviewsWithRating.filter(r => r.rating === stars).length;
-                const percent = reviewsWithRating.length > 0 ? (count / reviewsWithRating.length) * 100 : 0;
-                return (
-                  <div key={stars} className="flex items-center gap-3 text-xs">
-                    <span className="font-bold w-3 font-mono">{stars}</span>
-                    <Star className="star-filled w-3.5 h-3.5 shrink-0" />
-                    <div className="flex-1 h-2 bg-ink-200 dark:bg-ink-800 rounded-full overflow-hidden">
-                      <div className="h-full bg-jade-500 rounded-full" style={{ width: `${percent}%` }}></div>
-                    </div>
-                    <span className="text-ink-400 font-mono w-8 text-right">{count}</span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Shield and Guarantee Info */}
-            <div className="md:col-span-3 space-y-2 text-center md:text-left">
-              <Award className="w-8 h-8 text-jade-500 mx-auto md:mx-0 shrink-0" />
-              <h4 className="text-xs font-bold text-ink-950 dark:text-white">Escrow-Verified Reviews</h4>
-              <p className="text-xs text-ink-500 dark:text-ink-400 leading-relaxed">
-                Reviews with the <span className="text-ink-500 font-semibold">Verified Buyer</span> badge correspond to completed escrow transactions on GoodSale.
-              </p>
             </div>
           </div>
 
-          {/* Write a comment/review box */}
-          <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-2xl p-5 space-y-4">
-            <h3 className="font-sans font-bold text-sm text-ink-900 dark:text-white flex items-center gap-1.5">
-              Share Your Thoughts or Ask a Question
-            </h3>
-            
-            <div className="flex flex-wrap items-center gap-4 text-xs">
-              <span className="text-ink-500">Your Rating:</span>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {[
-                  { val: 5, label: '5 — Excellent' },
-                  { val: 4, label: '4 — Great' },
-                  { val: 3, label: '3 — Good' },
-                  { val: 2, label: '2 — Fair' },
-                  { val: 1, label: '1 — Poor' },
-                  { val: 0, label: 'Just Ask Question (No Rating)' }
-                ].map(item => (
-                  <button
-                    key={item.val}
-                    type="button"
-                    onClick={() => setNewCommentRating(item.val)}
-                    className={`px-2.5 py-1 rounded-lg font-medium text-xs transition-all cursor-pointer ${newCommentRating === item.val ? 'bg-jade-500 text-white' : 'bg-ink-100 dark:bg-ink-800 text-ink-600 dark:text-ink-400 hover:bg-ink-200'}`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
+          {/* ══ Buy box ══ */}
+          <div className="min-w-0 px-4 sm:px-0">
+
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <h1 className="font-display text-2xl font-black leading-tight tracking-tight text-ink-900 dark:text-white sm:text-3xl">
+                  {product.title}
+                </h1>
+                <p className="mt-1 line-clamp-2 text-sm text-ink-500 dark:text-ink-400">
+                  {subtitle}
+                </p>
               </div>
+              <button
+                onClick={handleShareProduct}
+                title="Copy product link"
+                className="flex shrink-0 flex-col items-center gap-1 text-[11px] font-semibold text-ink-600 transition-colors hover:text-jade-600 dark:text-ink-300 dark:hover:text-jade-400 cursor-pointer"
+              >
+                <Share2 className="h-5 w-5" />
+                Share
+              </button>
             </div>
 
-            <div className="space-y-2">
-              <textarea
-                value={newCommentText}
-                onChange={(e) => setNewCommentText(e.target.value)}
-                placeholder={newCommentRating === 0 ? "Ask the vendor a question about shipping, negotiation or condition..." : "Write your verified product review, size fit description, courier speed..."}
-                rows={3}
-                className="w-full p-3.5 bg-white dark:bg-ink-950 border border-ink-200 dark:border-ink-800 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-jade-500 text-ink-800 dark:text-white"
-              />
-              
-              <div className="flex items-center justify-between gap-4 flex-wrap">
-                <span className="text-xs text-jade-500 font-bold bg-jade-500/5 px-2.5 py-1 rounded-lg border border-jade-500/10 flex items-center gap-1">
-                  Reward Active: Earn 15 GoodPoints for submitting high-quality posts!
+            {/* Rating + trust */}
+            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
+              <span className="inline-flex items-center gap-1.5 font-bold text-ink-800 dark:text-ink-100">
+                <Star className="h-4 w-4 star-filled" />
+                {averageRating}
+                <span className="font-normal text-ink-500 dark:text-ink-400">
+                  ({reviewsWithRating.length} {reviewsWithRating.length === 1 ? 'review' : 'reviews'})
                 </span>
-                
-                <button
-                  type="button"
-                  onClick={handleAddProductComment}
-                  className="px-5 py-2 bg-jade-500 hover:bg-jade-600 text-white font-sans font-bold text-xs rounded-xl transition-all cursor-pointer"
-                >
-                  Post Comment & Review
-                </button>
-              </div>
-              {reviewSubmitFeedback && (
-                <p className="text-xs text-jade-500 font-bold flex items-center gap-1">{reviewSubmitFeedback}</p>
-              )}
+              </span>
+              <span aria-hidden className="h-4 w-px bg-ink-200 dark:bg-ink-700" />
+              <span className="inline-flex items-center gap-1.5 font-semibold text-ink-700 dark:text-ink-200">
+                <ShieldCheck className="h-4 w-4 text-jade-600 dark:text-jade-400" />
+                Escrow Protected
+              </span>
             </div>
-          </div>
 
-          {/* Filtering Chips */}
-          <div className="flex items-center justify-between border-b border-ink-100 dark:border-ink-800 pb-3 flex-wrap gap-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              {[
-                { id: 'all', label: `All Discussions (${productReviews.length})` },
-                { id: 'verified', label: `Ratings & Reviews (${reviewsWithRating.length})` },
-                { id: 'qa', label: `Questions & Answers (${productReviews.length - reviewsWithRating.length})` }
-              ].map(filter => (
-                <button
-                  key={filter.id}
-                  onClick={() => setActiveReviewFilter(filter.id as any)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${activeReviewFilter === filter.id ? 'bg-ink-900 dark:bg-ink-100 text-white dark:text-ink-900 shadow-sm' : 'bg-ink-50 dark:bg-ink-800 text-ink-500 dark:text-ink-400 hover:bg-ink-100'}`}
-                >
-                  {filter.label}
-                </button>
-              ))}
-            </div>
-            <span className="text-xs text-ink-400 font-mono">Showing {filteredReviews.length} results</span>
-          </div>
+            {!product.isAuction ? (
+              <>
+                {/* Price */}
+                <div className="mt-4 flex flex-wrap items-end gap-x-2.5 gap-y-1">
+                  <span className="font-display text-4xl font-black tracking-tight text-jade-700 dark:text-jade-300">
+                    ₦{product.price.toLocaleString()}
+                  </span>
+                  {discountPercent > 0 && (
+                    <>
+                      <span className="mb-1 text-lg font-semibold text-ink-400 line-through">
+                        ₦{Number(product.compareAtPrice).toLocaleString()}
+                      </span>
+                      <span className="mb-1.5 rounded-full bg-jade-600 px-2.5 py-1 text-sm font-black leading-none text-white">
+                        -{discountPercent}%
+                      </span>
+                    </>
+                  )}
+                </div>
 
-          {/* Review Cards list */}
-          <div className="space-y-6">
-            {filteredReviews.length === 0 ? (
-              <div className="p-8 text-center bg-ink-50 dark:bg-ink-900/20 rounded-3xl border border-dashed border-ink-200 dark:border-ink-800">
-                <p className="text-xs text-ink-400 italic">No comments or ratings matched the filter yet. Be the first to start the conversation!</p>
-              </div>
+                {/* Savings banner */}
+                {discountPercent > 0 && (
+                  <div className="mt-3 flex items-center gap-2.5 rounded-2xl bg-jade-100 px-4 py-3 dark:bg-jade-950/70">
+                    <Tag className="h-5 w-5 shrink-0 text-jade-700 dark:text-jade-300" />
+                    <span className="flex-1 text-sm font-semibold text-jade-900 dark:text-jade-100">
+                      Save ₦{savingsAmount.toLocaleString()} with this deal!
+                    </span>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-jade-700 dark:text-jade-300" />
+                  </div>
+                )}
+              </>
             ) : (
-              filteredReviews.map(rev => {
-                const isVerifiedPurchase = rev.orderId !== undefined || rev.rating > 0;
-                return (
-                  <div key={rev.id} className="border-b border-ink-100 dark:border-ink-800/80 pb-6 last:border-b-0 space-y-3">
-                    
-                    {/* Review Header */}
-                    <div className="flex justify-between items-start gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-ink-100 dark:bg-ink-800 overflow-hidden relative border border-ink-200/50 dark:border-ink-700/50">
-                          <SmartAvatar
-                            src={rev.reviewerPhoto}
-                            name={rev.reviewerName}
-                            className="h-full w-full"
-                          />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-sans font-bold text-xs text-ink-900 dark:text-white">
-                              {rev.reviewerName}
-                            </span>
-                            {isVerifiedPurchase ? (
-                              <span className="px-1.5 py-0.5 bg-ink-500/10 border border-ink-500/20 text-xs font-semibold text-ink-600 dark:text-ink-400 rounded tracking-tight flex items-center gap-0.5">
-                                <Check className="w-2.5 h-2.5" /> Verified Buyer
-                              </span>
-                            ) : (
-                              <span className="px-1.5 py-0.5 bg-ink-100 dark:bg-ink-800 text-xs font-semibold text-ink-500 rounded tracking-tight">
-                                Community
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-xs text-ink-400 block font-mono">{new Date(rev.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
-                        </div>
+              /* Auction panel */
+              <div className="mt-4 space-y-3 rounded-2xl border border-ink-150 bg-white p-4 dark:border-ink-800 dark:bg-ink-900">
+                <div className="flex items-center justify-between rounded-xl bg-jade-700 px-3 py-2 text-white">
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider">
+                    <Clock className="h-3.5 w-3.5 animate-pulse" />
+                    {auction?.isActive ? 'Auction countdown' : 'Auction status'}
+                  </span>
+                  <span className="font-mono text-xs font-bold tabular-nums">
+                    {auction?.isActive ? (timeLeft || 'Calculating…') : 'CLOSED'}
+                  </span>
+                </div>
+
+                <div className="flex items-end justify-between gap-3">
+                  <div>
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wide text-ink-500">
+                      <Zap className="h-3.5 w-3.5" /> {auction?.isActive ? 'Current top bid' : 'Winning bid'}
+                    </span>
+                    <span className="mt-0.5 block font-display text-3xl font-black text-jade-700 dark:text-jade-300">
+                      ₦{currentHighestBid.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[11px] text-ink-400">Starting bid</span>
+                    <span className="block text-sm font-semibold text-ink-600 dark:text-ink-300">
+                      ₦{Number(auction?.startingBid || 0).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+
+                {auction?.isActive ? (
+                  <>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        value={customBidAmount}
+                        onChange={(e) => setCustomBidAmount(e.target.value)}
+                        placeholder="Enter bid amount (₦)"
+                        className="min-w-0 flex-1 rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-900 focus:outline-none focus:ring-2 focus:ring-jade-500 dark:border-ink-700 dark:bg-ink-950 dark:text-white"
+                      />
+                      <button
+                        onClick={handlePlaceBid}
+                        className="shrink-0 rounded-xl bg-jade-700 px-5 py-2.5 text-xs font-bold text-white transition-colors hover:bg-jade-800 cursor-pointer"
+                      >
+                        Place Bid
+                      </button>
+                    </div>
+                    {bidError && <p className="text-xs font-bold text-ink-600 dark:text-ink-300">{bidError}</p>}
+                    {bidSuccess && <p className="text-xs font-bold text-jade-600">Bid placed successfully!</p>}
+
+                    {db.currentUser?.id === product.sellerId && (
+                      <button
+                        onClick={() => {
+                          if (auction) {
+                            const closeRes = dbOperations.closeAuction(auction.id);
+                            if (closeRes) {
+                              setDb(getDBState());
+                              toast.success('Auction closed. A pending escrow order was generated for the top bidder.');
+                            }
+                          }
+                        }}
+                        className="w-full rounded-xl border border-jade-500/30 bg-jade-500/10 px-3 py-2 text-[11px] font-bold text-jade-700 transition-colors hover:bg-jade-500/20 dark:text-jade-300 cursor-pointer"
+                      >
+                        End auction now & award top bid
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <div className="rounded-xl border border-jade-500/20 bg-jade-500/10 p-3 text-center">
+                    <span className="mb-1 block text-xs font-bold text-jade-700 dark:text-jade-300">Auction concluded</span>
+                    {bids.length > 0 ? (
+                      <div className="space-y-1.5">
+                        <p className="text-xs font-bold text-ink-800 dark:text-white">
+                          Winner: <span className="text-jade-600">@{bids[0].username}</span> at ₦{bids[0].amount.toLocaleString()}
+                        </p>
+                        <p className="text-[11px] text-ink-500">
+                          A pending escrow order was generated for the winner to complete payment.
+                        </p>
+                        {db.currentUser?.id === bids[0].userId && (
+                          <button
+                            onClick={() => onNavigate('profile')}
+                            className="mt-1 rounded-lg bg-jade-700 px-3 py-1.5 text-[11px] font-bold text-white cursor-pointer"
+                          >
+                            Go to my purchases & pay
+                          </button>
+                        )}
                       </div>
+                    ) : (
+                      <p className="text-[11px] text-ink-500">Closed with no active bids.</p>
+                    )}
+                  </div>
+                )}
 
-                      {/* Stars for review */}
-                      {rev.rating > 0 && (
-                        <div className="flex gap-0.5 text-ink-500">
-                          {Array.from({ length: 5 }).map((_, i) => (
-                            <Star 
-                              key={i} 
-                              className={`h-3.5 w-3.5 ${i < rev.rating ? 'star-filled' : 'star-empty'}`} 
-                            />
-                          ))}
+                <div className="rounded-xl bg-ink-50 p-3 dark:bg-ink-950/60">
+                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-ink-400">
+                    Bid history ({bids.length})
+                  </span>
+                  {bids.length === 0 ? (
+                    <p className="text-xs italic text-ink-400">No bids yet — be the first.</p>
+                  ) : (
+                    <div className="max-h-28 space-y-1.5 overflow-y-auto">
+                      {bids.map((b) => (
+                        <div key={b.id} className="flex items-center justify-between text-xs text-ink-700 dark:text-ink-300">
+                          <span className="inline-flex items-center gap-1.5 font-semibold">
+                            <SmartAvatar src={b.userAvatar} name={b.username} className="h-4 w-4" />@{b.username}
+                          </span>
+                          <span className="font-mono font-bold text-ink-900 dark:text-white">₦{b.amount.toLocaleString()}</span>
                         </div>
-                      )}
+                      ))}
                     </div>
+                  )}
+                </div>
+              </div>
+            )}
 
-                    {/* Comment content */}
-                    <p className="text-xs text-ink-700 dark:text-ink-300 leading-relaxed font-sans font-normal pl-0 sm:pl-12">
-                      {rev.comment}
-                    </p>
+            {/* Seller card */}
+            <button
+              onClick={() => seller && onNavigate('seller-profile', { sellerId: seller.id })}
+              className="mt-4 flex w-full items-center gap-3 rounded-2xl border border-ink-150 bg-white p-3 text-left transition-colors hover:border-jade-500/40 dark:border-ink-800 dark:bg-ink-900 cursor-pointer"
+            >
+              <div className="h-11 w-11 shrink-0 overflow-hidden rounded-full bg-jade-500/10">
+                <SmartAvatar
+                  src={sellerProfile?.photoUrl}
+                  name={seller?.fullName || 'GoodSale Seller'}
+                  className="h-full w-full"
+                />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate font-bold text-sm text-ink-900 dark:text-white">
+                    {seller?.fullName || 'GoodSale Seller'}
+                  </span>
+                  {isSellerVerified && <CheckCircle className="h-4 w-4 shrink-0 text-jade-600" />}
+                </div>
+                <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-ink-500 dark:text-ink-400">
+                  <MapPin className="h-3 w-3 shrink-0" />
+                  {sellerLocation}
+                  {sellerTrust && <span>• {sellerTrust.score}/100 trust</span>}
+                </p>
+              </div>
+              <span className="shrink-0 rounded-xl border border-jade-600 px-3 py-2 text-xs font-bold text-jade-700 dark:text-jade-300">
+                Visit Store
+              </span>
+            </button>
 
-                    {/* Helpful Votes, Reply Button Actions */}
-                    <div className="flex items-center gap-4 text-xs font-semibold pl-0 sm:pl-12">
-                      <button
-                        type="button"
-                        onClick={() => handleHelpfulVote(rev.id)}
-                        className="inline-flex items-center gap-1 text-xs text-ink-500 dark:text-ink-400 hover:text-jade-500 transition-colors bg-ink-50 dark:bg-ink-800 px-2.5 py-1 rounded-lg border border-ink-100 dark:border-ink-800 cursor-pointer"
-                      >
-                        <ThumbsUp className="w-3.5 h-3.5" />
-                        Helpful ({rev.isHelpfulVotes || 0})
-                      </button>
+            {/* Trust strip */}
+            <div className="mt-3 grid grid-cols-3 divide-x divide-ink-150 overflow-hidden rounded-2xl border border-ink-150 bg-white py-3 dark:divide-ink-800 dark:border-ink-800 dark:bg-ink-900">
+              <div className="flex items-start gap-2 px-2.5">
+                <ShieldCheck className="h-5 w-5 shrink-0 text-jade-600 dark:text-jade-400" />
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold leading-tight text-ink-900 dark:text-white">Buyer Protection</p>
+                  <p className="text-[10px] leading-tight text-ink-500 dark:text-ink-400">Escrow secured</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2 px-2.5">
+                <Truck className="h-5 w-5 shrink-0 text-jade-600 dark:text-jade-400" />
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold leading-tight text-ink-900 dark:text-white">Fast Delivery</p>
+                  <p className="truncate text-[10px] leading-tight text-ink-500 dark:text-ink-400">{deliveryLabel}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2 px-2.5">
+                <RotateCcw className="h-5 w-5 shrink-0 text-jade-600 dark:text-jade-400" />
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold leading-tight text-ink-900 dark:text-white">Easy Returns</p>
+                  <p className="text-[10px] leading-tight text-ink-500 dark:text-ink-400">{returnsLabel}</p>
+                </div>
+              </div>
+            </div>
 
-                      <button
-                        type="button"
-                        onClick={() => setReplyingToReviewId(replyingToReviewId === rev.id ? null : rev.id)}
-                        className="inline-flex items-center gap-1 text-xs text-jade-500 hover:underline cursor-pointer bg-jade-500/5 px-2.5 py-1 rounded-lg border border-jade-500/10"
-                      >
-                        <MessageSquare className="w-3.5 h-3.5" />
-                        Reply / Comment
-                      </button>
-                    </div>
+            {/* Quantity + stock */}
+            {!product.isAuction && (
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-sm font-semibold text-ink-700 dark:text-ink-200">Quantity</span>
+                  <span className="inline-flex h-9 min-w-12 items-center justify-center rounded-full border border-ink-200 px-3 text-sm font-black text-ink-900 dark:border-ink-700 dark:text-white">
+                    1
+                  </span>
+                </div>
+                {!inStock ? (
+                  <span className="rounded-full bg-ink-100 px-3 py-1.5 text-[11px] font-bold text-ink-500 dark:bg-ink-800 dark:text-ink-300">
+                    {unavailableStatus || 'Out of stock'}
+                  </span>
+                ) : isLowStock ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-gold-100 px-3 py-1.5 text-[11px] font-bold text-gold-800 dark:bg-gold-400/15 dark:text-gold-300">
+                    <Flame className="h-3.5 w-3.5" />
+                    Only {stockLeft} left
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-jade-100 px-3 py-1.5 text-[11px] font-bold text-jade-800 dark:bg-jade-950 dark:text-jade-200">
+                    <Check className="h-3.5 w-3.5" />
+                    In stock
+                  </span>
+                )}
+              </div>
+            )}
 
-                    {/* Replying input field */}
-                    {replyingToReviewId === rev.id && (
-                      <div className="pl-0 sm:pl-12 mt-2 flex gap-2 max-w-2xl">
+            {/* Actions */}
+            {!product.isAuction && (
+              <>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <button
+                    onClick={handleStartChat}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-jade-600 px-3 py-3.5 text-sm font-bold text-jade-700 transition-colors hover:bg-jade-50 dark:text-jade-300 dark:hover:bg-jade-950/60 cursor-pointer"
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    Chat Seller
+                  </button>
+                  <button
+                    onClick={() => onAddToCart(product.id)}
+                    disabled={!inStock}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-jade-700 px-3 py-3.5 text-sm font-bold text-white shadow-lg shadow-jade-700/20 transition-colors hover:bg-jade-800 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                  >
+                    <ShoppingCart className="h-4 w-4" />
+                    Add to Cart
+                  </button>
+                </div>
+
+                <button
+                  onClick={handleBuyNow}
+                  disabled={!inStock}
+                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-gold-300 to-gold-400 px-4 py-4 text-base font-black text-ink-900 shadow-lg shadow-gold-400/30 transition-all hover:from-gold-200 hover:to-gold-300 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                >
+                  <Zap className="h-5 w-5 fill-ink-900" />
+                  Buy Now
+                </button>
+
+                {product.isNegotiable && (
+                  <div className="mt-2.5 text-center">
+                    <button
+                      onClick={() => setShowNegotiateDrawer(!showNegotiateDrawer)}
+                      className="text-xs font-bold text-jade-700 underline underline-offset-4 hover:text-jade-800 dark:text-jade-300 cursor-pointer"
+                    >
+                      {showNegotiateDrawer ? 'Hide offer form' : 'Make an offer instead'}
+                    </button>
+
+                    {showNegotiateDrawer && (
+                      <div className="mt-2.5 flex gap-2 rounded-2xl border border-ink-150 bg-ink-50 p-2.5 dark:border-ink-800 dark:bg-ink-900">
                         <input
-                          type="text"
-                          value={replyText}
-                          onChange={(e) => setReplyText(e.target.value)}
-                          placeholder="Type your reply as vendor or interested buyer..."
-                          className="flex-1 px-3 py-1.5 text-xs bg-white dark:bg-ink-950 border border-ink-200 dark:border-ink-800 rounded-xl focus:ring-1 focus:ring-jade-500 focus:outline-none text-ink-800 dark:text-white"
+                          type="number"
+                          value={negotiateOffer}
+                          onChange={(e) => setNegotiateOffer(e.target.value)}
+                          placeholder="Your offer in ₦"
+                          className="min-w-0 flex-1 rounded-xl border border-ink-200 bg-white px-3 py-2 text-xs text-ink-900 focus:outline-none focus:ring-1 focus:ring-jade-500 dark:border-ink-700 dark:bg-ink-950 dark:text-white"
                         />
                         <button
-                          type="button"
-                          onClick={() => handleAddReply(rev.id)}
-                          className="px-4 py-1.5 bg-jade-500 hover:bg-jade-600 text-white font-bold text-xs rounded-xl flex items-center gap-1 cursor-pointer"
+                          onClick={handleSendOffer}
+                          className="inline-flex shrink-0 items-center gap-1 rounded-xl bg-jade-700 px-3.5 text-xs font-bold text-white hover:bg-jade-800 cursor-pointer"
                         >
-                          <Send className="w-3 h-3" />
+                          <Send className="h-3.5 w-3.5" />
                           Send
                         </button>
                       </div>
                     )}
-
-                    {/* Indented Replies List */}
-                    {rev.replies && rev.replies.length > 0 && (
-                      <div className="pl-4 sm:pl-16 space-y-3 mt-3 border-l-2 border-jade-500/20">
-                        {rev.replies.map(rep => (
-                          <div key={rep.id} className="bg-ink-50 dark:bg-ink-900/60 p-3.5 rounded-2xl space-y-2">
-                            <div className="flex justify-between items-start gap-4">
-                              <div className="flex items-center gap-2">
-                                <div className="w-7 h-7 rounded-full bg-ink-100 overflow-hidden relative border border-ink-200/50">
-                                  <SmartAvatar src={rep.authorPhoto} name={rep.authorName} className="h-full w-full" />
-                                </div>
-                                <div>
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="font-bold text-xs text-ink-800 dark:text-ink-200">{rep.authorName}</span>
-                                    
-                                    {rep.authorRole === 'SELLER' ? (
-                                      <span className="px-1.5 py-0.2 bg-jade-500/10 border border-jade-500/20 text-[10px] font-semibold text-jade-600 dark:text-jade-400 rounded tracking-tight">
-                                        Vendor Merchant
-                                      </span>
-                                    ) : rep.authorRole === 'ADMIN' ? (
-                                      <span className="px-1.5 py-0.2 bg-jade-500/10 border border-jade-500/20 text-[10px] font-semibold text-jade-600 rounded tracking-tight">
-                                        Moderator
-                                      </span>
-                                    ) : (
-                                      <span className="px-1.5 py-0.2 bg-ink-100 dark:bg-ink-800 text-[10px] font-semibold text-ink-500 rounded tracking-tight">
-                                        Buyer
-                                      </span>
-                                    )}
-                                  </div>
-                                  <span className="text-xs text-ink-400 block font-mono">{new Date(rep.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
-                                </div>
-                              </div>
-                            </div>
-                            <p className="text-xs text-ink-600 dark:text-ink-400 leading-normal pl-9 flex items-center gap-1">
-                              <CornerDownRight className="w-3.5 h-3.5 text-ink-300 shrink-0" />
-                              {rep.comment}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
                   </div>
-                );
-              })
+                )}
+              </>
+            )}
+
+            {product.isAuction && (
+              <button
+                onClick={handleStartChat}
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-jade-600 px-3 py-3.5 text-sm font-bold text-jade-700 transition-colors hover:bg-jade-50 dark:text-jade-300 dark:hover:bg-jade-950/60 cursor-pointer"
+              >
+                <MessageSquare className="h-4 w-4" />
+                Chat Seller
+              </button>
             )}
           </div>
+        </div>
+      </div>
 
+      {/* ══ Tabs ══ */}
+      <div className="mx-auto mt-8 max-w-6xl px-4 sm:px-6 lg:px-8">
+        <div className="border-b border-ink-150 dark:border-ink-800">
+          <div className="scrollbar-hide flex gap-7 overflow-x-auto">
+            {([
+              { id: 'overview' as DetailTab, label: 'Overview' },
+              { id: 'specs' as DetailTab, label: 'Specifications' },
+              { id: 'reviews' as DetailTab, label: `Reviews (${reviewsWithRating.length})` },
+              { id: 'qa' as DetailTab, label: `Q&A (${qaReviews.length})` },
+            ]).map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`-mb-px shrink-0 border-b-2 py-3 text-sm font-bold transition-colors cursor-pointer ${
+                  activeTab === tab.id
+                    ? 'border-jade-600 text-jade-700 dark:border-jade-400 dark:text-jade-300'
+                    : 'border-transparent text-ink-500 hover:text-ink-800 dark:text-ink-400 dark:hover:text-white'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Context-aware Gemini Security Tip Banner */}
-        <div id="gemini-security-tip-banner" className="mt-12 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-6 shadow-sm overflow-hidden relative group transition-all duration-300 hover:shadow-md">
-          <div className="absolute -top-12 -right-12 opacity-5 pointer-events-none transition-opacity group-hover:opacity-10">
-            <Shield className="w-48 h-48 text-jade-500" />
+        <div className="py-6">
+          {/* Overview */}
+          {activeTab === 'overview' && (
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <h2 className="font-display text-lg font-black tracking-tight text-ink-900 dark:text-white">
+                  Product Overview
+                </h2>
+                <p className="text-sm leading-relaxed text-ink-600 dark:text-ink-300">
+                  {product.description}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {[
+                  { label: 'Brand', value: product.brand || 'Generic' },
+                  { label: 'Condition', value: conditionLabel },
+                  { label: 'Category', value: product.category },
+                  { label: 'Delivery', value: deliveryLabel },
+                  { label: 'Warranty', value: product.warranty || 'No warranty' },
+                  { label: 'Returns', value: product.returnPolicy || 'No returns' },
+                ].map((item) => (
+                  <div key={item.label} className="rounded-2xl border border-ink-150 bg-white p-3 dark:border-ink-800 dark:bg-ink-900">
+                    <span className="block text-[10px] font-semibold uppercase tracking-wide text-ink-400">{item.label}</span>
+                    <span className="mt-0.5 line-clamp-2 block text-xs font-bold text-ink-900 dark:text-white">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-start gap-3 rounded-2xl border border-jade-500/20 bg-jade-50 p-4 dark:bg-jade-950/40">
+                <Shield className="mt-0.5 h-5 w-5 shrink-0 text-jade-600 dark:text-jade-400" />
+                <div>
+                  <h3 className="text-xs font-bold text-jade-900 dark:text-jade-100">Escrow Security Shield active</h3>
+                  <p className="mt-0.5 text-xs leading-relaxed text-jade-800/80 dark:text-jade-200/80">
+                    GoodSale holds your payment neutral in escrow. The seller is only paid after you confirm delivery and verify your secret PIN.
+                  </p>
+                </div>
+              </div>
+
+              {!product.isAuction && (
+                <div className={`rounded-2xl border p-4 transition-colors ${
+                  isAlertSubscribed
+                    ? 'border-jade-500/25 bg-jade-50 dark:bg-jade-950/40'
+                    : 'border-ink-150 bg-white dark:border-ink-800 dark:bg-ink-900'
+                }`}>
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${
+                        isAlertSubscribed ? 'bg-jade-500/10 text-jade-600 dark:text-jade-400' : 'bg-ink-100 text-ink-400 dark:bg-ink-800'
+                      }`}>
+                        {isAlertSubscribed ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="text-xs font-bold text-ink-800 dark:text-ink-100">Price drop alerts</h4>
+                        <p className="mt-0.5 truncate text-[11px] text-ink-500 dark:text-ink-400">
+                          {isAlertSubscribed
+                            ? `Watching for drops below ₦${Number(alertThreshold).toLocaleString()}`
+                            : 'Get an instant in-app alert when this price drops.'}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (isAlertSubscribed) togglePriceAlert();
+                        else setShowThresholdForm(!showThresholdForm);
+                      }}
+                      className={`shrink-0 rounded-lg px-3 py-1.5 text-[11px] font-bold transition-colors cursor-pointer ${
+                        isAlertSubscribed
+                          ? 'border border-ink-200 bg-white text-ink-600 dark:border-ink-700 dark:bg-ink-950 dark:text-ink-300'
+                          : 'bg-jade-700 text-white hover:bg-jade-800'
+                      }`}
+                    >
+                      {isAlertSubscribed ? 'Unsubscribe' : 'Notify me'}
+                    </button>
+                  </div>
+
+                  {showThresholdForm && !isAlertSubscribed && (
+                    <div className="mt-3 flex flex-col gap-2 border-t border-ink-150 pt-3 dark:border-ink-800">
+                      <p className="text-[11px] text-ink-500 dark:text-ink-400">
+                        Target price (defaults to ₦{product.price.toLocaleString()}):
+                      </p>
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          value={alertThreshold}
+                          onChange={(e) => setAlertThreshold(e.target.value)}
+                          placeholder={product.price.toString()}
+                          className="min-w-0 flex-1 rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 pl-6 text-xs text-ink-900 focus:outline-none focus:ring-1 focus:ring-jade-500 dark:border-ink-700 dark:bg-ink-950 dark:text-white"
+                        />
+                        <button
+                          onClick={() => {
+                            const val = alertThreshold.trim() ? Number(alertThreshold) : product.price;
+                            togglePriceAlert(val);
+                            setShowThresholdForm(false);
+                          }}
+                          className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-jade-700 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-jade-800 cursor-pointer"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                          Activate
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Specifications */}
+          {activeTab === 'specs' && (
+            <div className="space-y-3">
+              <h2 className="font-display text-lg font-black tracking-tight text-ink-900 dark:text-white">
+                Specifications
+              </h2>
+              <div className="overflow-hidden rounded-2xl border border-ink-150 dark:border-ink-800">
+                {[
+                  { label: 'Brand', value: product.brand || 'Generic' },
+                  { label: 'Category', value: product.category },
+                  { label: 'Condition', value: conditionLabel },
+                  { label: 'Barcode', value: product.barcode || 'N/A' },
+                  { label: 'Delivery', value: deliveryLabel },
+                  ...(product.quantity > 0 ? [{ label: 'Units available', value: String(product.quantity) }] : []),
+                  { label: 'Warranty', value: product.warranty || 'No warranty' },
+                  { label: 'Return policy', value: product.returnPolicy || 'No returns' },
+                  ...(product.weightKg ? [{ label: 'Weight', value: `${product.weightKg} kg` }] : []),
+                  ...(product.dimensionsCm ? [{ label: 'Dimensions', value: product.dimensionsCm }] : []),
+                ].map((row, i) => (
+                  <div
+                    key={row.label}
+                    className={`flex items-start justify-between gap-4 px-4 py-3 text-xs ${
+                      i % 2 === 0 ? 'bg-white dark:bg-ink-900' : 'bg-ink-50 dark:bg-ink-950/60'
+                    }`}
+                  >
+                    <span className="shrink-0 font-semibold text-ink-500 dark:text-ink-400">{row.label}</span>
+                    <span className="text-right font-bold text-ink-900 dark:text-white">{row.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Reviews */}
+          {activeTab === 'reviews' && (
+            <div id="product-reviews-section" className="space-y-8">
+              <div className="grid grid-cols-1 items-center gap-6 rounded-2xl border border-ink-150 bg-white p-5 sm:grid-cols-12 dark:border-ink-800 dark:bg-ink-900">
+                <div className="space-y-1 text-center sm:col-span-4 sm:border-r sm:border-ink-150 sm:text-left sm:pr-6 dark:sm:border-ink-800">
+                  <span className="text-[11px] font-bold uppercase tracking-wide text-ink-400">Overall rating</span>
+                  <div className="flex items-baseline justify-center gap-2 sm:justify-start">
+                    <span className="font-display text-4xl font-black text-ink-950 dark:text-white">{averageRating}</span>
+                    <span className="text-xs text-ink-400">out of 5</span>
+                  </div>
+                  <div className="my-1 flex items-center justify-center gap-1 sm:justify-start">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <Star key={i} className={`h-4 w-4 ${i < Math.round(Number(averageRating)) ? 'star-filled' : 'star-empty'}`} />
+                    ))}
+                  </div>
+                  <span className="block text-[11px] text-ink-400">Based on {reviewsWithRating.length} verified ratings</span>
+                </div>
+
+                <div className="space-y-2 sm:col-span-5 sm:border-r sm:border-ink-150 sm:pr-6 dark:sm:border-ink-800">
+                  {[5, 4, 3, 2, 1].map(stars => {
+                    const count = reviewsWithRating.filter(r => r.rating === stars).length;
+                    const percent = reviewsWithRating.length > 0 ? (count / reviewsWithRating.length) * 100 : 0;
+                    return (
+                      <div key={stars} className="flex items-center gap-3 text-xs">
+                        <span className="w-3 font-bold">{stars}</span>
+                        <Star className="star-filled h-3.5 w-3.5 shrink-0" />
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-ink-200 dark:bg-ink-800">
+                          <div className="h-full rounded-full bg-jade-500" style={{ width: `${percent}%` }} />
+                        </div>
+                        <span className="w-8 text-right text-ink-400">{count}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="space-y-1 text-center sm:col-span-3 sm:text-left">
+                  <Award className="mx-auto h-8 w-8 text-jade-600 sm:mx-0" />
+                  <h4 className="text-xs font-bold text-ink-950 dark:text-white">Escrow-verified reviews</h4>
+                  <p className="text-[11px] leading-relaxed text-ink-500 dark:text-ink-400">
+                    Reviews with a <span className="font-semibold text-ink-600 dark:text-ink-300">Verified Buyer</span> badge come from completed escrow orders.
+                  </p>
+                </div>
+              </div>
+
+              {/* Write a review */}
+              <div className="space-y-4 rounded-2xl border border-ink-150 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
+                <h3 className="text-sm font-bold text-ink-900 dark:text-white">Share your review</h3>
+
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="text-ink-500 dark:text-ink-400">Your rating:</span>
+                  {[5, 4, 3, 2, 1].map((val) => (
+                    <button
+                      key={val}
+                      type="button"
+                      aria-label={`${val} star${val > 1 ? 's' : ''}`}
+                      onClick={() => setNewCommentRating(val)}
+                      className={`grid h-8 w-8 place-items-center rounded-lg border transition-colors cursor-pointer ${
+                        newCommentRating === val
+                          ? 'border-gold-400 bg-gold-100'
+                          : 'border-ink-150 bg-white hover:bg-ink-50 dark:border-ink-800 dark:bg-ink-950'
+                      }`}
+                    >
+                      <Star className={`h-4 w-4 ${newCommentRating >= val ? 'star-filled' : 'star-empty'}`} />
+                    </button>
+                  ))}
+                </div>
+
+                <textarea
+                  value={newCommentText}
+                  onChange={(e) => setNewCommentText(e.target.value)}
+                  placeholder="Describe condition, fit, courier speed or how the seller handled the escrow…"
+                  rows={3}
+                  className="w-full rounded-xl border border-ink-200 bg-white p-3.5 text-xs text-ink-900 focus:outline-none focus:ring-2 focus:ring-jade-500 dark:border-ink-800 dark:bg-ink-950 dark:text-white"
+                />
+
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span className="inline-flex items-center gap-1 rounded-lg border border-jade-500/10 bg-jade-500/5 px-2.5 py-1 text-[11px] font-bold text-jade-700 dark:text-jade-300">
+                    Earn 15 GoodPoints for a helpful review
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleAddProductComment}
+                    className="rounded-xl bg-jade-700 px-5 py-2 text-xs font-bold text-white transition-colors hover:bg-jade-800 cursor-pointer"
+                  >
+                    Post review
+                  </button>
+                </div>
+                {reviewSubmitFeedback && (
+                  <p className="text-xs font-bold text-jade-600">{reviewSubmitFeedback}</p>
+                )}
+              </div>
+
+              {/* Filters */}
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-150 pb-3 dark:border-ink-800">
+                <div className="flex flex-wrap items-center gap-2">
+                  {[
+                    { id: 'all', label: `All reviews (${reviewsWithRating.length})` },
+                    { id: 'verified', label: 'Verified buyers' },
+                  ].map((filter) => (
+                    <button
+                      key={filter.id}
+                      onClick={() => setActiveReviewFilter(filter.id as 'all' | 'verified')}
+                      className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer ${
+                        activeReviewFilter === filter.id
+                          ? 'bg-jade-600 text-white shadow-sm shadow-jade-600/25'
+                          : 'bg-ink-50 text-ink-500 hover:bg-ink-100 dark:bg-ink-800 dark:text-ink-400'
+                      }`}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+                <span className="text-[11px] text-ink-400">Showing {filteredReviews.length}</span>
+              </div>
+
+              {/* Review list */}
+              <div className="space-y-6">
+                {filteredReviews.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-ink-200 p-8 text-center dark:border-ink-800">
+                    <p className="text-xs italic text-ink-400">No reviews match this filter yet. Be the first to share one.</p>
+                  </div>
+                ) : (
+                  filteredReviews.map(rev => {
+                    const isVerifiedPurchase = rev.orderId !== undefined || rev.rating > 0;
+                    return (
+                      <div key={rev.id} className="space-y-3 border-b border-ink-100 pb-6 last:border-b-0 dark:border-ink-800/80">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex items-center gap-3">
+                            <div className="relative h-10 w-10 overflow-hidden rounded-full border border-ink-200/50 bg-ink-100 dark:border-ink-700/50 dark:bg-ink-800">
+                              <SmartAvatar src={rev.reviewerPhoto} name={rev.reviewerName} className="h-full w-full" />
+                            </div>
+                            <div>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="text-xs font-bold text-ink-900 dark:text-white">{rev.reviewerName}</span>
+                                {isVerifiedPurchase && (
+                                  <span className="inline-flex items-center gap-0.5 rounded bg-jade-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-jade-700 dark:text-jade-300">
+                                    <Check className="h-2.5 w-2.5" /> Verified Buyer
+                                  </span>
+                                )}
+                              </div>
+                              <span className="block text-[11px] text-ink-400">
+                                {new Date(rev.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                              </span>
+                            </div>
+                          </div>
+                          {rev.rating > 0 && (
+                            <div className="flex gap-0.5">
+                              {Array.from({ length: 5 }).map((_, i) => (
+                                <Star key={i} className={`h-3.5 w-3.5 ${i < rev.rating ? 'star-filled' : 'star-empty'}`} />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <p className="text-xs leading-relaxed text-ink-700 dark:text-ink-300 sm:pl-12">
+                          {rev.comment}
+                        </p>
+
+                        <div className="flex items-center gap-4 text-xs font-semibold sm:pl-12">
+                          <button
+                            type="button"
+                            onClick={() => handleHelpfulVote(rev.id)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-ink-150 bg-ink-50 px-2.5 py-1 text-xs text-ink-500 transition-colors hover:text-jade-600 dark:border-ink-800 dark:bg-ink-800 dark:text-ink-400 cursor-pointer"
+                          >
+                            <ThumbsUp className="h-3.5 w-3.5" />
+                            Helpful ({rev.isHelpfulVotes || 0})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setReplyingToReviewId(replyingToReviewId === rev.id ? null : rev.id)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-jade-500/10 bg-jade-500/5 px-2.5 py-1 text-xs text-jade-600 hover:underline dark:text-jade-300 cursor-pointer"
+                          >
+                            <MessageSquare className="h-3.5 w-3.5" />
+                            Reply
+                          </button>
+                        </div>
+
+                        {replyingToReviewId === rev.id && (
+                          <div className="mt-2 flex max-w-2xl gap-2 sm:pl-12">
+                            <input
+                              type="text"
+                              value={replyText}
+                              onChange={(e) => setReplyText(e.target.value)}
+                              placeholder="Reply as vendor or interested buyer…"
+                              className="min-w-0 flex-1 rounded-xl border border-ink-200 bg-white px-3 py-1.5 text-xs text-ink-900 focus:outline-none focus:ring-1 focus:ring-jade-500 dark:border-ink-800 dark:bg-ink-950 dark:text-white"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleAddReply(rev.id)}
+                              className="inline-flex items-center gap-1 rounded-xl bg-jade-700 px-4 py-1.5 text-xs font-bold text-white cursor-pointer"
+                            >
+                              <Send className="h-3 w-3" />
+                              Send
+                            </button>
+                          </div>
+                        )}
+
+                        {rev.replies && rev.replies.length > 0 && (
+                          <div className="mt-3 space-y-3 border-l-2 border-jade-500/20 pl-4 sm:pl-16">
+                            {rev.replies.map(rep => (
+                              <div key={rep.id} className="space-y-2 rounded-2xl bg-ink-50 p-3.5 dark:bg-ink-900/60">
+                                <div className="flex items-center gap-2">
+                                  <div className="relative h-7 w-7 overflow-hidden rounded-full border border-ink-200/50 bg-ink-100">
+                                    <SmartAvatar src={rep.authorPhoto} name={rep.authorName} className="h-full w-full" />
+                                  </div>
+                                  <div>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-xs font-bold text-ink-800 dark:text-ink-200">{rep.authorName}</span>
+                                      <span className="rounded bg-jade-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-jade-700 dark:text-jade-300">
+                                        {rep.authorRole === 'SELLER' ? 'Vendor' : rep.authorRole === 'ADMIN' ? 'Moderator' : 'Buyer'}
+                                      </span>
+                                    </div>
+                                    <span className="block text-[11px] text-ink-400">
+                                      {new Date(rep.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                                    </span>
+                                  </div>
+                                </div>
+                                <p className="flex items-center gap-1 pl-9 text-xs leading-normal text-ink-600 dark:text-ink-400">
+                                  <CornerDownRight className="h-3.5 w-3.5 shrink-0 text-ink-300" />
+                                  {rep.comment}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Q&A */}
+          {activeTab === 'qa' && (
+            <div className="space-y-6">
+              <div className="space-y-4 rounded-2xl border border-ink-150 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
+                <div>
+                  <h3 className="text-sm font-bold text-ink-900 dark:text-white">Ask the seller a question</h3>
+                  <p className="mt-0.5 text-[11px] text-ink-500 dark:text-ink-400">
+                    Questions are public — the seller and other verified buyers can answer.
+                  </p>
+                </div>
+                <textarea
+                  value={newCommentText}
+                  onChange={(e) => setNewCommentText(e.target.value)}
+                  placeholder="Ask about shipping, condition, warranty, negotiation or pickup…"
+                  rows={3}
+                  className="w-full rounded-xl border border-ink-200 bg-white p-3.5 text-xs text-ink-900 focus:outline-none focus:ring-2 focus:ring-jade-500 dark:border-ink-800 dark:bg-ink-950 dark:text-white"
+                />
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handlePostQuestion}
+                    className="rounded-xl bg-jade-700 px-5 py-2 text-xs font-bold text-white transition-colors hover:bg-jade-800 cursor-pointer"
+                  >
+                    Post question
+                  </button>
+                </div>
+                {reviewSubmitFeedback && (
+                  <p className="text-xs font-bold text-jade-600">{reviewSubmitFeedback}</p>
+                )}
+              </div>
+
+              <div className="space-y-4">
+                {qaReviews.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-ink-200 p-8 text-center dark:border-ink-800">
+                    <p className="text-xs italic text-ink-400">No questions yet. Be the first to ask.</p>
+                  </div>
+                ) : (
+                  qaReviews.map(rev => (
+                    <div key={rev.id} className="space-y-3 rounded-2xl border border-ink-150 bg-white p-4 dark:border-ink-800 dark:bg-ink-900">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="relative h-8 w-8 overflow-hidden rounded-full bg-ink-100 dark:bg-ink-800">
+                            <SmartAvatar src={rev.reviewerPhoto} name={rev.reviewerName} className="h-full w-full" />
+                          </div>
+                          <div>
+                            <span className="block text-xs font-bold text-ink-900 dark:text-white">{rev.reviewerName}</span>
+                            <span className="block text-[11px] text-ink-400">
+                              {new Date(rev.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setReplyingToReviewId(replyingToReviewId === rev.id ? null : rev.id)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-jade-500/15 bg-jade-500/5 px-2.5 py-1 text-[11px] font-bold text-jade-700 dark:text-jade-300 cursor-pointer"
+                        >
+                          <MessageSquare className="h-3.5 w-3.5" />
+                          Answer
+                        </button>
+                      </div>
+
+                      <p className="text-xs leading-relaxed text-ink-700 dark:text-ink-300">{rev.comment}</p>
+
+                      {replyingToReviewId === rev.id && (
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={replyText}
+                            onChange={(e) => setReplyText(e.target.value)}
+                            placeholder="Write your answer…"
+                            className="min-w-0 flex-1 rounded-xl border border-ink-200 bg-white px-3 py-1.5 text-xs text-ink-900 focus:outline-none focus:ring-1 focus:ring-jade-500 dark:border-ink-800 dark:bg-ink-950 dark:text-white"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleAddReply(rev.id)}
+                            className="inline-flex items-center gap-1 rounded-xl bg-jade-700 px-4 py-1.5 text-xs font-bold text-white cursor-pointer"
+                          >
+                            <Send className="h-3 w-3" />
+                            Send
+                          </button>
+                        </div>
+                      )}
+
+                      {rev.replies && rev.replies.length > 0 && (
+                        <div className="space-y-2 border-l-2 border-jade-500/20 pl-3">
+                          {rev.replies.map(rep => (
+                            <div key={rep.id} className="rounded-xl bg-ink-50 px-3 py-2 dark:bg-ink-950/60">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[11px] font-bold text-ink-800 dark:text-ink-200">{rep.authorName}</span>
+                                <span className="rounded bg-jade-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-jade-700 dark:text-jade-300">
+                                  {rep.authorRole === 'SELLER' ? 'Vendor' : rep.authorRole === 'ADMIN' ? 'Moderator' : 'Buyer'}
+                                </span>
+                              </div>
+                              <p className="mt-0.5 text-[11px] leading-normal text-ink-600 dark:text-ink-400">{rep.comment}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Sponsored: product-detail placement */}
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+        <AdSlot placement="DETAIL" onNavigate={onNavigate} className="mt-2" />
+      </div>
+
+      {/* Context-aware Gemini Security Tip Banner */}
+      <div className="mx-auto mt-8 max-w-6xl px-4 sm:px-6 lg:px-8">
+        <div className="relative overflow-hidden rounded-3xl border border-ink-150 bg-white p-5 shadow-sm transition-shadow hover:shadow-md dark:border-ink-800 dark:bg-ink-900">
+          <div className="pointer-events-none absolute -right-12 -top-12 opacity-5">
+            <Shield className="h-48 w-48 text-jade-500" />
           </div>
 
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
-            <div className="flex items-start gap-4">
-              <div className={`p-3 rounded-2xl shrink-0 transition-colors duration-300 ${
-                loadingTip ? 'bg-jade-500/10 text-jade-500 animate-pulse' :
-                securityTip?.threatLevel === 'HIGH' ? 'bg-jade-500/10 text-jade-500 dark:bg-jade-500/20' :
-                securityTip?.threatLevel === 'MEDIUM' ? 'bg-ink-500/10 text-ink-500 dark:bg-ink-500/20' :
-                'bg-jade-500/10 text-jade-500 dark:bg-jade-500/20'
+          <div className="relative z-10 flex flex-col items-start justify-between gap-5 sm:flex-row sm:items-center">
+            <div className="flex items-start gap-3.5">
+              <div className={`shrink-0 rounded-2xl p-3 ${
+                loadingTip ? 'animate-pulse bg-jade-500/10 text-jade-500' :
+                securityTip?.threatLevel === 'MEDIUM' ? 'bg-ink-500/10 text-ink-500' :
+                'bg-jade-500/10 text-jade-600 dark:text-jade-400'
               }`}>
-                <Shield className="w-6 h-6 animate-pulse" />
+                <Shield className="h-6 w-6" />
               </div>
 
               <div className="space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-sans font-bold text-sm tracking-tight text-ink-800 dark:text-white">
-                    {loadingTip ? 'Consulting Gemini Trust Engine...' : (securityTip?.badgeTitle || 'Smart Verification Guide')}
+                  <span className="text-sm font-bold tracking-tight text-ink-800 dark:text-white">
+                    {loadingTip ? 'Consulting the Trust Engine…' : (securityTip?.badgeTitle || 'Smart verification guide')}
                   </span>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold tracking-tight ${
-                    loadingTip ? 'bg-jade-500/10 text-jade-500 animate-pulse' :
-                    securityTip?.threatLevel === 'HIGH' ? 'bg-jade-500/10 text-jade-500 border border-jade-500/20' :
-                    securityTip?.threatLevel === 'MEDIUM' ? 'bg-ink-500/10 text-ink-500 border border-ink-500/20' :
-                    'bg-jade-500/10 text-jade-500 border border-jade-500/20'
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold tracking-tight ${
+                    securityTip?.threatLevel === 'MEDIUM'
+                      ? 'bg-ink-500/10 text-ink-500'
+                      : 'bg-jade-500/10 text-jade-700 dark:text-jade-300'
                   }`}>
                     {loadingTip ? 'AI ANALYZING' : `${securityTip?.threatLevel || 'SECURE'} RISK`}
                   </span>
                 </div>
-                
+
                 {loadingTip ? (
-                  <div className="space-y-2 py-1 max-w-2xl">
-                    <div className="h-3 bg-ink-200 dark:bg-ink-800 rounded-full w-96 animate-pulse" />
-                    <div className="h-3 bg-ink-200 dark:bg-ink-800 rounded-full w-80 animate-pulse" />
+                  <div className="max-w-2xl space-y-2 py-1">
+                    <div className="h-3 w-72 animate-pulse rounded-full bg-ink-200 dark:bg-ink-800" />
+                    <div className="h-3 w-56 animate-pulse rounded-full bg-ink-200 dark:bg-ink-800" />
                   </div>
                 ) : (
-                  <p className="text-xs text-ink-500 dark:text-ink-400 leading-relaxed max-w-3xl">
-                    {securityTip?.tip || 'Always check buyer trust scores and inspect items physically at a SafeMeet™ location or utilize verified GoodDispatch™ partner service before releasing escrow.'}
+                  <p className="max-w-3xl text-xs leading-relaxed text-ink-500 dark:text-ink-400">
+                    {securityTip?.tip || 'Check buyer trust scores and inspect items at a SafeMeet location, or use a verified GoodDispatch partner, before releasing escrow.'}
                   </p>
                 )}
               </div>
             </div>
 
-            <div className="shrink-0">
-              <span className="inline-flex items-center gap-1 bg-ink-50 dark:bg-ink-950 border border-ink-200/60 dark:border-ink-800/80 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-ink-500 dark:text-ink-400 select-none">
-                <Sparkles className="w-3.5 h-3.5 text-jade-500 shrink-0" />
-                Gemini Security Assistant
-              </span>
+            <span className="inline-flex shrink-0 select-none items-center gap-1 rounded-xl border border-ink-200 px-3.5 py-1.5 text-[11px] font-semibold text-ink-500 dark:border-ink-800 dark:text-ink-400">
+              <Sparkles className="h-3.5 w-3.5 text-jade-500" />
+              Gemini Security Assistant
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Report listing */}
+      {showReport && (
+        <div className="fixed inset-0 z-[120] grid place-items-center bg-ink-950/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl border border-ink-200 bg-white p-5 shadow-2xl dark:border-ink-800 dark:bg-ink-900">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-display text-lg font-bold text-ink-900 dark:text-white">Report this listing</h3>
+                <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">
+                  Reports go to the GoodSale trust team. The seller does not see who reported them.
+                </p>
+              </div>
+              <button onClick={() => setShowReport(false)} className="rounded-full p-1 text-ink-400 hover:text-ink-700 dark:hover:text-white cursor-pointer" aria-label="Close">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-4 space-y-2">
+              {['Counterfeit or fake item', 'Prohibited or unsafe product', 'Misleading description or photos', 'Suspected scam seller', 'Other safety concern'].map((reason) => (
+                <button
+                  key={reason}
+                  onClick={() => setReportReason(reason)}
+                  className={`w-full rounded-xl border px-3 py-2 text-left text-xs font-semibold transition-colors cursor-pointer ${
+                    reportReason === reason
+                      ? 'border-jade-500/60 bg-jade-500/[0.06] text-jade-800 dark:text-jade-200'
+                      : 'border-ink-200 text-ink-600 hover:border-jade-500/30 dark:border-ink-700 dark:text-ink-300'
+                  }`}
+                >
+                  {reason}
+                </button>
+              ))}
+            </div>
+            <textarea
+              value={reportDetails}
+              onChange={(e) => setReportDetails(e.target.value)}
+              rows={3}
+              placeholder="Add anything that helps us investigate (optional)"
+              className="mt-3 w-full rounded-xl border border-ink-200 px-3 py-2 text-xs outline-none placeholder:text-ink-400 focus:border-jade-500 dark:border-ink-700 dark:bg-ink-950 dark:text-ink-100"
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <button onClick={() => setShowReport(false)} className="rounded-xl border border-ink-200 px-3 py-2 text-xs font-bold text-ink-600 dark:border-ink-700 dark:text-ink-300 cursor-pointer">
+                Cancel
+              </button>
+              <button
+                disabled={reportBusy || !reportReason}
+                onClick={async () => {
+                  if (!db.currentUser) {
+                    toast.info('Sign in to submit a report');
+                    onOpenAuth?.();
+                    return;
+                  }
+                  setReportBusy(true);
+                  const res = await dbOperations.createReport({
+                    targetType: 'PRODUCT',
+                    targetId: product.id,
+                    targetLabel: product.title,
+                    reason: reportReason,
+                    details: reportDetails,
+                  });
+                  setReportBusy(false);
+                  if (res?.error) {
+                    toast.error(res.error);
+                  } else {
+                    toast.success('Report submitted — the trust team will review it');
+                    setShowReport(false);
+                    setReportReason('');
+                    setReportDetails('');
+                  }
+                }}
+                className="rounded-xl bg-jade-600 px-4 py-2 text-xs font-bold text-white hover:bg-jade-700 disabled:opacity-50 cursor-pointer"
+              >
+                {reportBusy ? 'Submitting…' : 'Submit report'}
+              </button>
             </div>
           </div>
         </div>
+      )}
 
-      </div>
     </div>
   );
 }

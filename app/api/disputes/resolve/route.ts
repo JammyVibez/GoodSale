@@ -79,10 +79,12 @@ export async function POST(req: NextRequest) {
                     ?.transaction_reference || tx.transaction_id,
               });
             }
-          } else if (tx?.transaction_id?.startsWith('DEMO_') || !tx) {
-            await admin.rpc('mark_refund_completed', {
-              p_refund_id: refundId,
-              p_provider_reference: `DEMO_REFUND_${refundId}`,
+          } else {
+            // No verifiable Paystack transaction on record — leave the refund PENDING
+            // for manual follow-up instead of marking it completed without a real provider reference.
+            logger.warn('Refund left pending: no Paystack transaction on record', {
+              refundId,
+              orderId: dispute.order_id,
             });
           }
         }

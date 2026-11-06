@@ -16,6 +16,7 @@ import { toast } from '@/lib/feedback';
 import EmptyState from './ui/EmptyState';
 import { SmartImage } from './ui/SmartImage';
 import LiveDispatchMap from './LiveDispatchMap';
+import OrderTrackingCard, { hasLiveTracking } from './OrderTrackingCard';
 import { useLiveLocation } from '@/lib/hooks/useLiveLocation';
 import {
   LOCATION_PRESETS,
@@ -233,6 +234,15 @@ export default function CartCheckoutView({
   const handlePayIntoEscrow = async (customMethod?: string) => {
     if (cartItems.length === 0) return;
 
+    // Block checkout for listings that sold out or were withdrawn while in the cart.
+    const unavailable = cartItems.filter(
+      (item) => item.quantity <= 0 || item.stockStatus === 'SOLD' || item.stockStatus === 'UNAVAILABLE' || item.stockStatus === 'OUT_OF_STOCK'
+    );
+    if (unavailable.length > 0) {
+      toast.error(`Remove unavailable ${unavailable.length > 1 ? 'items' : 'item'} before paying: ${unavailable.map((i) => i.title).join(', ')}`);
+      return;
+    }
+
     const pm = (customMethod || selectedPaymentMethod || 'escrow').toLowerCase();
     const needsPaystack = ['escrow', 'card', 'partial'].includes(pm);
 
@@ -387,7 +397,7 @@ export default function CartCheckoutView({
                   action={
                     <button
                       type="button"
-                      onClick={() => onNavigate('landing')}
+                      onClick={() => onNavigate('marketplace')}
                       className="inline-flex items-center gap-2 px-4 py-2 bg-jade-500 hover:bg-jade-600 text-white text-xs font-semibold tracking-tight rounded-xl transition-all cursor-pointer press-scale focus-ring"
                     >
                       Browse marketplace
@@ -508,14 +518,14 @@ export default function CartCheckoutView({
                     </span>
                   )}
                 </button>
-                <div className="rounded-xl overflow-hidden border border-ink-200 dark:border-ink-700">
+                <div className="rounded-2xl overflow-hidden border border-ink-200 dark:border-ink-700">
                   <LiveDispatchMap
                     destination={deliveryOrigin}
                     rider={buyerGps.coords}
                     statusLabel="Your delivery pin"
                     geoError={buyerGps.error}
                     gpsLocked={buyerGps.source === 'gps'}
-                    height="180px"
+                    height="300px"
                   />
                 </div>
               </div>
@@ -668,7 +678,7 @@ export default function CartCheckoutView({
                       type="button"
                       disabled={smartMatchingActive}
                       onClick={runSmartMatching}
-                      className="px-3 py-1.5 bg-ink-900 hover:bg-ink-800 dark:bg-jade-500 dark:hover:bg-jade-600 text-white font-sans font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 shrink-0 shadow-sm disabled:opacity-50"
+                      className="px-3 py-1.5 bg-jade-600 hover:bg-jade-700 dark:bg-jade-500 dark:hover:bg-jade-600 text-white font-sans font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 shrink-0 shadow-sm disabled:opacity-50"
                     >
                       <Sparkles className="w-3.5 h-3.5 text-ink-300 animate-spin-slow" />
                       {smartMatchingActive ? 'Smart Matching...' : 'Smart Match Me'}
@@ -921,17 +931,10 @@ export default function CartCheckoutView({
                             Upload Payment Transaction Screenshot Receipt (Mandatory for Review)
                           </label>
                           <div className="flex items-center gap-3">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setBankTransferUploading(true);
-                                setTimeout(() => {
-                                  setBankTransferReceipt(`GS-BANK-TX-${Math.floor(100000 + Math.random() * 900000)}-SCREENSHOT.png`);
-                                  setBankTransferUploading(false);
-                                }, 1500);
-                              }}
-                              disabled={bankTransferUploading}
-                              className="px-4 py-2 bg-jade-500 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 hover:bg-jade-600 transition-all cursor-pointer disabled:opacity-50"
+                            <label
+                              className={`px-4 py-2 bg-jade-500 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 hover:bg-jade-600 transition-all cursor-pointer ${
+                                bankTransferUploading ? 'pointer-events-none opacity-50' : ''
+                              }`}
                             >
                               {bankTransferUploading ? (
                                 <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -939,11 +942,32 @@ export default function CartCheckoutView({
                                 <Upload className="w-3.5 h-3.5" />
                               )}
                               {bankTransferReceipt ? 'Receipt Re-upload' : 'Upload Transaction Slip'}
-                            </button>
+                              <input
+                                type="file"
+                                accept="image/png,image/jpeg"
+                                className="hidden"
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  e.target.value = '';
+                                  if (!file) return;
+                                  setBankTransferUploading(true);
+                                  try {
+                                    const { uploadMedia } = await import('@/lib/upload');
+                                    const url = await uploadMedia(file, 'product-images');
+                                    setBankTransferReceipt(url);
+                                    toast.success('Payment receipt uploaded.');
+                                  } catch {
+                                    toast.error('Receipt upload failed. Use a PNG or JPG under 5MB.');
+                                  } finally {
+                                    setBankTransferUploading(false);
+                                  }
+                                }}
+                              />
+                            </label>
                             {bankTransferReceipt ? (
                               <div className="flex items-center gap-1 text-xs font-semibold text-jade-500">
                                 <CheckCircle2 className="w-4 h-4 shrink-0" />
-                                <span className="truncate max-w-[150px]">{bankTransferReceipt}</span>
+                                <span className="truncate max-w-[150px]">Receipt attached</span>
                               </div>
                             ) : (
                               <span className="text-xs text-ink-400">Allowed formats: PNG, JPG (Max 5MB)</span>
@@ -1286,34 +1310,20 @@ export default function CartCheckoutView({
                             </div>
                           )}
 
-                          {/* Live rider map when out for delivery */}
+                          {/* Live rider tracking while the order is on the move */}
                           {order.deliveryMethod === 'GOODSALE_PARTNER' &&
-                            [OrderStatus.OUT_FOR_DELIVERY, OrderStatus.SHIPPED].includes(order.status) && (() => {
+                            hasLiveTracking(db.deliveryJobs.find((j) => j.orderId === order.id)) && (() => {
                               const job = db.deliveryJobs.find((j) => j.orderId === order.id);
-                              const dest = bestCoords(
-                                { lat: order.deliveryLat, lng: order.deliveryLng },
-                                null,
-                                order.deliveryCity,
-                                order.deliveryState,
-                                order.deliveryAddress
-                              );
-                              const pickup = bestCoords(
-                                { lat: order.pickupLat, lng: order.pickupLng },
-                                null
-                              );
-                              const rider =
-                                job?.currentLat != null && job?.currentLng != null
-                                  ? { lat: job.currentLat, lng: job.currentLng }
-                                  : null;
+                              const partner = job?.partnerId
+                                ? db.deliveryPartners.find((p) => p.id === job.partnerId)
+                                : undefined;
                               return (
                                 <div className="pt-3">
-                                  <LiveDispatchMap
-                                    rider={rider}
-                                    destination={dest}
-                                    pickup={pickup}
-                                    speedKmh={job?.currentSpeed}
-                                    statusLabel={rider ? 'Rider live on map' : 'Awaiting rider GPS'}
-                                    height="200px"
+                                  <OrderTrackingCard
+                                    order={order}
+                                    job={job}
+                                    partnerName={partner?.fullName}
+                                    height="340px"
                                   />
                                 </div>
                               );
@@ -1504,7 +1514,7 @@ export default function CartCheckoutView({
 
                   <button
                     onClick={() => setSelectedReceiptOrder(null)}
-                    className="w-full py-2 bg-ink-900 hover:bg-ink-800 text-white font-sans font-bold text-xs rounded-xl transition-all cursor-pointer"
+                    className="w-full py-2 bg-jade-600 hover:bg-jade-700 text-white font-sans font-bold text-xs rounded-xl transition-all cursor-pointer"
                   >
                     Close Ledger Receipt
                   </button>

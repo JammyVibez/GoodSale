@@ -15,6 +15,12 @@ import { SmartImage } from './ui/SmartImage';
 import Card from './ui/Card';
 import { toast, confirmDialog } from '@/lib/feedback';
 import { useUserSettings, type SavedAddress, type StaffMember } from '@/lib/userSettings';
+import {
+  getNotificationPreferences,
+  setNotificationPreferences,
+  NOTIFICATION_PREFERENCE_META,
+} from '@/lib/notificationPrefs';
+import type { NotificationPreferences } from '@/lib/types';
 import { salesStates, salesCitiesFor } from '@/lib/serviceAreas';
 
 /** Human-readable description of the current browser/OS for the session list. */
@@ -112,6 +118,9 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
   const [mfaQrCode, setMfaQrCode] = useState<string | null>(null);
   const [mfaSecret, setMfaSecret] = useState<string | null>(null);
   const [mfaBusy, setMfaBusy] = useState(false);
+
+  // Category-level delivery switches (orders, payments, chat, stock, promos…).
+  const [categoryPrefs, setCategoryPrefs] = useState<NotificationPreferences>(() => getNotificationPreferences());
 
   // 3. Notifications Matrix
   const [notifPreferences, setNotifPreferences] = useState({
@@ -938,7 +947,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                       });
                       if (!ok) return;
                       await dbOperations.logout();
-                      onNavigate?.('landing');
+                      onNavigate?.('marketplace');
                     }}
                     className="inline-flex items-center gap-2 px-4 py-2 bg-white hover:bg-ink-50 text-ink-700 border border-ink-200 dark:bg-ink-900 dark:hover:bg-ink-800 dark:text-ink-300 dark:border-ink-800 rounded-xl text-xs font-bold cursor-pointer transition-all shrink-0"
                   >
@@ -1137,7 +1146,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                   <p className="text-xs text-ink-400 mt-1">Configure advanced merchant protection metrics, Multi-Factor Authentication (MFA), and active logins.</p>
                 </div>
 
-                {/* Password Change Simulator */}
+                {/* Change Password */}
                 <div className="border-b border-ink-100 dark:border-ink-850 pb-6 space-y-4">
                   <h3 className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Change Account Password</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1206,7 +1215,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                         toast.error(err instanceof Error ? err.message : 'Could not update password.');
                       }
                     }}
-                    className="px-4 py-2 bg-ink-900 dark:bg-ink-800 hover:bg-ink-850 text-white rounded-xl text-xs font-bold cursor-pointer"
+                    className="px-4 py-2 bg-jade-600 hover:bg-jade-700 text-white rounded-xl text-xs font-bold shadow-sm shadow-jade-600/20 cursor-pointer"
                   >
                     Update Password Token
                   </button>
@@ -1474,6 +1483,44 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                   Save Notification Toggles
                 </button>
               </div>
+
+              <div className="bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 p-6 sm:p-8 rounded-[32px] shadow-sm">
+                <div>
+                  <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
+                    <Bell className="w-5 h-5 text-jade-500" />
+                    Marketplace alerts
+                  </h2>
+                  <p className="text-xs text-ink-400 mt-1">
+                    Choose which in-app notifications GoodSale creates for you. Security and dispute notices are always recommended.
+                  </p>
+                </div>
+                <ul className="mt-5 divide-y divide-ink-150 dark:divide-ink-800">
+                  {NOTIFICATION_PREFERENCE_META.map((pref) => {
+                    const enabled = categoryPrefs[pref.key] !== false;
+                    return (
+                      <li key={pref.key} className="flex items-center justify-between gap-4 py-3">
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-ink-800 dark:text-ink-100">{pref.label}</p>
+                          <p className="text-[11px] text-ink-400 mt-0.5">{pref.description}</p>
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={enabled}
+                          onClick={() => {
+                            const next = setNotificationPreferences({ [pref.key]: !enabled });
+                            setCategoryPrefs(next);
+                            toast.success(`${pref.label} alerts ${!enabled ? 'enabled' : 'muted'}.`);
+                          }}
+                          className={`relative h-6 w-11 shrink-0 rounded-full transition-colors cursor-pointer ${enabled ? 'bg-jade-500' : 'bg-ink-200 dark:bg-ink-700'}`}
+                        >
+                          <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${enabled ? 'left-[1.375rem]' : 'left-0.5'}`} />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
             </div>
           )}
 
@@ -1587,7 +1634,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                         }}
                         className={`flex-1 py-2 text-center rounded-xl text-xs font-bold capitalize ${
                           fontSize === sz
-                            ? 'bg-ink-900 text-white dark:bg-ink-800'
+                            ? 'bg-jade-600 text-white shadow-sm shadow-jade-600/25'
                             : 'bg-ink-100 dark:bg-ink-800 hover:bg-ink-200 text-ink-600 dark:text-ink-400'
                         }`}
                       >
@@ -1726,7 +1773,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                         onChange={(e) => setNewBlockedUser(e.target.value)}
                         className="min-w-0 flex-1 px-3 py-2 bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl text-xs"
                       />
-                      <button type="submit" className="px-3 py-2 bg-ink-900 dark:bg-ink-800 text-white rounded-xl text-xs font-bold cursor-pointer">
+                      <button type="submit" className="px-3 py-2 bg-jade-600 hover:bg-jade-700 text-white rounded-xl text-xs font-bold shadow-sm shadow-jade-600/20 cursor-pointer">
                         Block
                       </button>
                     </form>
@@ -1761,7 +1808,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                         onChange={(e) => setNewMutedUser(e.target.value)}
                         className="min-w-0 flex-1 px-3 py-2 bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl text-xs"
                       />
-                      <button type="submit" className="px-3 py-2 bg-ink-900 dark:bg-ink-800 text-white rounded-xl text-xs font-bold cursor-pointer">
+                      <button type="submit" className="px-3 py-2 bg-jade-600 hover:bg-jade-700 text-white rounded-xl text-xs font-bold shadow-sm shadow-jade-600/20 cursor-pointer">
                         Mute
                       </button>
                     </form>
@@ -1836,7 +1883,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                       />
                       <button 
                         type="submit"
-                        className="sm:col-span-1 py-2 bg-ink-900 dark:bg-ink-800 text-white font-bold rounded-xl text-xs cursor-pointer"
+                        className="sm:col-span-1 py-2 bg-jade-600 hover:bg-jade-700 text-white font-bold rounded-xl text-xs shadow-sm shadow-jade-600/20 cursor-pointer"
                       >
                         Add Address
                       </button>
@@ -1900,7 +1947,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                       onChange={(e) => setNewSavedSearch(e.target.value)}
                       className="min-w-0 flex-1 px-3 py-2 bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl text-xs"
                     />
-                    <button type="submit" className="px-3 py-2 bg-ink-900 dark:bg-ink-800 text-white rounded-xl text-xs font-bold cursor-pointer">
+                    <button type="submit" className="px-3 py-2 bg-jade-600 hover:bg-jade-700 text-white rounded-xl text-xs font-bold shadow-sm shadow-jade-600/20 cursor-pointer">
                       Save search
                     </button>
                   </form>
@@ -2196,7 +2243,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                     <button
                       type="button"
                       onClick={handleAddStaff}
-                      className="px-4 py-2 bg-ink-900 text-white text-xs font-bold rounded-xl cursor-pointer"
+                      className="px-4 py-2 bg-jade-600 hover:bg-jade-700 text-white text-xs font-bold rounded-xl shadow-sm shadow-jade-600/20 cursor-pointer"
                     >
                       Add staff
                     </button>
@@ -2459,7 +2506,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 <div className="space-y-3">
                   <h3 className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Frequently Asked Questions</h3>
                   {[
-                    { q: 'Is my money safe in GoodSale Escrow?', a: 'Absolutely. Payment is locked within the client-side simulated escrow vault and only released once the buyer provides the delivery PIN handoff.' },
+                    { q: 'Is my money safe in GoodSale Escrow?', a: 'Absolutely. Payment is held in GoodSale Escrow after server-side verification and only released once the buyer provides the delivery PIN handoff.' },
                     { q: 'What happens in case of a product dispute?', a: 'If a buyer rejects an item, they can trigger a Dispute. The locked funds remain in escrow, and our arbitration managers will investigate.' },
                     { q: 'How do I earn GoodPoints?', a: 'Earn GP by verifying your NIN profile, completing purchases successfully, and submitting reviews.' },
                   ].map((faq, idx) => (
@@ -2527,7 +2574,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                       />
                       <button
                         onClick={handleSubmitTicket}
-                        className="px-4 py-2 bg-ink-900 text-white rounded-xl text-xs font-bold cursor-pointer"
+                        className="px-4 py-2 bg-jade-600 hover:bg-jade-700 text-white rounded-xl text-xs font-bold shadow-sm shadow-jade-600/20 cursor-pointer"
                       >
                         Submit Ticket
                       </button>
@@ -2686,7 +2733,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                   </div>
                   <button
                     onClick={handleExportData}
-                    className="px-4 py-2 bg-ink-900 dark:bg-ink-800 text-white hover:bg-ink-850 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer"
+                    className="px-4 py-2 bg-jade-600 text-white hover:bg-jade-700 rounded-xl text-xs font-bold shadow-sm shadow-jade-600/20 flex items-center gap-2 cursor-pointer"
                   >
                     <Download className="w-4 h-4" />
                     Export Data

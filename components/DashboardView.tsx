@@ -13,7 +13,9 @@ import {
 } from '../lib/store';
 import { SmartImage } from './ui/SmartImage';
 import LiveSafeMeetMap from './LiveSafeMeetMap';
-import LiveDispatchMap from './LiveDispatchMap';
+import OrderTrackingCard, { hasLiveTracking } from './OrderTrackingCard';
+import SellerAnalyticsPanel from './SellerAnalyticsPanel';
+import { createProductAppeal } from '@/lib/trustCenter';
 import { bestCoords, rankPartnersByProximity, formatDistanceKm } from '@/lib/geo';
 import { toast, confirmDialog } from '@/lib/feedback';
 import AdSlot from './AdSlot';
@@ -26,7 +28,7 @@ export default function DashboardView({
   onNavigate?: (view: string) => void;
 }) {
   const [db, setDb] = useState(getDBState());
-  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'inventory' | 'create_listing' | 'barcode_scanner'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'orders' | 'inventory' | 'create_listing' | 'barcode_scanner'>('overview');
   
   // Create Listing Form State - Expanded for Multi-step professional wizard
   const [currentListingStep, setCurrentListingStep] = useState(1);
@@ -115,7 +117,7 @@ export default function DashboardView({
     return () => window.removeEventListener('goodsale_db_state_change', handleStateChange);
   }, []);
 
-  // Fetch local mock payouts history
+  // Fetch the seller's payout history
   useEffect(() => {
     const historyJson = localStorage.getItem('goodsale_payouts_history');
     if (historyJson) {
@@ -406,7 +408,7 @@ export default function DashboardView({
   };
 
   // 2. Out For Delivery Trigger — prefer nearby available riders for GoodDispatch
-  const handleMarkOutForDelivery = (orderId: number) => {
+  const handleMarkOutForDelivery = async (orderId: number) => {
     const state = getDBState();
     const ord = state.orders.find(o => o.id === orderId);
     if (!ord) return;
@@ -428,7 +430,7 @@ export default function DashboardView({
 
     let job = state.deliveryJobs.find((j) => j.orderId === orderId);
     if (!job && ord.deliveryMethod === 'GOODSALE_PARTNER') {
-      job = dbOperations.createDeliveryJob(orderId, ord.serviceType || 'STANDARD', ord.deliveryFee || 6000) || undefined;
+      job = (await dbOperations.createDeliveryJob(orderId, ord.serviceType || 'STANDARD', ord.deliveryFee || 6000)) || undefined;
     }
 
     if (job && !job.partnerId && nearby[0]) {
@@ -521,10 +523,12 @@ export default function DashboardView({
 
   // 2. Change Stock Status Toggle
   const handleToggleStockStatus = (prodId: number, currentStatus: string) => {
-    const nextStatusMap: Record<string, 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK'> = {
+    const nextStatusMap: Record<string, 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK' | 'UNAVAILABLE'> = {
       'IN_STOCK': 'LOW_STOCK',
       'LOW_STOCK': 'OUT_OF_STOCK',
-      'OUT_OF_STOCK': 'IN_STOCK'
+      'OUT_OF_STOCK': 'UNAVAILABLE',
+      'UNAVAILABLE': 'IN_STOCK',
+      'SOLD': 'IN_STOCK'
     };
     const nextStatus = nextStatusMap[currentStatus] || 'IN_STOCK';
 
@@ -533,7 +537,7 @@ export default function DashboardView({
     if (prod) {
       prod.stockStatus = nextStatus;
       if (nextStatus === 'OUT_OF_STOCK') prod.quantity = 0;
-      else if (nextStatus === 'IN_STOCK' && prod.quantity === 0) prod.quantity = 5;
+      else if ((nextStatus === 'IN_STOCK' || nextStatus === 'LOW_STOCK') && prod.quantity === 0) prod.quantity = 5;
       saveDBState(state);
       setDb(state);
     }
@@ -668,6 +672,13 @@ export default function DashboardView({
             >
               <BarChart3 className="w-4 h-4" />
               Overview & Payouts
+            </button>
+            <button
+              onClick={() => setActiveTab('analytics')}
+              className={`px-4 py-2.5 rounded-xl text-xs font-sans font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${activeTab === 'analytics' ? 'bg-jade-500 text-white shadow-md' : 'text-ink-700 dark:text-ink-400 hover:text-ink-950 dark:hover:text-white'}`}
+            >
+              <BarChart3 className="w-4 h-4" />
+              Analytics
             </button>
             <button
               onClick={() => setActiveTab('orders')}
@@ -965,8 +976,8 @@ export default function DashboardView({
                                   width="120"
                                   height="25"
                                   rx="6"
-                                  fill="#1a201e"
-                                  stroke="#3d4642"
+                                  fill="#053720"
+                                  stroke="#085c34"
                                   strokeWidth="1"
                                 />
                                 <text
@@ -1053,7 +1064,7 @@ export default function DashboardView({
                     type="button"
                     onClick={handleAnalyzeStoreMetrics}
                     disabled={isAnalyzingMetrics}
-                    className="w-full py-2.5 bg-ink-900 dark:bg-white hover:bg-ink-800 dark:hover:bg-ink-100 text-white dark:text-ink-900 font-sans font-semibold text-xs tracking-wider rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 shadow-md"
+                    className="w-full py-2.5 bg-jade-600 hover:bg-jade-700 text-white font-sans font-semibold text-xs tracking-wider rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 shadow-md"
                   >
                     <Sparkles className="w-3.5 h-3.5 text-jade-500" />
                     {isAnalyzingMetrics ? 'Generating Strategy...' : 'Audit Store Metrics'}
@@ -1266,6 +1277,11 @@ export default function DashboardView({
           </div>
         )}
 
+        {/* TAB: SELLER ANALYTICS */}
+        {activeTab === 'analytics' && user && (
+          <SellerAnalyticsPanel sellerId={user.id} onNavigate={onNavigate} />
+        )}
+
         {/* TAB 2: ESCROW ORDERS & SHIPPING HUB */}
         {activeTab === 'orders' && (
           <div className="space-y-6">
@@ -1295,8 +1311,12 @@ export default function DashboardView({
                         {/* Product Detail Thumbnail Column */}
                         <div className="flex items-start gap-3.5 min-w-0">
                           <div className="w-14 h-14 rounded-2xl bg-ink-100 dark:bg-ink-800 overflow-hidden relative shrink-0 border border-ink-100 dark:border-ink-800">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={ord.productImage} alt="" className="w-full h-full object-cover" />
+                            <SmartImage
+                              src={ord.productImage}
+                              alt={ord.productTitle}
+                              seed={`order-${ord.id}`}
+                              className="h-full w-full"
+                            />
                           </div>
                           <div className="min-w-0">
                             <span className="font-mono text-xs font-bold text-jade-500 tracking-wider block mb-0.5">{ord.orderNumber}</span>
@@ -1370,7 +1390,7 @@ export default function DashboardView({
 
                           {/* Live dispatch map for seller when rider is en route */}
                           {ord.deliveryMethod === 'GOODSALE_PARTNER' &&
-                            [OrderStatus.OUT_FOR_DELIVERY, OrderStatus.SHIPPED].includes(ord.status) && (() => {
+                            hasLiveTracking(db.deliveryJobs.find((j) => j.orderId === ord.id)) && (() => {
                               const job = db.deliveryJobs.find((j) => j.orderId === ord.id);
                               const dest = bestCoords(
                                 { lat: ord.deliveryLat, lng: ord.deliveryLng },
@@ -1379,11 +1399,9 @@ export default function DashboardView({
                                 ord.deliveryState,
                                 ord.deliveryAddress
                               );
-                              const pickup = bestCoords({ lat: ord.pickupLat, lng: ord.pickupLng }, null);
-                              const rider =
-                                job?.currentLat != null && job?.currentLng != null
-                                  ? { lat: job.currentLat, lng: job.currentLng }
-                                  : null;
+                              const partner = job?.partnerId
+                                ? db.deliveryPartners.find((p) => p.id === job.partnerId)
+                                : undefined;
                               const nearby = rankPartnersByProximity(
                                 dest,
                                 db.deliveryPartners.filter((p) => p.status === 'APPROVED' && p.isAvailable),
@@ -1391,13 +1409,11 @@ export default function DashboardView({
                               ).slice(0, 3);
                               return (
                                 <div className="w-full basis-full mt-3 space-y-2">
-                                  <LiveDispatchMap
-                                    rider={rider}
-                                    destination={dest}
-                                    pickup={pickup}
-                                    speedKmh={job?.currentSpeed}
-                                    statusLabel={rider ? 'Rider live' : 'Waiting for rider GPS'}
-                                    height="220px"
+                                  <OrderTrackingCard
+                                    order={ord}
+                                    job={job}
+                                    partnerName={partner?.fullName}
+                                    height="320px"
                                   />
                                   {nearby.length > 0 && !job?.partnerId && (
                                     <div className="text-xs text-ink-500 dark:text-ink-400 space-y-1">
@@ -1767,6 +1783,39 @@ export default function DashboardView({
                         <p className="text-ink-400 font-mono text-xs">
                           Category: {p.category} • Barcode: {p.barcode || 'None'} • Views: {p.viewCount}
                         </p>
+                        {p.moderationStatus && p.moderationStatus !== 'APPROVED' && (
+                          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              p.moderationStatus === 'REJECTED'
+                                ? 'bg-red-500/10 text-red-600 dark:text-red-300'
+                                : p.moderationStatus === 'APPEALED'
+                                  ? 'bg-gold-400/15 text-gold-700 dark:text-gold-300'
+                                  : 'bg-ink-100 text-ink-500 dark:bg-ink-800 dark:text-ink-400'
+                            }`}>
+                              {p.moderationStatus === 'REJECTED' ? 'Rejected by moderation' : p.moderationStatus === 'APPEALED' ? 'Appeal under review' : 'Pending moderation'}
+                            </span>
+                            {p.moderationStatus === 'REJECTED' && (
+                              <button
+                                onClick={() => {
+                                  const reason = window.prompt(p.rejectionReason ? `Rejection reason: ${p.rejectionReason}\n\nWhat did you fix?` : 'What did you fix or why should this listing be restored?');
+                                  if (!reason?.trim()) return;
+                                  const res = createProductAppeal(p.id, reason);
+                                  if (res.error) toast.error(res.error);
+                                  else {
+                                    p.moderationStatus = 'APPEALED';
+                                    toast.success('Appeal submitted — the trust team will review it');
+                                  }
+                                }}
+                                className="text-[10px] font-bold text-jade-700 underline underline-offset-2 dark:text-jade-300 cursor-pointer"
+                              >
+                                Appeal
+                              </button>
+                            )}
+                            {p.rejectionReason && (
+                              <span className="text-[10px] text-ink-400">Reason: {p.rejectionReason}</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -1830,7 +1879,7 @@ export default function DashboardView({
                           p.stockStatus === 'LOW_STOCK' ? 'bg-ink-500/10 border-ink-500/20 text-ink-600' :
                           'bg-ink-500/10 border-ink-500/20 text-ink-600'
                         }`}
-                        title="Click to cycle status: In Stock -> Low Stock -> Out Of Stock"
+                        title="Click to cycle: In Stock → Low Stock → Out Of Stock → Unavailable. Sold is set automatically when the last unit is bought."
                       >
                         {p.stockStatus.replace('_', ' ')}
                       </button>
@@ -1982,20 +2031,8 @@ export default function DashboardView({
                       <div className="flex justify-between items-center mb-1.5">
                         <label className="text-xs font-bold text-ink-600 dark:text-ink-300 flex items-center gap-1.5">
                           <QrCode className="w-3.5 h-3.5 text-jade-500" />
-                          Barcode/UPC Tag Integration
+                          Barcode/UPC Tag
                         </label>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const samples = ['619283471029', '728193450912', '192837465012'];
-                            const selected = samples[Math.floor(Math.random() * samples.length)];
-                            setBarcode(selected);
-                            toast.info(`Decoded Barcode: ${selected}. Pre-filled manufacturer details.`);
-                          }}
-                          className="text-xs text-jade-500 hover:underline font-bold font-sans cursor-pointer"
-                        >
-                          Trigger Scanner Emulator
-                        </button>
                       </div>
                       <input
                         type="text"
@@ -2682,7 +2719,7 @@ export default function DashboardView({
                         }
                         setCurrentListingStep(currentListingStep + 1);
                       }}
-                      className="px-5 py-2.5 bg-ink-900 dark:bg-white text-white dark:text-ink-900 hover:opacity-90 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                      className="px-5 py-2.5 bg-jade-600 text-white hover:bg-jade-700 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
                     >
                       Next Step <ChevronRight className="w-4 h-4" />
                     </button>

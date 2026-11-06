@@ -7,17 +7,23 @@ import {
   Wallet, ClipboardList, Settings, Award, Sparkles, Percent, Activity, Shield,
   CreditCard, Truck, FileText, Coins, Users, Package, Search, Ban, RotateCcw,
   ExternalLink, AlertTriangle, Flag, MapPin, Plus, Trash2, ChevronDown, ChevronUp,
-  Building2, Image as ImageIcon, MapPinned,
+  Building2, Image as ImageIcon, MapPinned, Pencil, Film,
 } from 'lucide-react';
 import {
   dbOperations, UserRole, VerificationStatus, OrderStatus, useDBState, ReportStatus,
 } from '../lib/store';
 import { createClient } from '@/lib/supabase/client';
 import { confirmDialog } from '@/lib/feedback';
+import { addressCitiesFor, addressStates } from '@/lib/serviceAreas';
 import AdStudio from './AdStudio';
 import AnnouncementStudio from './AnnouncementStudio';
+import SeedManager from './SeedManager';
+import AdminProductEditor from './AdminProductEditor';
+import AdminTrustSafetyPanel from './AdminTrustSafetyPanel';
+import { SmartImage } from './ui/SmartImage';
 
 type Tab =
+  | 'trust'
   | 'verifications'
   | 'users'
   | 'products'
@@ -26,21 +32,10 @@ type Tab =
   | 'dispatch'
   | 'reports'
   | 'coverage'
+  | 'seeded'
   | 'settings';
 
 const REPORT_STATUSES: ReportStatus[] = ['OPEN', 'REVIEWING', 'RESOLVED', 'DISMISSED'];
-
-/** Nigerian states offered when an admin adds a new coverage area. */
-const NG_STATES = [
-  'Abia State', 'Adamawa State', 'Akwa Ibom State', 'Anambra State', 'Bauchi State',
-  'Bayelsa State', 'Benue State', 'Borno State', 'Cross River State', 'Delta State',
-  'Ebonyi State', 'Edo State', 'Ekiti State', 'Enugu State', 'FCT Abuja',
-  'Gombe State', 'Imo State', 'Jigawa State', 'Kaduna State', 'Kano State',
-  'Katsina State', 'Kebbi State', 'Kogi State', 'Kwara State', 'Lagos State',
-  'Nasarawa State', 'Niger State', 'Ogun State', 'Ondo State', 'Osun State',
-  'Oyo State', 'Plateau State', 'Rivers State', 'Sokoto State', 'Taraba State',
-  'Yobe State', 'Zamfara State',
-];
 
 const ALL_ROLES = Object.values(UserRole);
 const PAY_METHODS = [
@@ -81,7 +76,7 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
   const [verTargetRole, setVerTargetRole] = useState<Record<number, UserRole>>({});
   const [userSearch, setUserSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
-  const [productDrafts, setProductDrafts] = useState<Record<number, { price: string; stockStatus: string }>>({});
+  const [openProduct, setOpenProduct] = useState<number | null>(null);
 
   // Document review (verification applications & rider files)
   const [expandedVer, setExpandedVer] = useState<number | null>(null);
@@ -93,11 +88,13 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
   const [reportNotes, setReportNotes] = useState<Record<number, string>>({});
 
   // Coverage / service areas
-  const [areaState, setAreaState] = useState(NG_STATES[NG_STATES.indexOf('Lagos State')]);
+  const [areaState, setAreaState] = useState('Lagos State');
   const [areaCity, setAreaCity] = useState('');
   const [areaSales, setAreaSales] = useState(true);
   const [areaDelivery, setAreaDelivery] = useState(true);
   const [areaQuery, setAreaQuery] = useState('');
+  /** When set, the coverage form edits this area instead of adding a new one. */
+  const [editingAreaId, setEditingAreaId] = useState<number | null>(null);
   const [escrowNotes, setEscrowNotes] = useState<Record<number, string>>({});
   const [disputeNotes, setDisputeNotes] = useState<Record<number, string>>({});
 
@@ -227,6 +224,7 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
   }
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
+    { id: 'trust', label: 'Trust & Support' },
     { id: 'verifications', label: 'Verifications', count: pendingVerifications.length },
     { id: 'users', label: 'Users' },
     { id: 'products', label: 'Products' },
@@ -235,6 +233,7 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
     { id: 'dispatch', label: 'Dispatch', count: pendingPartners.length },
     { id: 'reports', label: 'Reports', count: openReports.length },
     { id: 'coverage', label: 'Coverage' },
+    { id: 'seeded', label: 'Seed data' },
     { id: 'settings', label: 'Settings' },
   ];
 
@@ -307,6 +306,9 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
             </div>
           ))}
         </div>
+
+        {/* Trust, safety, support and moderation */}
+        {activeTab === 'trust' && <AdminTrustSafetyPanel />}
 
         {/* Verifications */}
         {activeTab === 'verifications' && (
@@ -531,40 +533,39 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
             <div className="divide-y divide-ink-100 dark:divide-ink-800 max-h-[70vh] overflow-y-auto">
               {filteredProducts.length === 0 && <div className="p-12 text-center text-xs text-ink-400">No products found.</div>}
               {filteredProducts.map((p) => {
-                const draft = productDrafts[p.id] ?? { price: String(p.price), stockStatus: p.stockStatus };
+                const open = openProduct === p.id;
                 return (
-                  <div key={p.id} className="p-4 flex flex-col lg:flex-row gap-3 justify-between text-xs">
-                    <div className="min-w-0">
-                      <span className="font-bold text-sm text-ink-950 dark:text-white block truncate">{p.title}</span>
-                      <p className="text-ink-400 font-mono mt-0.5">#{p.id} · {p.category} · Seller {p.sellerId} · Qty {p.quantity}</p>
+                  <div key={p.id}>
+                    <div className="p-4 flex flex-col lg:flex-row gap-3 justify-between text-xs">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="relative shrink-0">
+                          <SmartImage
+                            src={p.images?.[0]}
+                            alt={p.title}
+                            seed={`admin-product-${p.id}`}
+                            className="h-11 w-11 rounded-lg border border-ink-200 dark:border-ink-800"
+                          />
+                          {p.videoUrl && (
+                            <span className="absolute -bottom-1 -right-1 bg-ink-900 text-white rounded-full p-0.5" title="Has product video">
+                              <Film className="w-3 h-3" />
+                            </span>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <span className="font-bold text-sm text-ink-950 dark:text-white block truncate">{p.title}</span>
+                          <p className="text-ink-400 font-mono mt-0.5">
+                            #{p.id} · {p.category} · Seller {p.sellerId} · Qty {p.quantity} · {p.stockStatus} · ₦{p.price.toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        <button disabled={busy} className={btnNo} onClick={() => setOpenProduct(open ? null : p.id)}>
+                          {open ? <ChevronUp className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
+                          {open ? 'Close' : 'Edit media & details'}
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex flex-wrap items-end gap-2">
-                      <Field label="Price ₦">
-                        <input type="number" value={draft.price} onChange={(e) => setProductDrafts((s) => ({ ...s, [p.id]: { ...draft, price: e.target.value } }))} className={`${inp} w-28`} />
-                      </Field>
-                      <Field label="Stock">
-                        <select value={draft.stockStatus} onChange={(e) => setProductDrafts((s) => ({ ...s, [p.id]: { ...draft, stockStatus: e.target.value } }))} className={`${inp} w-36`}>
-                          <option value="IN_STOCK">IN_STOCK</option>
-                          <option value="LOW_STOCK">LOW_STOCK</option>
-                          <option value="OUT_OF_STOCK">OUT_OF_STOCK</option>
-                        </select>
-                      </Field>
-                      <button disabled={busy} className={btnOk} onClick={() => run(async () => {
-                        const res = await dbOperations.adminUpdateProduct(p.id, {
-                          price: parseFloat(draft.price) || 0,
-                          stockStatus: draft.stockStatus as 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK',
-                        });
-                        if (res && 'error' in res && res.error) throw new Error(res.error);
-                        setProductDrafts((s) => { const n = { ...s }; delete n[p.id]; return n; });
-                      }, 'Product updated')}>Save</button>
-                      <button disabled={busy} className={btnNo} onClick={async () => {
-                        if (!(await confirmDialog({ title: 'Delete product', message: `Delete product “${p.title}”? This cannot be undone.`, confirmText: 'Delete', danger: true }))) return;
-                        void run(async () => {
-                          const res = await dbOperations.adminDeleteProduct(p.id);
-                          if (res && 'error' in res && res.error) throw new Error(res.error);
-                        }, 'Product deleted');
-                      }}>Delete</button>
-                    </div>
+                    {open && <AdminProductEditor product={p} onDone={() => setOpenProduct(null)} />}
                   </div>
                 );
               })}
@@ -912,11 +913,18 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
               <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                 <div className="lg:col-span-2">
                   <label className="mb-1 block text-xs font-bold text-ink-500">State</label>
-                  <select value={areaState} onChange={(e) => { setAreaState(e.target.value); setAreaCity(''); }} className={inp}>
-                    {NG_STATES.map((s) => (
-                      <option key={s} value={s}>{s}</option>
+                  <input
+                    value={areaState}
+                    onChange={(e) => { setAreaState(e.target.value); if (editingAreaId == null) setAreaCity(''); }}
+                    list="goodsale-known-states"
+                    placeholder="Type any state, e.g. Niger State"
+                    className={inp}
+                  />
+                  <datalist id="goodsale-known-states">
+                    {addressStates().map((s) => (
+                      <option key={s} value={s} />
                     ))}
-                  </select>
+                  </datalist>
                 </div>
                 <div className="lg:col-span-2">
                   <label className="mb-1 block text-xs font-bold text-ink-500">City / area</label>
@@ -924,32 +932,52 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
                     value={areaCity}
                     onChange={(e) => setAreaCity(e.target.value)}
                     list="goodsale-known-cities"
-                    placeholder="e.g. Lekki"
+                    placeholder="e.g. Minna"
                     className={inp}
                   />
                   <datalist id="goodsale-known-cities">
-                    {dbOperations.serviceCities(areaState).map((c) => (
+                    {addressCitiesFor(areaState).map((c) => (
                       <option key={c} value={c} />
                     ))}
                   </datalist>
                 </div>
-                <div className="flex items-end">
+                <div className="flex items-end gap-2">
                   <button
-                    disabled={busy || !areaCity.trim()}
-                    className={`${btnOk} w-full justify-center py-2.5`}
+                    disabled={busy || !areaState.trim() || !areaCity.trim()}
+                    className={`${btnOk} flex-1 justify-center py-2.5`}
                     onClick={() => run(async () => {
-                      const res = await dbOperations.adminUpsertServiceArea({
-                        state: areaState,
+                      const payload = {
+                        state: areaState.trim(),
                         city: areaCity.trim(),
                         salesEnabled: areaSales,
                         deliveryEnabled: areaDelivery,
-                      });
+                      };
+                      const res = editingAreaId != null
+                        ? await dbOperations.adminUpdateServiceArea(editingAreaId, payload)
+                        : await dbOperations.adminUpsertServiceArea(payload);
                       if (res && 'error' in res && res.error) throw new Error(res.error);
                       setAreaCity('');
-                    }, 'Coverage saved')}
+                      setEditingAreaId(null);
+                    }, editingAreaId != null ? 'Coverage updated' : 'Coverage saved')}
                   >
-                    <Plus className="w-3.5 h-3.5" /> Add / update
+                    {editingAreaId != null ? <Pencil className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                    {editingAreaId != null ? 'Save changes' : 'Add / update'}
                   </button>
+                  {editingAreaId != null && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      className={`${btnNo} justify-center py-2.5`}
+                      onClick={() => {
+                        setEditingAreaId(null);
+                        setAreaCity('');
+                        setAreaSales(true);
+                        setAreaDelivery(true);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -992,6 +1020,20 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
                         <p className="text-ink-400">{a.state}</p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          disabled={busy}
+                          className={btnNo}
+                          onClick={() => {
+                            setEditingAreaId(a.id);
+                            setAreaState(a.state);
+                            setAreaCity(a.city);
+                            setAreaSales(a.salesEnabled);
+                            setAreaDelivery(a.deliveryEnabled);
+                          }}
+                          title="Edit this state / city"
+                        >
+                          <Pencil className="w-3.5 h-3.5" /> Edit
+                        </button>
                         <button
                           disabled={busy}
                           onClick={() => run(async () => {
@@ -1045,6 +1087,11 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
         )}
 
         {/* Settings */}
+        {/* Seeded launch catalog — create and manage the demo/launch sellers */}
+        {activeTab === 'seeded' && (
+          <SeedManager />
+        )}
+
         {activeTab === 'settings' && (
           <div className="space-y-6">
             <div className={`${card} p-4 flex items-start gap-3`}>

@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Shield, CreditCard, Landmark, X, Lock, CheckCircle2, AlertCircle } from 'lucide-react';
-import { isDemoMode } from '@/lib/demo';
+import { Shield, CreditCard, X, Lock, CheckCircle2, AlertCircle } from 'lucide-react';
 import { buildPaystackReference } from '@/lib/payments/helpers';
 
 interface PaystackPaymentProps {
@@ -71,9 +70,7 @@ export default function PaystackPayment({
 }: PaystackPaymentProps) {
   const [step, setStep] = useState<'READY' | 'PROCESSING' | 'SUCCESS' | 'ERROR'>('READY');
   const [error, setError] = useState<string | null>(null);
-  const [demoTransfer, setDemoTransfer] = useState(false);
   const publicKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
-  const demo = isDemoMode();
 
   useEffect(() => {
     if (publicKey) {
@@ -116,12 +113,8 @@ export default function PaystackPayment({
     const reference = buildPaystackReference(orderId);
 
     if (!publicKey) {
-      if (!demo) {
-        setError('Paystack public key is not configured. Set NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY.');
-        setStep('ERROR');
-        return;
-      }
-      await completeVerified(`DEMO_${reference}`);
+      setError('Card payments are not enabled yet. Paystack keys have not been configured for this deployment.');
+      setStep('ERROR');
       return;
     }
 
@@ -162,22 +155,10 @@ export default function PaystackPayment({
     }
   };
 
-  const handleDemoBankTransfer = async () => {
-    if (!demo) {
-      setError('Bank transfer confirmation requires Paystack dedicated virtual accounts in production.');
-      setStep('ERROR');
-      return;
-    }
-    setDemoTransfer(true);
-    const reference = `DEMO_BANK_${buildPaystackReference(orderId)}`;
-    await completeVerified(reference);
-    setDemoTransfer(false);
-  };
-
   return (
     <div className="fixed inset-0 bg-ink-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 select-none">
-      <div className="bg-[#1a201e] w-full max-w-md border border-[#29302d] rounded-3xl overflow-hidden shadow-2xl relative text-white flex flex-col">
-        <div className="bg-[#0b0f0d] px-6 py-4 flex items-center justify-between border-b border-[#29302d]">
+      <div className="bg-jade-900 w-full max-w-md border border-jade-800 rounded-3xl overflow-hidden shadow-2xl relative text-white flex flex-col">
+        <div className="bg-jade-950 px-6 py-4 flex items-center justify-between border-b border-jade-800]">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-full bg-[#1fb377]/10 flex items-center justify-center border border-[#1fb377]/30">
               <Shield className="w-4 h-4 text-[#1fb377]" />
@@ -185,14 +166,14 @@ export default function PaystackPayment({
             <div>
               <p className="font-sans font-bold text-xs text-white tracking-wider">Paystack Secured</p>
               <p className="text-xs text-ink-400 font-mono">
-                Order #{orderId} · {publicKey ? 'Live Inline' : demo ? 'Demo Mode' : 'Not Configured'}
+                Order #{orderId} · {publicKey ? 'Live Inline' : 'Not Configured'}
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={onCancel}
-            className="w-8 h-8 rounded-full bg-[#222826] flex items-center justify-center hover:bg-ink-500/20 text-ink-400 hover:text-ink-400 cursor-pointer transition-colors"
+            className="w-8 h-8 rounded-full bg-jade-800 flex items-center justify-center hover:bg-ink-500/20 text-ink-400 hover:text-ink-400 cursor-pointer transition-colors"
             aria-label="Close payment"
           >
             <X className="w-4 h-4" />
@@ -215,7 +196,7 @@ export default function PaystackPayment({
                 </div>
               )}
 
-              <div className="p-4 bg-[#0b0f0d] border border-[#29302d] rounded-2xl space-y-3 text-xs text-ink-300 leading-relaxed">
+              <div className="p-4 bg-jade-950 border border-jade-800 rounded-2xl space-y-3 text-xs text-ink-300 leading-relaxed">
                 <p className="flex items-start gap-2">
                   <Lock className="w-4 h-4 text-[#1fb377] shrink-0 mt-0.5" />
                   Card numbers, CVV, and ATM PINs are collected only inside Paystack&apos;s PCI-compliant checkout — never on GoodSale.
@@ -226,25 +207,19 @@ export default function PaystackPayment({
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => void handlePaystackInline()}
-                className="w-full py-3.5 bg-[#1fb377] hover:bg-[#26cc84] text-white font-sans font-semibold text-xs tracking-wider rounded-xl cursor-pointer shadow-lg shadow-[#1fb377]/20 flex items-center justify-center gap-2 transition-all"
-              >
-                <CreditCard className="w-4 h-4" />
-                {publicKey ? 'Pay with Paystack' : 'Simulate Escrow Hold (Demo)'}
-              </button>
-
-              {demo && (
+              {publicKey ? (
                 <button
                   type="button"
-                  disabled={demoTransfer}
-                  onClick={() => void handleDemoBankTransfer()}
-                  className="w-full py-3.5 bg-[#0b0f0d] border border-[#29302d] hover:border-[#1fb377]/40 text-ink-200 font-sans font-semibold text-xs tracking-wider rounded-xl cursor-pointer flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                  onClick={() => void handlePaystackInline()}
+                  className="w-full py-3.5 bg-[#1fb377] hover:bg-[#26cc84] text-white font-sans font-semibold text-xs tracking-wider rounded-xl cursor-pointer shadow-lg shadow-[#1fb377]/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
                 >
-                  <Landmark className="w-4 h-4" />
-                  {demoTransfer ? 'Verifying…' : 'Demo Bank Transfer'}
+                  <CreditCard className="w-4 h-4" />
+                  Pay with Paystack
                 </button>
+              ) : (
+                <div className="rounded-xl border border-jade-800 bg-jade-950 p-3 text-center text-xs text-ink-400 leading-relaxed">
+                  Card checkout is not live yet. Paystack keys must be configured before orders can be paid.
+                </div>
               )}
             </div>
           )}
@@ -272,7 +247,7 @@ export default function PaystackPayment({
           )}
         </div>
 
-        <div className="bg-[#0b0f0d] px-6 py-4 border-t border-[#29302d] flex items-center justify-center gap-1.5 text-xs text-ink-400">
+        <div className="bg-jade-950 px-6 py-4 border-t border-jade-800 flex items-center justify-center gap-1.5 text-xs text-ink-400">
           <Lock className="w-3.5 h-3.5 text-ink-500" />
           <span>PCI DSS via Paystack · Server-verified references only</span>
         </div>

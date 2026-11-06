@@ -18,7 +18,7 @@ const tones: Record<ChipTone, string> = {
     'bg-ink-100 text-ink-700 dark:bg-ink-800 dark:text-ink-200 border border-transparent',
   outline:
     'border border-ink-300 dark:border-ink-700 text-ink-600 dark:text-ink-300 bg-transparent',
-  solid: 'bg-ink-900 text-white dark:bg-white dark:text-ink-950 border border-transparent',
+  solid: 'bg-jade-600 text-white dark:bg-jade-500 dark:text-white border border-transparent',
 };
 
 export default function Chip({

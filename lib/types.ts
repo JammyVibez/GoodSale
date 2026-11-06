@@ -26,6 +26,7 @@ export enum OrderStatus {
   OUT_FOR_DELIVERY = 'OUT_FOR_DELIVERY',
   DELIVERED_SUCCESS = 'DELIVERED_SUCCESS',
   DISPUTED = 'DISPUTED',
+  REFUND_REQUESTED = 'REFUND_REQUESTED',
   REFUNDED = 'REFUNDED',
   CANCELLED = 'CANCELLED',
   
@@ -189,10 +190,22 @@ export interface Product {
   brand: string;
   condition: ProductCondition;
   price: number;
+  /** Optional reference price (original retail). Only then is a discount shown. */
+  compareAtPrice?: number;
   isNegotiable: boolean;
   quantity: number;
-  stockStatus: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK';
+  stockStatus: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK' | 'SOLD' | 'UNAVAILABLE';
+  /** Buyer-intent counters shown in seller analytics. */
+  likes?: number;
+  cartAdds?: number;
+  /** Number of times the listing card was shown to shoppers. */
+  impressions?: number;
+  /** Admin moderation state for new or edited listings. */
+  moderationStatus?: 'APPROVED' | 'PENDING' | 'REJECTED' | 'APPEALED';
+  rejectionReason?: string;
   images: string[];
+  /** Optional short product video (mp4/webm or a storage URL). */
+  videoUrl?: string;
   barcode?: string;
   qrCode?: string;
   deliveryMethod: string;
@@ -415,7 +428,7 @@ export interface Notification {
   userId: number;
   title: string;
   message: string;
-  type: 'ORDER' | 'BID' | 'DISPUTE' | 'POINTS' | 'CHAT' | 'VERIFICATION' | 'SAFEMEET' | 'ESCROW' | 'SYSTEM' | 'DELIVERY';
+  type: 'ORDER' | 'BID' | 'DISPUTE' | 'POINTS' | 'CHAT' | 'VERIFICATION' | 'SAFEMEET' | 'ESCROW' | 'SYSTEM' | 'DELIVERY' | 'STOCK' | 'PROMOTION';
   isRead: boolean;
   createdAt: string;
 }
@@ -512,6 +525,75 @@ export interface Refund {
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   createdAt: string;
 }
+
+/* ── Trust, safety & support ─────────────────────────────────────── */
+
+export type SupportTicketCategory =
+  | 'PAYMENT'
+  | 'DELIVERY'
+  | 'ACCOUNT'
+  | 'REFUND'
+  | 'SELLER_DISPUTE'
+  | 'OTHER';
+
+export type SupportTicketStatus =
+  | 'OPEN'
+  | 'IN_REVIEW'
+  | 'WAITING_USER'
+  | 'RESOLVED'
+  | 'CLOSED';
+
+export type SupportTicketPriority = 'LOW' | 'NORMAL' | 'HIGH';
+
+export interface SupportTicketMessage {
+  id: number;
+  authorId: number;
+  authorName: string;
+  authorRole: 'BUYER' | 'SELLER' | 'ADMIN';
+  body: string;
+  createdAt: string;
+}
+
+export interface SupportTicket {
+  id: number;
+  /** Human reference shown to the customer, e.g. GS-TKT-482913. */
+  reference: string;
+  userId: number;
+  userName: string;
+  category: SupportTicketCategory;
+  subject: string;
+  description: string;
+  orderId?: number;
+  status: SupportTicketStatus;
+  priority: SupportTicketPriority;
+  adminNotes?: string;
+  messages: SupportTicketMessage[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductAppeal {
+  id: number;
+  reference: string;
+  productId: number;
+  sellerId: number;
+  reason: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  adminNotes?: string;
+  createdAt: string;
+  resolvedAt?: string;
+}
+
+export type NotificationPreferenceKey =
+  | 'orders'
+  | 'payments'
+  | 'messages'
+  | 'deliveries'
+  | 'stock'
+  | 'promotions'
+  | 'security';
+
+export type NotificationPreferences = Record<NotificationPreferenceKey, boolean>;
 
 export interface WithdrawalRequest {
   id: number;

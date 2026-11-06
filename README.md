@@ -66,6 +66,12 @@ See **[PRODUCTION.md](./PRODUCTION.md)** for the full go-live checklist (credent
 8. `supabase/migrations/008_platform_fee_toggle.sql` (admin-controlled platform fee — OFF at launch)
 9. `supabase/migrations/009_admin_ads.sql` (ads: image/video media, placements, `ad-media` bucket)
 10. `supabase/migrations/010_announcements.sql` (admin popup shown on app entry)
+11. `supabase/migrations/011_self_service_roles.sql`
+12. `supabase/migrations/012_community_trust_areas.sql` (service coverage, reports, calls)
+13. `supabase/migrations/013_seeded_catalog.sql` (`is_seeded` markers for the launch catalog)
+14. `supabase/migrations/014_products_video.sql` (optional product video)
+15. `supabase/migrations/015_resync_id_sequences.sql` (id sequences for safe re-seeding)
+16. `supabase/migrations/016_compare_at_price.sql` (seller compare-at price — real discount badges)
 
 ### Apply them from the terminal
 
@@ -113,6 +119,24 @@ Paystack step-by-step: **[docs/PAYSTACK.md](./docs/PAYSTACK.md)**. Full env list
 - **Announcements**: **Admin panel → Announcements** → publish a headline/message; it pops up for
   users the next time they join or enter the app, and remembers that they dismissed it.
 - **Setup banner**: shown until Supabase URL/anon key are present
+- **Launch catalog (seeded marketplace)**: **Admin panel → Launch catalog** creates 20 Nigerian
+  seller accounts (market stores, registered businesses and individual traders), 100 listings, four
+  buyer accounts and their reviews. Seeded rows are flagged `is_seeded`, so the same screen can edit
+  or delete any of them (including replacing product photos) without ever touching a real seller's
+  account. Needs migration `013_seeded_catalog.sql` first.
+- **Account avatars** are local monogram badges (`/api/avatar`) derived from each account's own name —
+  no third-party stock portraits, so a seller's picture never contradicts their name.
+- **Reviews** name the exact listing they are about (condition, warranty, dimensions, delivery) and
+  mix in honest 2–3★ feedback, so the feed reads like a real market instead of generated praise.
+- **Marketplace home**: deep-jade hero carousel, circular category rail, Flash Deals with a real
+  midnight countdown, personalised recommendations (saved city + wishlist), a trust strip and a
+  filterable catalog with sort. The app opens here; the marketing story is under **About GoodSale**.
+- **Discounts are real**: a `-30%` badge and struck-through price render only when the seller set a
+  higher compare-at price (`016_compare_at_price.sql`). Nothing is invented.
+- **Wishlist** is stored locally (`goodsale_wishlist`) and can be filtered from the catalog header.
+- **Admin → Products → Edit**: an admin can edit any listing's photos and video, title, price, stock,
+  compare-at price, category, brand, condition, description and delivery terms, or delete it. Product
+  video needs migration `014_products_video.sql`.
 - **Notifications / follows / onboarding**: written to Supabase and reloaded live — they are
   real records, not local-only state
 
