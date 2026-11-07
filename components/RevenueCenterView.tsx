@@ -466,6 +466,9 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
   }, [userId]);
 
   useEffect(() => {
+    // Membership prices are Admin-owned settings; re-sync them on open so this
+    // hub never shows a stale price from an earlier session.
+    void reloadFromSupabase();
     void refreshWalletStatus();
     void loadPremiumAccount();
     void loadPremiumExtras();

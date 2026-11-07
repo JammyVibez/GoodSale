@@ -14,7 +14,8 @@ import { useDBState, dbOperations, getDBState, saveDBState, reloadFromSupabase, 
 import { SmartImage } from './ui/SmartImage';
 import Card from './ui/Card';
 import { toast, confirmDialog } from '@/lib/feedback';
-import { useUserSettings, type SavedAddress, type StaffMember } from '@/lib/userSettings';
+import { useUserSettings, type SavedAddress } from '@/lib/userSettings';
+import BusinessStaffPanel from './seller/BusinessStaffPanel';
 import {
   getNotificationPreferences,
   setNotificationPreferences,
@@ -177,9 +178,6 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
   const [businessLogo, setBusinessLogo] = useState(currentBusiness?.logoUrl || '');
   const [businessBanner, setBusinessBanner] = useState(currentBusiness?.bannerUrl || '');
   const [businessHours, setBusinessHours] = useState('');
-  const [staffList, setStaffList] = useState<StaffMember[]>([]);
-  const [newStaffName, setNewStaffName] = useState('');
-  const [newStaffRole, setNewStaffRole] = useState('Support Agent');
 
   // 9. GoodPoints Catalog Interaction
   const [redeemedVoucher, setRedeemedVoucher] = useState<string | null>(null);
@@ -279,7 +277,6 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
     setDefaultCategory(settings.defaultCategory);
     setDefaultDeliveryMethod(settings.defaultDeliveryMethod);
     if (settings.businessHours) setBusinessHours(settings.businessHours);
-    setStaffList(settings.staffList);
     setPreferredCourier(settings.preferredCourier);
     setSafeMeetPreSel(settings.safeMeetPreSel);
     if (settings.pickupAddress) setPickupAddress(settings.pickupAddress);
@@ -505,24 +502,6 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
     const next = savedAddresses.filter((a) => a.id !== id);
     setSavedAddresses(next);
     void persistSettings({ savedAddresses: next });
-  };
-
-  const handleAddStaff = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newStaffName.trim()) return;
-    const next = [
-      ...staffList,
-      { id: Date.now(), name: newStaffName.trim(), role: newStaffRole, status: 'Active' },
-    ];
-    setStaffList(next);
-    void persistSettings({ staffList: next });
-    setNewStaffName('');
-  };
-
-  const handleRemoveStaff = (id: number) => {
-    const next = staffList.filter((s) => s.id !== id);
-    setStaffList(next);
-    void persistSettings({ staffList: next });
   };
 
   // --- Server-backed preference helpers ---------------------------------
@@ -798,9 +777,12 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
       UserRole.VERIFIED_BUSINESS,
       UserRole.ADMIN,
       UserRole.SUPER_ADMIN,
-    ].includes(currentUser.role)
-      ? [{ id: 'business', label: entitlements.businessTools ? 'Business Console' : 'Business (locked)', icon: Building, color: 'text-ink-500' }]
+    ].includes(currentUser.role) || entitlements.businessTools
+      ? [{ id: 'business', label: entitlements.businessTools ? 'Business Console' : 'Business', icon: Building, color: 'text-ink-500' }]
       : []),
+    // Staff do not hold a Business plan of their own, so the tab above stays
+    // hidden for them; the staff tab is always available.
+    { id: 'staff', label: 'Staff Access', icon: Users, color: 'text-jade-500' },
     { id: 'goodpoints', label: 'GoodPoints Rewards', icon: Sparkles, color: 'text-ink-500' },
     { id: 'referrals', label: 'Referral Center', icon: Gift, color: 'text-jade-400' },
     { id: 'delivery', label: 'Courier & SafeMeet', icon: MapPin, color: 'text-ink-500' },
@@ -2218,56 +2200,6 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                   />
                 </div>
 
-                {/* Staff list */}
-                <div className="border-t border-ink-100 dark:border-ink-850 pt-5 space-y-3">
-                  <h3 className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Corporate Staff Management</h3>
-                  <div className="space-y-2">
-                    {staffList.map((st) => (
-                      <div key={st.id} className="flex justify-between items-center p-3 bg-ink-50 dark:bg-ink-800/40 rounded-xl border border-ink-150 text-xs">
-                        <div>
-                          <p className="font-semibold text-ink-800 dark:text-white">{st.name}</p>
-                          <p className="text-xs text-ink-400">{st.role}</p>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="px-1.5 py-0.5 bg-jade-100 text-jade-800 text-xs font-bold rounded">{st.status}</span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveStaff(st.id)}
-                            className="text-xs text-ink-500 hover:underline font-bold cursor-pointer"
-                          >
-                            Revoke Access
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="flex gap-2 pt-2">
-                    <input 
-                      type="text"
-                      placeholder="Staff Full Name"
-                      value={newStaffName}
-                      onChange={(e) => setNewStaffName(e.target.value)}
-                      className="flex-1 px-3 py-2 bg-ink-50 rounded-xl text-xs"
-                    />
-                    <select
-                      value={newStaffRole}
-                      onChange={(e) => setNewStaffRole(e.target.value)}
-                      className="px-3 py-2 bg-ink-50 rounded-xl text-xs"
-                    >
-                      <option value="Store Manager">Store Manager</option>
-                      <option value="Support Agent">Support Agent</option>
-                      <option value="Inventory Clerk">Inventory Clerk</option>
-                    </select>
-                    <button
-                      type="button"
-                      onClick={handleAddStaff}
-                      className="px-4 py-2 bg-jade-600 hover:bg-jade-700 text-white text-xs font-bold rounded-xl shadow-sm shadow-jade-600/20 cursor-pointer"
-                    >
-                      Add staff
-                    </button>
-                  </div>
-                </div>
               </div>
 
               <div className="flex justify-end">
@@ -2280,6 +2212,21 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 </button>
               </div>
             </form>
+          )}
+
+          {activeTab === 'staff' && (
+            <div className="animate-fade-in rounded-[32px] border border-ink-150 bg-white p-6 shadow-sm dark:border-ink-800 dark:bg-ink-900 sm:p-8">
+              <h2 className="flex items-center gap-2 font-display text-lg font-bold text-ink-900 dark:text-white">
+                <Users className="h-5 w-5 text-ink-500" /> Staff access
+              </h2>
+              <p className="mt-1 text-xs text-ink-400">
+                Staff work from their own GoodSale account. Business owners add them by email; staff see the
+                business they support here.
+              </p>
+              <div className="mt-4">
+                <BusinessStaffPanel />
+              </div>
+            </div>
           )}
 
           {/* TAB 9: GOODPOINTS REWARDS */}

@@ -140,11 +140,19 @@ export default function AdminTrustSafetyPanel() {
       );
   }, [db.sponsoredAds, db.users]);
 
-  const filteredTickets = tickets.filter((t) => {
-    if (!query.trim()) return true;
-    const q = query.toLowerCase();
-    return t.reference.toLowerCase().includes(q) || t.subject.toLowerCase().includes(q) || t.userName.toLowerCase().includes(q);
-  });
+  const filteredTickets = tickets
+    .filter((t) => {
+      if (!query.trim()) return true;
+      const q = query.toLowerCase();
+      return t.reference.toLowerCase().includes(q) || t.subject.toLowerCase().includes(q) || t.userName.toLowerCase().includes(q);
+    })
+    // Priority operations support: HIGH tickets (Business Premium/Enterprise and
+    // payment issues) are surfaced first, then the most recently updated.
+    .sort((a, b) => {
+      const rank = (value: string) => (value === 'HIGH' ? 2 : value === 'NORMAL' ? 1 : 0);
+      const byPriority = rank(b.priority) - rank(a.priority);
+      return byPriority || b.updatedAt.localeCompare(a.updatedAt);
+    });
 
   const selectedTicket = tickets.find((t) => t.id === openTicketId) ?? null;
 

@@ -3,6 +3,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { logger, publicErrorMessage } from '@/lib/logger';
 import { rateLimit, clientIpFromRequest } from '@/lib/rate-limit';
+import { loadEntitlements } from '@/lib/entitlements/server';
 
 const CATEGORIES = ['PAYMENT', 'DELIVERY', 'ACCOUNT', 'REFUND', 'SELLER_DISPUTE', 'OTHER'];
 const PRIORITIES = ['LOW', 'NORMAL', 'HIGH'];
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
     const subject = String(body.subject || '').trim();
     const description = String(body.description || '').trim();
     const orderId = body.orderId ? Number(body.orderId) : null;
-    const priority = PRIORITIES.includes(String(body.priority)) ? String(body.priority) : 'NORMAL';
+    const requestedPriority = PRIORITIES.includes(String(body.priority)) ? String(body.priority) : 'NORMAL';
 
     if (!CATEGORIES.includes(category)) {
       return NextResponse.json({ success: false, error: 'Choose a valid category' }, { status: 400 });
@@ -83,6 +84,15 @@ export async function POST(req: NextRequest) {
       .eq('auth_id', user.id)
       .maybeSingle();
     if (!profile?.id) return NextResponse.json({ success: false, error: 'Profile not found' }, { status: 404 });
+
+    // Business Premium and Enterprise include priority operations support, so
+    // their tickets are raised at high priority regardless of what the client
+    // asked for. Everyone else keeps the priority they chose.
+    const entitlements = await loadEntitlements(admin, Number(profile.id));
+    const priority =
+      entitlements.businessPlan === 'PREMIUM' || entitlements.businessPlan === 'ENTERPRISE'
+        ? 'HIGH'
+        : requestedPriority;
 
     if (orderId) {
       const { data: order } = await admin
