@@ -3,6 +3,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { logger, publicErrorMessage } from '@/lib/logger';
 import { rateLimit, clientIpFromRequest } from '@/lib/rate-limit';
+import { buildFlashSaleQueue, isPriorityCampaign, sellerPlanRank } from '@/lib/premium/moderation';
 
 async function requireAdmin() {
   const supabase = await createServerSupabaseClient();
@@ -61,6 +62,31 @@ export async function GET() {
       if (result.error) logger.warn(`Admin premium ${label} lookup failed`, { error: result.error.message });
     }
 
+    // Business Premium and Enterprise sellers are surfaced first in the review
+    // queue, which is the advertised priority-review benefit. Pending campaigns
+    // always come before already-scheduled ones.
+    const saleRows = flashSales.data || [];
+    const planBySeller = new Map<number, string>();
+    const saleSellerIds = [...new Set(saleRows.map((row) => Number(row.seller_id)).filter((id) => id > 0))];
+    if (saleSellerIds.length) {
+      const nowIso = new Date().toISOString();
+      const { data: subs, error: subError } = await ctx.admin
+        .from('business_subscriptions')
+        .select('user_id,plan,status,expires_at')
+        .in('user_id', saleSellerIds)
+        .eq('status', 'ACTIVE')
+        .gt('expires_at', nowIso);
+      if (subError) logger.warn('Admin premium seller plan lookup failed', { error: subError.message });
+      for (const sub of subs || []) {
+        const plan = String(sub.plan || '').toUpperCase();
+        const sellerId = Number(sub.user_id);
+        if (sellerPlanRank(plan) > sellerPlanRank(planBySeller.get(sellerId))) {
+          planBySeller.set(sellerId, plan);
+        }
+      }
+    }
+    const flashSaleQueue = buildFlashSaleQueue(saleRows, planBySeller);
+
     return NextResponse.json({
       success: true,
       benefits: (benefits.data || []).map((row) => ({
@@ -72,10 +98,12 @@ export async function GET() {
         sortOrder: Number(row.sort_order),
         active: Boolean(row.active),
       })),
-      flashSales: (flashSales.data || []).map((row) => ({
+      flashSales: flashSaleQueue.map(({ row, plan }) => ({
         id: Number(row.id),
         productId: Number(row.product_id),
         sellerId: Number(row.seller_id),
+        sellerPlan: plan,
+        priority: isPriorityCampaign(row.status, plan),
         salePrice: Number(row.sale_price || 0),
         quantityLimit: Number(row.quantity_limit || 0),
         quantitySold: Number(row.quantity_sold || 0),

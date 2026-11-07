@@ -21,6 +21,7 @@ import OrderTrackingCard, { hasLiveTracking } from './OrderTrackingCard';
 import SellerAnalyticsPanel from './SellerAnalyticsPanel';
 import SellerShippingPanel from './SellerShippingPanel';
 import BulkInventoryTools from './seller/BulkInventoryTools';
+import BarcodeCameraScanner from './seller/BarcodeCameraScanner';
 import { resolveEntitlements, membershipLabel } from '@/lib/entitlements';
 import SellerDeliveryPanel from './SellerDeliveryPanel';
 import { createProductAppeal } from '@/lib/trustCenter';
@@ -244,8 +245,10 @@ export default function DashboardView({
   };
 
   // Barcode Auto-Fill via Server-Side Gemini API
-  const handleBarcodeAutoFill = async () => {
-    if (!barcodeQuery.trim()) return;
+  const handleBarcodeAutoFill = async (override?: string) => {
+    const code = String(override ?? barcodeQuery).trim();
+    if (!code) return;
+    setBarcodeQuery(code);
     setIsAiLoading(true);
     setAiReport(null);
     try {
@@ -254,7 +257,7 @@ export default function DashboardView({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'barcode',
-          payload: { barcode: barcodeQuery }
+          payload: { barcode: code }
         })
       });
       const res = await response.json();
@@ -266,7 +269,7 @@ export default function DashboardView({
       setTitle(item.title || '');
       setCategory(item.category || 'Food');
       setBrand(item.brand || '');
-      setBarcode(barcodeQuery.trim());
+      setBarcode(code);
       if (item.quantity && !description.trim()) setDescription(`Package size: ${item.quantity}`);
       setAiReport({ success: true, message: `Catalog match found from ${item.source}. Verify all details and enter price, condition, and description manually.` });
       setActiveTab('create_listing');
@@ -2601,13 +2604,19 @@ export default function DashboardView({
                 className="flex-1 px-3 py-2.5 bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl focus:ring-1 focus:ring-jade-500 focus:outline-none text-ink-800 dark:text-white font-mono text-xs"
               />
               <button
-                onClick={handleBarcodeAutoFill}
+                onClick={() => void handleBarcodeAutoFill()}
                 disabled={isAiLoading || !barcodeQuery.trim()}
                 className="px-5 py-2.5 bg-jade-500 hover:bg-jade-600 text-white font-bold text-xs rounded-xl flex items-center gap-1 cursor-pointer disabled:opacity-50"
               >
                 {isAiLoading ? 'Resolving...' : 'Lookup Barcode'}
               </button>
             </div>
+
+            <BarcodeCameraScanner
+              onDetected={(code) => {
+                void handleBarcodeAutoFill(code);
+              }}
+            />
 
             {aiReport?.message && (
               <div className="p-3 bg-ink-50 dark:bg-ink-800 border border-ink-100 dark:border-ink-800 rounded-xl flex items-center gap-2 text-xs">

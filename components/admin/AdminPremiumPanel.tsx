@@ -17,6 +17,8 @@ type FlashSale = {
   id: number;
   productId: number;
   sellerId: number;
+  sellerPlan?: string | null;
+  priority?: boolean;
   salePrice: number;
   quantityLimit: number;
   startsAt: string | null;
@@ -231,6 +233,11 @@ export default function AdminPremiumPanel() {
                     <p className="font-bold text-ink-800 dark:text-white">
                       Promo #{sale.id} · product #{sale.productId} · ₦{sale.salePrice.toLocaleString()}
                     </p>
+                    {sale.priority && (
+                      <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-gold-300/25 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-gold-700 dark:text-gold-200">
+                        <Sparkles className="h-2.5 w-2.5" /> Priority · {sale.sellerPlan}
+                      </span>
+                    )}
                     <p className="mt-0.5 text-[10px] text-ink-400">
                       {sale.status} · {sale.startsAt ? new Date(sale.startsAt).toLocaleString() : 'immediate'} · limit{' '}
                       {sale.quantityLimit || 'catalog'} · paid ₦{sale.amountPaid.toLocaleString()} (credits ₦
