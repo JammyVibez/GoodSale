@@ -484,7 +484,7 @@ export default function AdminVerificationPanel() {
                 <FileCheck2 className="mx-auto h-8 w-8 text-ink-300" aria-hidden="true" />
                 <p className="mt-2 text-sm font-semibold text-ink-700 dark:text-ink-200">Select an application</p>
                 <p className="mt-1 max-w-xs text-[11px] text-ink-400">
-                  Review the seller's details, open documents in protected storage, then approve,
+                  Review the seller&apos;s details, open documents in protected storage, then approve,
                   reject or ask for more information.
                 </p>
               </div>

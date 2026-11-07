@@ -100,7 +100,7 @@ export default function SellerShippingPanel() {
           <Truck className="w-5 h-5 text-jade-500" /> Delivery & Pickup Settings
         </h2>
         <p className="text-xs text-ink-500 mt-1 max-w-2xl">
-          Buyers see delivery fees calculated from your pickup location, package details and GoodSale's administrator pricing. You cannot override platform freight charges.
+          Buyers see delivery fees calculated from your pickup location, package details and GoodSale&apos;s administrator pricing. You cannot override platform freight charges.
         </p>
       </div>
 

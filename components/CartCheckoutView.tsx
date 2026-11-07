@@ -378,6 +378,14 @@ export default function CartCheckoutView({
     }
   }, [currentCheckoutItem, selectedPaymentMethod, allowedCheckoutMethods]);
 
+  useEffect(() => {
+    if (activeStep === 'orders') {
+      setOrderFilter('all');
+      setExpandedOrderId(null);
+      setVisiblePinOrderId(null);
+    }
+  }, [activeStep]);
+
   const user = db.currentUser;
   
   if (!user) {
@@ -662,14 +670,6 @@ export default function CartCheckoutView({
     setPinError(null);
     setPinSuccess(null);
   };
-
-  useEffect(() => {
-    if (activeStep === 'orders') {
-      setOrderFilter('all');
-      setExpandedOrderId(null);
-      setVisiblePinOrderId(null);
-    }
-  }, [activeStep]);
 
   return (
     <div className="bg-ink-50 dark:bg-ink-950 min-h-screen py-8 px-4 sm:px-6 lg:px-8 transition-colors duration-300">
