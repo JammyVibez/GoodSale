@@ -61,22 +61,22 @@ function Stat({
 }) {
   return (
     <div
-      className={`rounded-2xl border p-4 ${
+      className={`min-w-0 rounded-2xl border p-3.5 sm:p-4 ${
         accent
           ? 'border-gold-400/30 bg-gradient-to-br from-gold-50 to-white dark:from-gold-400/10 dark:to-ink-900'
           : 'border-ink-150 bg-white dark:border-ink-800 dark:bg-ink-900'
       }`}
     >
-      <div className="flex items-center justify-between gap-2">
-        <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-ink-400">
+      <div className="flex items-start justify-between gap-2">
+        <p className="min-w-0 break-words font-mono text-[9px] font-bold uppercase leading-tight tracking-[0.14em] text-ink-400 sm:text-[10px] sm:tracking-[0.18em]">
           {label}
         </p>
-        <Icon className={`h-4 w-4 ${accent ? 'text-gold-500' : 'text-jade-600 dark:text-jade-400'}`} />
+        <Icon className={`h-4 w-4 shrink-0 ${accent ? 'text-gold-500' : 'text-jade-600 dark:text-jade-400'}`} />
       </div>
-      <p className="mt-2 font-display text-2xl font-extrabold tracking-tight text-ink-950 dark:text-white">
+      <p className="mt-2 break-words font-display text-xl font-extrabold tracking-tight text-ink-950 dark:text-white sm:text-2xl">
         {typeof value === 'number' ? value.toLocaleString('en-NG') : value}
       </p>
-      {detail ? <p className="mt-1 text-[11px] leading-snug text-ink-400">{detail}</p> : null}
+      {detail ? <p className="mt-1 break-words text-[10px] leading-snug text-ink-400 sm:text-[11px]">{detail}</p> : null}
     </div>
   );
 }
@@ -90,7 +90,7 @@ function RewardStatus({ status }: { status: ReferralDashboard['history'][number]
   } as const;
   const item = map[status];
   return (
-    <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${item.tone}`}>
+    <span className={`inline-flex shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold ${item.tone}`}>
       {item.label}
     </span>
   );
@@ -251,8 +251,8 @@ export default function ReferralCenter({ onBack, onNavigate, onOpenAuth }: Refer
     : 0;
 
   return (
-    <div className="min-h-screen bg-ink-50 px-4 py-6 transition-colors sm:px-6 lg:px-8 dark:bg-ink-950">
-      <div className="mx-auto max-w-6xl space-y-6">
+    <div className="min-h-screen overflow-x-clip bg-ink-50 px-4 pb-8 pt-6 transition-colors sm:px-6 sm:pb-12 lg:px-8 dark:bg-ink-950">
+      <div className="mx-auto min-w-0 max-w-6xl space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <button
             type="button"
@@ -280,8 +280,8 @@ export default function ReferralCenter({ onBack, onNavigate, onOpenAuth }: Refer
             GS
           </div>
 
-          <div className="relative grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
-            <div>
+          <div className="relative grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:items-center">
+            <div className="min-w-0">
               <span className="inline-flex items-center gap-2 rounded-full border border-gold-300/30 bg-gold-300/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-gold-200">
                 <Sparkles className="h-3.5 w-3.5" /> GoodSale Referrals
               </span>
@@ -330,13 +330,13 @@ export default function ReferralCenter({ onBack, onNavigate, onOpenAuth }: Refer
             </div>
 
             {/* Code + QR */}
-            <div className="rounded-[26px] border border-white/12 bg-white/[0.07] p-4 backdrop-blur-md sm:p-5">
-              <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-center">
+            <div className="min-w-0 rounded-[26px] border border-white/12 bg-white/[0.07] p-4 backdrop-blur-md sm:p-5">
+              <div className="grid min-w-0 gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                 <div className="min-w-0">
                   <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">
                     Your referral code
                   </p>
-                  <p className="mt-1.5 truncate font-mono text-2xl font-black tracking-wider text-white">
+                  <p className="mt-1.5 break-all font-mono text-xl font-black tracking-wider text-white sm:text-2xl">
                     {data.code || '—'}
                   </p>
                   <p className="mt-1 text-[10px] text-white/40">
@@ -356,9 +356,9 @@ export default function ReferralCenter({ onBack, onNavigate, onOpenAuth }: Refer
                 </div>
               </div>
 
-              <div className="mt-4 flex items-center gap-2 rounded-xl border border-white/10 bg-ink-950/35 p-1.5 pl-3">
-                <Link2 className="h-4 w-4 shrink-0 text-gold-300" />
-                <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-white/70">
+              <div className="mt-4 flex items-start gap-2 rounded-xl border border-white/10 bg-ink-950/35 p-2.5 pl-3">
+                <Link2 className="mt-0.5 h-4 w-4 shrink-0 text-gold-300" />
+                <span className="min-w-0 flex-1 break-all font-mono text-[10px] leading-relaxed text-white/70 sm:text-[11px]">
                   {data.link}
                 </span>
               </div>
@@ -401,7 +401,7 @@ export default function ReferralCenter({ onBack, onNavigate, onOpenAuth }: Refer
         </section>
 
         {/* Stats */}
-        <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <section className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
           <Stat label="Invitations" value={data.stats.invitations} detail="Link visits" Icon={Share2} />
           <Stat label="Registered" value={data.stats.registered} detail="Real accounts" Icon={UserPlus} />
           <Stat label="Qualified" value={data.stats.qualified} detail="Met the rules" Icon={CheckCircle2} />
@@ -429,7 +429,7 @@ export default function ReferralCenter({ onBack, onNavigate, onOpenAuth }: Refer
 
         <section className="grid gap-5 lg:grid-cols-[1.45fr_1fr]">
           {/* History */}
-          <div className="rounded-3xl border border-ink-150 bg-white p-5 shadow-sm dark:border-ink-800 dark:bg-ink-900 sm:p-6">
+          <div className="min-w-0 rounded-3xl border border-ink-150 bg-white p-4 shadow-sm dark:border-ink-800 dark:bg-ink-900 sm:p-6">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
                 <h2 className="flex items-center gap-2 font-display text-lg font-bold text-ink-950 dark:text-white">
@@ -465,7 +465,7 @@ export default function ReferralCenter({ onBack, onNavigate, onOpenAuth }: Refer
             ) : (
               <>
                 <div className="mt-5 hidden overflow-x-auto sm:block">
-                  <table className="w-full text-left text-xs">
+                  <table className="w-full min-w-[620px] text-left text-xs">
                     <thead>
                       <tr className="border-b border-ink-100 font-mono text-[10px] uppercase tracking-wider text-ink-400 dark:border-ink-800">
                         <th className="pb-3 pr-4 font-bold">Referred member</th>
@@ -553,8 +553,8 @@ export default function ReferralCenter({ onBack, onNavigate, onOpenAuth }: Refer
           </div>
 
           {/* Qualification and rewards */}
-          <div className="space-y-5">
-            <div className="rounded-3xl border border-ink-150 bg-white p-5 shadow-sm dark:border-ink-800 dark:bg-ink-900 sm:p-6">
+          <div className="min-w-0 space-y-5">
+            <div className="min-w-0 rounded-3xl border border-ink-150 bg-white p-4 shadow-sm dark:border-ink-800 dark:bg-ink-900 sm:p-6">
               <h2 className="flex items-center gap-2 font-display text-base font-bold text-ink-950 dark:text-white">
                 <Award className="h-5 w-5 text-gold-500" />
                 How a referral qualifies
@@ -618,7 +618,7 @@ export default function ReferralCenter({ onBack, onNavigate, onOpenAuth }: Refer
                         <p className="truncate text-xs font-bold text-ink-800 dark:text-white/85">
                           {reward.refereeName}
                         </p>
-                        <p className="mt-0.5 font-mono text-[9px] text-ink-400">{reward.reference}</p>
+                        <p className="mt-0.5 break-all font-mono text-[9px] text-ink-400">{reward.reference}</p>
                       </div>
                       <div className="text-right">
                         <p className="font-mono text-sm font-bold text-gold-600 dark:text-gold-300">
@@ -640,7 +640,7 @@ export default function ReferralCenter({ onBack, onNavigate, onOpenAuth }: Refer
           </div>
         </section>
 
-        <div className="flex items-center justify-center gap-2 pb-4 text-center text-[10px] text-ink-400">
+        <div className="flex items-center justify-center gap-2 px-2 pb-4 text-center text-[10px] leading-relaxed text-ink-400">
           <ShieldCheck className="h-3.5 w-3.5" />
           Referral attribution and reward decisions are verified on GoodSale&apos;s servers.
         </div>

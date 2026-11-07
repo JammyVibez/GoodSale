@@ -358,6 +358,7 @@ export const getFeaturedProducts = cache(async (): Promise<SeoProduct[]> => {
       .filter((row) => str(row.status, 'ACTIVE') === 'ACTIVE' && new Date(str(row.expires_at)).getTime() > now)
       .map((row) => num(row.product_id))
   );
-  // Only real, unexpired featured placements are labelled as promotions.
-  return products.filter((p) => ids.has(p.id));
+  // Only real, unexpired placements for currently purchasable listings are
+  // labelled as promotions.
+  return products.filter((p) => ids.has(p.id) && p.inStock);
 });

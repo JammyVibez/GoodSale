@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import {
   ArrowLeft, ArrowRight, BadgeCheck, Camera, Clock, Flag, Flame, Heart,
   Loader2, MapPin, MessageSquare, Package, Share2, Shield, ShieldCheck,
-  ShoppingCart, Star, Store, Tag, Truck, UserCheck, UserPlus, Users,
+  ShoppingCart, Sparkles, Star, Store, Tag, Truck, UserCheck, UserPlus, Users,
 } from 'lucide-react';
 import {
   getDBState, dbOperations, UserRole,
@@ -108,6 +108,14 @@ export default function SellerProfileView({
     verificationStatus: profile?.verificationStatus,
     verificationExpiresAt: profile?.verificationExpiresAt,
   });
+
+  // Verified+ is a paid seller membership. It is deliberately rendered as a
+  // separate label from identity/business verification.
+  const verifiedPlusUntil = db.verifiedPlusSubscriptions
+    .filter((entry) => entry.userId === sellerId)
+    .map((entry) => entry.expiresAt)
+    .filter((expiresAt) => new Date(expiresAt).getTime() > Date.now())
+    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
 
   useEffect(() => {
     if (business) {
@@ -451,6 +459,16 @@ export default function SellerProfileView({
                     expiresAt={profile?.verificationExpiresAt}
                     fallbackName={displayName}
                   />
+                )}
+                {verifiedPlusUntil && (
+                  <span
+                    title={`Verified+ member until ${new Date(verifiedPlusUntil).toLocaleDateString('en-NG')}. Paid seller membership, not identity verification.`}
+                    aria-label="Verified+ member. Paid seller membership, not identity verification."
+                    className="inline-flex shrink-0 items-center gap-1 rounded-full border border-gold-400/40 bg-gold-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-gold-700 dark:border-gold-300/25 dark:bg-gold-300/10 dark:text-gold-200"
+                  >
+                    <Sparkles className="h-2.5 w-2.5" aria-hidden="true" />
+                    Verified+ member
+                  </span>
                 )}
               </div>
               <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-ink-500 dark:text-ink-400">

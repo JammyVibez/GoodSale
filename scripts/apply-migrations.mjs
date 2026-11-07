@@ -119,6 +119,14 @@ const VERIFY_RPCS = [
   // Chat read state and inbox preferences
   'chat_mark_read',
   'chat_set_preferences',
+  // Server-verified Premium subscriptions
+  'activate_premium_subscription',
+  // Atomic, server-priced listing promotion purchase
+  'purchase_listing_promotion',
+  // Sponsored campaign reservation, review and refund
+  'purchase_sponsored_campaign',
+  'admin_review_sponsored_campaign',
+  'record_sponsored_ad_event',
 ];
 
 /** Tables the schema is expected to create (mirrors supabase/schema.sql). */
@@ -160,6 +168,7 @@ const VERIFY_TABLES = [
   'payment_settings',
   'payment_transactions',
   'product_bundles',
+  'premium_subscription_payments',
   'products',
   'profiles',
   'referrals',
@@ -187,6 +196,7 @@ const VERIFY_TABLES = [
   'shipping_zones',
   'seller_shipping_settings',
   'sponsored_ads',
+  'sponsored_ad_events',
   'verified_plus_subscriptions',
   'wallet_transactions',
   'wallet_funding_intents',

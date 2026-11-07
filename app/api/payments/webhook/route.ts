@@ -4,6 +4,7 @@ import { logger, publicErrorMessage } from '@/lib/logger';
 import { reconcilePaystackPayment } from '@/lib/data/payments';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { creditVerifiedWalletFunding } from '@/lib/wallet/server';
+import { activateVerifiedPremiumPayment } from '@/lib/premium/server';
 
 /**
  * Paystack webhook receiver.
@@ -38,6 +39,13 @@ export async function POST(req: NextRequest) {
     if (event?.event === 'charge.success' && event?.data?.status === 'success') {
       const reference = String(event.data?.reference || '').trim();
       const walletFundingId = Number(event.data?.metadata?.wallet_funding_id || 0) || null;
+
+      // Premium memberships are activated only from this signed event or a
+      // server-to-server verify call — never from the browser callback.
+      if (reference.startsWith('GSP_')) {
+        const premium = await activateVerifiedPremiumPayment(reference, event.data);
+        return NextResponse.json({ success: premium.success, received: true, premium });
+      }
 
       // Wallet funding is credited only after the signed event, amount and
       // intent identity are checked against the funding record.

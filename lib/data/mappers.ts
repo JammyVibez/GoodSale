@@ -1166,6 +1166,9 @@ export function mapRevenueSettings(row: Record<string, unknown>): RevenueSetting
     subPremiumPrice: n(row.sub_premium_price, 35000),
     subEnterprisePrice: n(row.sub_enterprise_price, 85000),
     verifiedPlusPrice: n(row.verified_plus_price, 10000),
+    premiumDurationDays: n(row.premium_duration_days, 30),
+    featuredRankingBoost: n(row.featured_ranking_boost, 30),
+    verifiedPlusRankingBoost: n(row.verified_plus_ranking_boost, 8),
     flashSaleFeaturePrice: n(row.flash_sale_feature_price, 7500),
     auctionSuccessFeePercentage: n(row.auction_success_fee_percentage, 2.5),
     adCpcPrice: n(row.ad_cpc_price, 150),
@@ -1189,6 +1192,10 @@ export function mapSponsoredAd(row: Record<string, unknown>): SponsoredAd {
       : ['HOME'],
     title: s(row.title),
     status: s(row.status, 'ACTIVE') as SponsoredAd['status'],
+    moderationStatus: row.moderation_status != null
+      ? (s(row.moderation_status) as SponsoredAd['moderationStatus'])
+      : undefined,
+    moderationReason: row.moderation_reason != null ? s(row.moderation_reason) : undefined,
     budget: n(row.budget),
     spent: n(row.spent),
     clicks: n(row.clicks),
@@ -1216,8 +1223,11 @@ export function mapFeaturedListing(row: Record<string, unknown>): FeaturedListin
     productId: n(row.product_id),
     sellerId: n(row.seller_id),
     durationDays: n(row.duration_days),
-    expiresAt: s(row.expires_at),
+    expiresAt: s(row.expires_at ?? row.ends_at),
     status: s(row.status, 'ACTIVE') as FeaturedListing['status'],
+    featureType: (s(row.feature_type, 'FEATURED') as FeaturedListing['featureType']),
+    startsAt: row.starts_at != null ? s(row.starts_at) : undefined,
+    amountPaid: row.amount_paid != null ? n(row.amount_paid) : undefined,
     createdAt: s(row.created_at, new Date().toISOString()),
   };
 }

@@ -330,7 +330,7 @@ export default function Home() {
         )}
 
         {currentView === 'revenue' && (
-          <RevenueCenterView />
+          <RevenueCenterView onNavigate={handleNavigate} />
         )}
 
 

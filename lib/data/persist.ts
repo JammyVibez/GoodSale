@@ -656,9 +656,14 @@ export async function insertFeaturedListing(
   client: SupabaseClient,
   row: { productId: number; sellerId: number; featureType: string; startsAt: string; endsAt: string; amountPaid: number }
 ) {
+  const starts = new Date(row.startsAt).getTime();
+  const ends = new Date(row.endsAt).getTime();
+  const durationDays = Math.max(1, Math.ceil((ends - starts) / 86_400_000));
   const { error } = await client.from('featured_listings').insert({
     product_id: row.productId,
     seller_id: row.sellerId,
+    duration_days: durationDays,
+    expires_at: row.endsAt,
     feature_type: row.featureType,
     starts_at: row.startsAt,
     ends_at: row.endsAt,

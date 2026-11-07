@@ -1450,6 +1450,11 @@ export interface RevenueSettings {
   subPremiumPrice: number;
   subEnterprisePrice: number;
   verifiedPlusPrice: number;
+  /** Admin-configured membership period; defaults to a 30-day manual renewal. */
+  premiumDurationDays: number;
+  /** Ranking points are additive tie-breakers after relevance filters. */
+  featuredRankingBoost: number;
+  verifiedPlusRankingBoost: number;
   flashSaleFeaturePrice: number;
   auctionSuccessFeePercentage: number;
   adCpcPrice: number;
@@ -1477,7 +1482,9 @@ export interface SponsoredAd {
   /** Where in the app this ad is shown. */
   placements?: AdPlacement[];
   title: string;
-  status: 'ACTIVE' | 'PAUSED' | 'COMPLETED';
+  status: 'PENDING_REVIEW' | 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'REJECTED';
+  moderationStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  moderationReason?: string;
   budget: number;
   spent: number;
   clicks: number;
@@ -1506,6 +1513,9 @@ export interface FeaturedListing {
   durationDays: number;
   expiresAt: string;
   status: 'ACTIVE' | 'EXPIRED';
+  featureType?: 'FEATURED' | 'FLASH_SALE';
+  startsAt?: string;
+  amountPaid?: number;
   createdAt: string;
 }
 

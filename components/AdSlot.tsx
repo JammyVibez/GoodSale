@@ -3,7 +3,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { X, Play, Sparkles } from 'lucide-react';
-import { getDBState, dbOperations } from '../lib/store';
+import { getDBState } from '../lib/store';
 import type { AdPlacement } from '../lib/types';
 
 export interface AdSlotProps {
@@ -68,7 +68,11 @@ export default function AdSlot({ placement, onNavigate, variant = 'banner', clas
     if (!ad || dismissedIds.has(ad.id)) return;
     if (impressionsRef.current.has(ad.id)) return;
     impressionsRef.current.add(ad.id);
-    dbOperations.interactSponsoredAd(ad.id, 'IMPRESSION');
+    void fetch('/api/ads/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ adId: ad.id, type: 'IMPRESSION' }),
+    }).catch(() => undefined);
   }, [ad, dismissedIds]);
 
   if (!ad || closed) return null;
@@ -89,7 +93,11 @@ export default function AdSlot({ placement, onNavigate, variant = 'banner', clas
   };
 
   const handleClick = () => {
-    dbOperations.interactSponsoredAd(ad.id, 'CLICK');
+    void fetch('/api/ads/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ adId: ad.id, type: 'CLICK' }),
+    }).catch(() => undefined);
     if (ad.clickView && onNavigate) {
       onNavigate(ad.clickView);
     }

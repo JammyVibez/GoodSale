@@ -1,919 +1,2215 @@
 // components/RevenueCenterView.tsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { 
-  DollarSign, Landmark, Sparkles, Star, Award, ShieldCheck, Play, ArrowRight,
-  TrendingUp, Volume2, Plus, Check, RefreshCw, AlertCircle, FileText, BarChart3,
-  MousePointerClick, Flame, Layers, Clock, Zap
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  AlertCircle,
+  ArrowDownLeft,
+  ArrowDownToLine,
+  ArrowRight,
+  ArrowUpRight,
+  Award,
+  BadgeCheck,
+  Banknote,
+  BarChart3,
+  Building2,
+  Check,
+  CheckCircle2,
+  ChevronRight,
+  Clock3,
+  Crown,
+  Eye,
+  Flame,
+  Gauge,
+  Landmark,
+  Layers3,
+  Loader2,
+  Megaphone,
+  MousePointerClick,
+  Plus,
+  RefreshCw,
+  Rocket,
+  ShieldCheck,
+  Sparkles,
+  Star,
+  Target,
+  TrendingUp,
+  Wallet as WalletIcon,
+  Zap,
 } from 'lucide-react';
-import { motion } from 'motion/react';
-import { 
-  getDBState, saveDBState, dbOperations, RevenueSettings, Wallet, WalletTransaction, UserRole
-} from '../lib/store';
-export default function RevenueCenterView() {
-  const [db, setDb] = useState(getDBState());
-  const [activeSubTab, setActiveSubTab] = useState<'wallet' | 'subscriptions' | 'listings' | 'ads'>('wallet');
+import { computeEscrowFee } from '@/lib/payments/helpers';
+import { toast } from '@/lib/feedback';
+import { dbOperations, reloadFromSupabase, useDBState } from '../lib/store';
+import AddFundsDialog from './wallet/AddFundsDialog';
+import WithdrawReviewDialog from './wallet/WithdrawReviewDialog';
+import SubscriptionCheckoutDialog, {
+  type PremiumCheckoutProduct,
+} from './premium/SubscriptionCheckoutDialog';
+import Button from './ui/Button';
+import SegmentedControl from './ui/SegmentedControl';
 
-  // Wallet deposit / withdrawal states
-  const [depositAmount, setDepositAmount] = useState('15000');
+type RevenueTab = 'wallet' | 'memberships' | 'promotions' | 'ads';
+type TxFilter = 'all' | 'credit' | 'debit';
+type BusinessPlan = 'PRO' | 'PREMIUM' | 'ENTERPRISE';
+
+interface RevenueCenterViewProps {
+  onNavigate?: (view: string, payload?: unknown) => void;
+}
+
+type WalletStatus = {
+  fundingAvailable: boolean;
+  payoutsAvailable: boolean;
+  provider: {
+    fundingEnabled: boolean;
+    payoutsEnabled: boolean;
+    webhookConfigured: boolean;
+  };
+  limits: {
+    funding_min: number;
+    funding_max: number;
+    withdrawal_min: number;
+    withdrawal_max: number;
+    withdrawal_fee: number;
+    daily_withdrawal_limit: number;
+  };
+};
+
+type Feedback = { tone: 'success' | 'error'; message: string } | null;
+
+type PremiumPayment = {
+  reference: string;
+  product: 'VERIFIED_PLUS' | 'BUSINESS';
+  planCode: string;
+  amount: number;
+  currency: string;
+  status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'ABANDONED';
+  startsAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+  paidAt: string | null;
+};
+
+type SubscriptionCheckout = {
+  product: PremiumCheckoutProduct;
+  planCode?: string;
+  title: string;
+  price: number;
+};
+
+const NIGERIAN_BANKS = [
+  'Access Bank',
+  'Ecobank Nigeria',
+  'Fidelity Bank',
+  'First Bank of Nigeria',
+  'First City Monument Bank',
+  'Guaranty Trust Bank',
+  'Kuda Microfinance Bank',
+  'Moniepoint Microfinance Bank',
+  'Opay Digital Services',
+  'Palmpay',
+  'Polaris Bank',
+  'Stanbic IBTC Bank',
+  'Sterling Bank',
+  'Union Bank of Nigeria',
+  'United Bank for Africa',
+  'Wema Bank',
+  'Zenith Bank',
+];
+
+const naira = (value: number) => `₦${Math.round(value).toLocaleString('en-NG')}`;
+
+const compactNumber = (value: number) =>
+  Intl.NumberFormat('en-NG', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+
+const dateLabel = (value: string, options?: Intl.DateTimeFormatOptions) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString(
+    'en-NG',
+    options || { day: 'numeric', month: 'short', year: 'numeric' }
+  );
+};
+
+const activeSubscription = (
+  subscription: { expiresAt: string } | undefined
+) => !!subscription && new Date(subscription.expiresAt).getTime() > Date.now();
+
+function StatusPill({
+  available,
+  label,
+}: {
+  available: boolean;
+  label: string;
+}) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
+        available
+          ? 'border-jade-500/20 bg-jade-500/10 text-jade-700 dark:border-jade-400/25 dark:text-jade-300'
+          : 'border-ink-200 bg-ink-100 text-ink-500 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-400'
+      }`}
+    >
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${available ? 'bg-jade-500' : 'bg-ink-400'}`}
+      />
+      {label}
+    </span>
+  );
+}
+
+function SectionHead({
+  eyebrow,
+  title,
+  description,
+  action,
+}: {
+  eyebrow?: string;
+  title: string;
+  description: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="min-w-0">
+        {eyebrow && (
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-jade-700 dark:text-jade-300">
+            {eyebrow}
+          </p>
+        )}
+        <h2 className="mt-1 font-display text-xl font-extrabold tracking-tight text-ink-950 dark:text-white sm:text-2xl">
+          {title}
+        </h2>
+        <p className="mt-1.5 max-w-2xl text-xs leading-relaxed text-ink-500 dark:text-ink-400 sm:text-sm">
+          {description}
+        </p>
+      </div>
+      {action && <div className="shrink-0">{action}</div>}
+    </div>
+  );
+}
+
+export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps) {
+  const db = useDBState();
+  const user = db.currentUser;
+
+  const [activeTab, setActiveTab] = useState<RevenueTab>('wallet');
+  const [feedback, setFeedback] = useState<Feedback>(null);
+  const [walletStatus, setWalletStatus] = useState<WalletStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+
+  const [addFundsOpen, setAddFundsOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [submittingPayout, setSubmittingPayout] = useState(false);
+
   const [withdrawalAmount, setWithdrawalAmount] = useState('');
-  const [bankName, setBankName] = useState('Guaranty Trust Bank (GTB)');
+  const [bankName, setBankName] = useState('');
   const [bankAccountName, setBankAccountName] = useState('');
   const [bankAccountNumber, setBankAccountNumber] = useState('');
-  
-  const [walletError, setWalletError] = useState<string | null>(null);
-  const [walletSuccess, setWalletSuccess] = useState<string | null>(null);
 
-  // Sponsored Ads campaign creator states
+  const [businessPlan, setBusinessPlan] = useState<BusinessPlan>('PREMIUM');
+  const [subscriptionCheckout, setSubscriptionCheckout] =
+    useState<SubscriptionCheckout | null>(null);
+  const [premiumPayments, setPremiumPayments] = useState<PremiumPayment[]>([]);
+  const [premiumProvider, setPremiumProvider] = useState<{
+    loading: boolean;
+    available: boolean;
+    message: string | null;
+  }>({ loading: true, available: false, message: null });
+  const [selectedProductId, setSelectedProductId] = useState('');
+  const [featuredDuration, setFeaturedDuration] = useState<'3' | '7' | '14'>('7');
+  const [purchasingPromotion, setPurchasingPromotion] = useState(false);
+
   const [adTitle, setAdTitle] = useState('');
-  const [adType, setAdType] = useState<'PRODUCT' | 'BUSINESS' | 'BANNER_HOME' | 'BANNER_CATEGORY'>('PRODUCT');
+  const [adType, setAdType] = useState<'PRODUCT' | 'BUSINESS' | 'BANNER_HOME' | 'BANNER_CATEGORY'>(
+    'PRODUCT'
+  );
   const [adBudget, setAdBudget] = useState('5000');
+  const [creatingAd, setCreatingAd] = useState(false);
   const [adTargetId, setAdTargetId] = useState('');
   const [adBannerUrl, setAdBannerUrl] = useState('');
 
-  const [adError, setAdError] = useState<string | null>(null);
-  const [adSuccess, setAdSuccess] = useState<string | null>(null);
-
-  // Promote states
-  const [selectedProductId, setSelectedProductId] = useState<string>('');
-  const [featuredDuration, setFeaturedDuration] = useState<'3' | '7' | '14' | '30'>('7');
-
-  const [promoteError, setPromoteError] = useState<string | null>(null);
-  const [promoteSuccess, setPromoteSuccess] = useState<string | null>(null);
-
-  useEffect(() => {
-    const handleStateChange = () => {
-      setDb(getDBState());
-    };
-    window.addEventListener('goodsale_db_state_change', handleStateChange);
-    return () => window.removeEventListener('goodsale_db_state_change', handleStateChange);
-  }, []);
-
-  const user = db.currentUser;
-  
-  // Retrieve user's wallet (create if doesn't exist)
-  let wallet = user ? db.wallets.find(w => w.userId === user.id) : null;
-  if (user && !wallet) {
-    // Lazy auto initialize a real wallet at zero balance (top-ups come from Paystack).
-    wallet = {
-      id: db.wallets.length + 1,
-      userId: user.id,
-      balance: 0,
-    };
-    db.wallets.push(wallet);
-    saveDBState(db);
-  }
+  const [txFilter, setTxFilter] = useState<TxFilter>('all');
+  const [showAllTx, setShowAllTx] = useState(false);
 
   const settings = db.revenueSettings;
-  const myTransactions = wallet ? db.walletTransactions.filter(t => t.walletId === wallet?.id) : [];
-  const myCampaigns = user ? db.sponsoredAds.filter(a => a.sellerId === user.id) : [];
-  const myProducts = user ? db.products.filter(p => p.sellerId === user.id) : [];
 
-  // Check user subscription statuses
-  const isBusinessSubbed = user?.role === UserRole.BUSINESS || user?.role === UserRole.VERIFIED_BUSINESS;
-  const isVerifiedPlus = user?.role === UserRole.VERIFIED_SELLER || user?.role === UserRole.VERIFIED_BUSINESS;
+  const wallet = useMemo(
+    () => (user ? db.wallets.find((entry) => entry.userId === user.id) : undefined),
+    [db.wallets, user]
+  );
 
-  // Deposit Cash to Wallet
-  const handleDeposit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !wallet) return;
+  const transactions = useMemo(() => {
+    if (!wallet) return [];
+    return db.walletTransactions
+      .filter((entry) => entry.walletId === wallet.id)
+      .slice()
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [db.walletTransactions, wallet]);
 
-    // Wallet funding happens through verified Paystack checkout, which is only
-    // live once the Paystack keys are configured. No balance is credited locally.
-    setWalletSuccess(null);
-    setWalletError(
-      'Wallet top-ups are processed through verified Paystack checkout. Payments are not enabled in this deployment yet.'
-    );
-  };
+  const campaigns = useMemo(
+    () => (user ? db.sponsoredAds.filter((ad) => ad.sellerId === user.id) : []),
+    [db.sponsoredAds, user]
+  );
 
-  // Withdraw Cash from Wallet Form Submit
-  const handleWithdraw = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !wallet) return;
+  const products = useMemo(
+    () => (user ? db.products.filter((product) => product.sellerId === user.id) : []),
+    [db.products, user]
+  );
 
-    const amt = parseFloat(withdrawalAmount);
-    if (isNaN(amt) || amt <= 0) {
-      setWalletError('Please enter a valid withdrawal amount.');
-      return;
-    }
+  const businesses = useMemo(
+    () => (user ? db.businessSubscriptions.filter((entry) => entry.userId === user.id) : []),
+    [db.businessSubscriptions, user]
+  );
 
-    if (amt > wallet.balance) {
-      setWalletError('Insufficient wallet balance to execute payout withdrawal.');
-      return;
-    }
+  const currentBusiness = businesses
+    .slice()
+    .sort((a, b) => new Date(b.expiresAt).getTime() - new Date(a.expiresAt).getTime())[0];
 
-    if (!bankAccountName || !bankAccountNumber || bankAccountNumber.length < 10) {
-      setWalletError('Please fill in complete valid Nigerian bank routing credentials.');
-      return;
-    }
+  const currentVerifiedPlus = useMemo(
+    () =>
+      user
+        ? db.verifiedPlusSubscriptions
+            .filter((entry) => entry.userId === user.id)
+            .sort((a, b) => new Date(b.expiresAt).getTime() - new Date(a.expiresAt).getTime())[0]
+        : undefined,
+    [db.verifiedPlusSubscriptions, user]
+  );
 
-    setWalletError(null);
-    const result = await dbOperations.withdrawFromWallet(user.id, amt, {
-      name: bankAccountName,
-      number: bankAccountNumber,
-      bank: bankName
+  const featuredListings = useMemo(
+    () =>
+      user
+        ? db.featuredListings.filter(
+            (entry) =>
+              entry.sellerId === user.id &&
+              entry.status === 'ACTIVE' &&
+              new Date(entry.expiresAt).getTime() > Date.now()
+          )
+        : [],
+    [db.featuredListings, user]
+  );
+
+  const payouts = user
+    ? db.withdrawalRequests.filter((entry) => entry.userId === user.id)
+    : [];
+
+  const pendingPayouts = payouts
+    .filter((entry) => entry.status === 'PENDING' || entry.status === 'PROCESSING')
+    .reduce((sum, entry) => sum + entry.amount, 0);
+
+  const escrowSummary = useMemo(() => {
+    if (!user) return { seller: 0, buyer: 0, pendingEarnings: 0 };
+    let seller = 0;
+    let buyer = 0;
+    let pendingEarnings = 0;
+    db.escrows.forEach((entry) => {
+      if (entry.isReleased || entry.isRefunded) return;
+      const order = db.orders.find((item) => item.id === entry.orderId);
+      if (!order) return;
+      if (order.sellerId === user.id) {
+        seller += entry.heldAmount;
+        pendingEarnings += computeEscrowFee(entry.heldAmount, {
+          pct: settings?.escrowPercentageFee ?? 1.5,
+          min: settings?.escrowMinFee ?? 100,
+          max: settings?.escrowMaxFee ?? 15000,
+          deliveryFee: order.deliveryFee || 0,
+        }).payout;
+      } else if (order.buyerId === user.id) {
+        buyer += entry.heldAmount;
+      }
     });
+    return { seller, buyer, pendingEarnings };
+  }, [db.escrows, db.orders, settings, user]);
 
-    if (result.success) {
-      setWalletSuccess(`Success! Withdrawal payout request of ₦${amt.toLocaleString()} received and under verification process.`);
-      setWithdrawalAmount('');
-      setBankAccountName('');
-      setBankAccountNumber('');
-      setTimeout(() => setWalletSuccess(null), 5000);
-    } else {
-      setWalletError(result.message || 'Withdrawal processing failed.');
-    }
-  };
+  const monthEarnings = useMemo(() => {
+    const now = new Date();
+    return transactions
+      .filter((entry) => {
+        const created = new Date(entry.createdAt);
+        return (
+          entry.status === 'COMPLETED' &&
+          entry.amount > 0 &&
+          created.getMonth() === now.getMonth() &&
+          created.getFullYear() === now.getFullYear()
+        );
+      })
+      .reduce((sum, entry) => sum + entry.amount, 0);
+  }, [transactions]);
 
-  // Business subscription checkout
-  const handleSubscribeBusiness = (plan: 'PRO' | 'PREMIUM' | 'ENTERPRISE') => {
-    if (!user) {
-      setWalletError('Please log in first to activate a business tier subscription.');
+  const activeCampaigns = campaigns.filter((ad) => ad.status === 'ACTIVE');
+  const adSpend = campaigns.reduce((sum, ad) => sum + ad.spent, 0);
+  const adBudgetTotal = campaigns.reduce((sum, ad) => sum + ad.budget, 0);
+  const balance = wallet?.balance ?? 0;
+  const premiumDurationDays = Math.max(1, Number(settings.premiumDurationDays) || 30);
+
+  // Paid membership is derived only from a server-written, unexpired
+  // subscription. Roles and identity verification never imply Verified+.
+  const isBusinessSubbed =
+    !!currentBusiness &&
+    currentBusiness.plan !== 'FREE' &&
+    activeSubscription(currentBusiness);
+  const isVerifiedPlus = activeSubscription(currentVerifiedPlus);
+  const isCurrentBusinessPlan =
+    isBusinessSubbed &&
+    !!currentBusiness &&
+    activeSubscription(currentBusiness) &&
+    currentBusiness.plan === businessPlan;
+
+  const fundingAvailable = !!walletStatus?.fundingAvailable;
+  const payoutsAvailable = !!walletStatus?.payoutsAvailable;
+  const fundingMin = walletStatus?.limits.funding_min ?? 1000;
+  const fundingMax = walletStatus?.limits.funding_max ?? 500000;
+  const withdrawalMin = walletStatus?.limits.withdrawal_min ?? 1000;
+  const withdrawalMax = walletStatus?.limits.withdrawal_max ?? 1000000;
+  const withdrawalFee = walletStatus?.limits.withdrawal_fee ?? 0;
+
+  const userId = user?.id;
+  const refreshWalletStatus = useCallback(async () => {
+    if (!userId) {
+      setWalletStatus(null);
       return;
     }
-    setWalletError(null);
-    const result = dbOperations.subscribeBusiness(user.id, plan);
-    if (result.success) {
-      setWalletSuccess(`Congratulations! Your Business ${plan} membership plan has been successfully activated.`);
-      setTimeout(() => setWalletSuccess(null), 5000);
-    } else {
-      setWalletError(result.message || 'Subscription payment checkout failed.');
+    setStatusLoading(true);
+    try {
+      const res = await fetch('/api/wallet/status', { cache: 'no-store' });
+      const payload = await res.json().catch(() => null);
+      if (payload?.success) setWalletStatus(payload as WalletStatus);
+    } catch {
+      // The ledger stays usable when capability lookup is unavailable.
+    } finally {
+      setStatusLoading(false);
     }
-  };
+  }, [userId]);
 
-  // Verified+ Checkout
-  const handleSubscribeVerifiedPlus = () => {
-    if (!user) {
-      setWalletError('Please log in first.');
+  const loadPremiumAccount = useCallback(async () => {
+    if (!userId) {
+      setPremiumPayments([]);
+      setPremiumProvider({ loading: false, available: false, message: 'Sign in to view memberships.' });
       return;
     }
-    setWalletError(null);
-    const result = dbOperations.subscribeVerifiedPlus(user.id);
-    if (result.success) {
-      setWalletSuccess('Outstanding! Verified+ Premium Seller credentials successfully applied to your account badge.');
-      setTimeout(() => setWalletSuccess(null), 5000);
-    } else {
-      setWalletError(result.message || 'Verified+ badge subscription checkout failed.');
+    setPremiumProvider((current) => ({ ...current, loading: true }));
+    try {
+      const res = await fetch('/api/premium/subscriptions', { cache: 'no-store' });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok || !payload?.success) {
+        setPremiumProvider({
+          loading: false,
+          available: false,
+          message: payload?.error || 'Membership status could not be loaded.',
+        });
+        return;
+      }
+      const available =
+        Boolean(payload.provider?.fundingEnabled) && payload.schemaReady !== false;
+      setPremiumProvider({
+        loading: false,
+        available,
+        message: available
+          ? null
+          : 'Membership checkout needs Paystack keys and the premium database migration.',
+      });
+      setPremiumPayments(Array.isArray(payload.payments) ? payload.payments : []);
+    } catch {
+      setPremiumProvider({
+        loading: false,
+        available: false,
+        message: 'Membership status could not be loaded. Try again.',
+      });
     }
+  }, [userId]);
+
+  useEffect(() => {
+    void refreshWalletStatus();
+    void loadPremiumAccount();
+  }, [refreshWalletStatus, loadPremiumAccount]);
+
+  useEffect(() => {
+    if (!wallet) return;
+    setBankName((previous) => previous || wallet.bankName || '');
+    setBankAccountName((previous) => previous || wallet.bankAccountName || '');
+    setBankAccountNumber((previous) => previous || wallet.bankAccountNumber || '');
+  }, [wallet]);
+
+  useEffect(() => {
+    if (!feedback) return;
+    const timer = window.setTimeout(() => setFeedback(null), 6500);
+    return () => window.clearTimeout(timer);
+  }, [feedback]);
+
+  const selectTab = (tab: RevenueTab) => {
+    setActiveTab(tab);
+    setFeedback(null);
   };
 
-  // Promote products featured or flash sales checkout
-  const handlePromoteProduct = (type: 'FEATURED' | 'FLASHSALE') => {
+  const parsedWithdrawal = Number(withdrawalAmount);
+  const withdrawalError =
+    withdrawalAmount.trim().length === 0
+      ? null
+      : !Number.isFinite(parsedWithdrawal) || parsedWithdrawal <= 0
+        ? 'Enter a valid payout amount.'
+        : parsedWithdrawal < withdrawalMin
+          ? `Minimum payout is ${naira(withdrawalMin)}.`
+          : parsedWithdrawal > withdrawalMax
+            ? `Maximum payout is ${naira(withdrawalMax)}.`
+            : parsedWithdrawal > balance
+              ? 'Payout exceeds your available balance.'
+              : null;
+
+  const bankAccountValid = /^\d{10}$/.test(bankAccountNumber.trim());
+  const canWithdraw =
+    !!user &&
+    !submittingPayout &&
+    !!withdrawalAmount.trim() &&
+    !withdrawalError &&
+    parsedWithdrawal >= withdrawalMin &&
+    parsedWithdrawal <= withdrawalMax &&
+    parsedWithdrawal <= balance &&
+    bankName.trim().length > 1 &&
+    bankAccountName.trim().length > 1 &&
+    bankAccountValid;
+
+  const handleFunded = async () => {
+    await reloadFromSupabase();
+    await refreshWalletStatus();
+    toast.success('Paystack confirmed your payment and your balance is ready.', 'Wallet funded');
+  };
+
+  const handleWithdrawSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
     if (!user) return;
+    if (!canWithdraw) {
+      setFeedback({
+        tone: 'error',
+        message:
+          withdrawalError ||
+          'Complete your payout amount and bank details before continuing.',
+      });
+      return;
+    }
+    if (!payoutsAvailable) {
+      setFeedback({
+        tone: 'error',
+        message:
+          'Bank payouts are unavailable until Paystack transfers are configured for this deployment.',
+      });
+      return;
+    }
+    setFeedback(null);
+    setReviewOpen(true);
+  };
+
+  const submitWithdrawal = async () => {
+    if (!user || !canWithdraw || !payoutsAvailable) return;
+    setSubmittingPayout(true);
+    try {
+      const result = await dbOperations.withdrawFromWallet(user.id, parsedWithdrawal, {
+        bank: bankName.trim(),
+        name: bankAccountName.trim(),
+        number: bankAccountNumber.trim(),
+      });
+      if (result.success) {
+        setReviewOpen(false);
+        setWithdrawalAmount('');
+        toast.success(
+          `${naira(parsedWithdrawal)} is reserved for ${bankName.trim()} ••••${bankAccountNumber.slice(-4)}.`,
+          'Payout requested'
+        );
+        await refreshWalletStatus();
+      } else {
+        toast.error(result.message || 'Payout could not be requested.', 'Payout failed');
+      }
+    } finally {
+      setSubmittingPayout(false);
+    }
+  };
+
+  const openVerifiedPlusCheckout = () => {
+    if (!premiumProvider.available) {
+      setFeedback({
+        tone: 'error',
+        message:
+          premiumProvider.message ||
+          'Membership checkout is unavailable until Paystack is configured.',
+      });
+      return;
+    }
+    setSubscriptionCheckout({
+      product: 'VERIFIED_PLUS',
+      title: 'Verified+',
+      price: settings.verifiedPlusPrice,
+    });
+  };
+
+  const openBusinessCheckout = () => {
+    if (!premiumProvider.available) {
+      setFeedback({
+        tone: 'error',
+        message:
+          premiumProvider.message ||
+          'Membership checkout is unavailable until Paystack is configured.',
+      });
+      return;
+    }
+    setSubscriptionCheckout({
+      product: 'BUSINESS',
+      planCode: businessPlan,
+      title: `Business ${businessPlan}`,
+      price:
+        businessPlan === 'PRO'
+          ? settings.subProPrice
+          : businessPlan === 'PREMIUM'
+            ? settings.subPremiumPrice
+            : settings.subEnterprisePrice,
+    });
+  };
+
+  const handlePremiumActivated = async () => {
+    await reloadFromSupabase();
+    await loadPremiumAccount();
+    setFeedback({
+      tone: 'success',
+      message:
+        'Payment was verified by the server and your membership is active. Benefits are separate from identity or business verification.',
+    });
+    toast.success('Membership activated after server verification.', 'Membership active');
+  };
+
+  const handlePromoteProduct = async (type: 'FEATURED' | 'FLASH_SALE') => {
+    if (!user || purchasingPromotion) return;
     if (!selectedProductId) {
-      setPromoteError('Please select a product from your listings inventory.');
+      setFeedback({
+        tone: 'error',
+        message: 'Choose a listing from your inventory before starting a promotion.',
+      });
       return;
     }
 
-    setPromoteError(null);
-    setPromoteSuccess(null);
+    setPurchasingPromotion(true);
+    setFeedback(null);
+    try {
+      const res = await fetch('/api/promotions/purchase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId: Number(selectedProductId),
+          featureType: type,
+          durationDays: type === 'FEATURED' ? Number(featuredDuration) : 1,
+        }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !payload.success) {
+        setFeedback({
+          tone: 'error',
+          message: payload.error || 'Promotion checkout failed.',
+        });
+        return;
+      }
 
-    const prodId = parseInt(selectedProductId);
-    if (type === 'FEATURED') {
-      const days = parseInt(featuredDuration);
-      const result = dbOperations.promoteListingFeatured(prodId, days);
-      if (result.success) {
-        setPromoteSuccess(`Listing promoted successfully! Product promoted to Featured search placements for ${days} days.`);
-        setSelectedProductId('');
-      } else {
-        setPromoteError(result.message || 'Featured Promotion checkout failed.');
-      }
-    } else {
-      const result = dbOperations.promoteListingFlashSale(prodId);
-      if (result.success) {
-        setPromoteSuccess(`Listing scheduled! Product scheduled for the next high-traffic Flash Sale block.`);
-        setSelectedProductId('');
-      } else {
-        setPromoteError(result.message || 'Flash Sale promotion failed.');
-      }
+      await reloadFromSupabase();
+      setFeedback({
+        tone: 'success',
+        message:
+          type === 'FEATURED'
+            ? `Your listing is featured for ${featuredDuration} days in eligible category and search feeds.`
+            : 'Your Flash Sale placement is recorded and active for 24 hours.',
+      });
+      toast.success('Promotion purchased from your verified wallet.', 'Listing boosted');
+      setSelectedProductId('');
+    } catch {
+      setFeedback({
+        tone: 'error',
+        message: 'Promotion checkout could not be completed. No charge was recorded.',
+      });
+    } finally {
+      setPurchasingPromotion(false);
     }
   };
 
-  // Sponsored Ads Campaign creator
-  const handleCreateAd = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-
-    if (!adTitle || !adBudget) {
-      setAdError('Please specify an Ad campaign title and starting CPC wallet budget.');
+  const handleCreateAd = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!user || creatingAd) return;
+    const budget = Number(adBudget);
+    if (!adTitle.trim()) {
+      setFeedback({ tone: 'error', message: 'Add a title for the ad campaign.' });
+      return;
+    }
+    if (!Number.isFinite(budget) || budget < settings.adCpcPrice) {
+      setFeedback({
+        tone: 'error',
+        message: `Fund at least one click (${naira(settings.adCpcPrice)}) to launch this campaign.`,
+      });
+      return;
+    }
+    if (balance < budget) {
+      setFeedback({
+        tone: 'error',
+        message: 'Your wallet balance does not cover this campaign budget.',
+      });
+      return;
+    }
+    if (adType === 'PRODUCT' && !adTargetId) {
+      setFeedback({ tone: 'error', message: 'Choose the product this campaign should promote.' });
       return;
     }
 
-    const budget = parseFloat(adBudget);
-    if (isNaN(budget) || budget <= 0) {
-      setAdError('Please specify a valid CPC campaign budget.');
-      return;
-    }
+    setCreatingAd(true);
+    setFeedback(null);
+    try {
+      const res = await fetch('/api/ads/campaigns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: adType,
+          targetId: adType === 'PRODUCT' ? Number(adTargetId) : 0,
+          title: adTitle.trim(),
+          budget,
+          bannerUrl: adBannerUrl.trim() || undefined,
+        }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !payload.success) {
+        setFeedback({
+          tone: 'error',
+          message: payload.error || 'Ad campaign could not be submitted.',
+        });
+        return;
+      }
 
-    if (wallet && wallet.balance < budget) {
-      setAdError('Insufficient wallet balance to fund this ad campaign.');
-      return;
-    }
-
-    setAdError(null);
-    setAdSuccess(null);
-
-    const targetId = parseInt(adTargetId) || (myProducts[0]?.id || 1);
-    const result = dbOperations.createSponsoredAd(
-      user.id,
-      adType,
-      targetId,
-      adTitle,
-      budget,
-      adBannerUrl
-    );
-
-    if (result.success) {
-      setAdSuccess(`Campaign activated! Sponsored CPC Ad "${adTitle}" is now running across home and category feeds.`);
+      await reloadFromSupabase();
+      setFeedback({
+        tone: 'success',
+        message: `"${adTitle.trim()}" is awaiting moderation. Its budget is reserved and no ad serves until an admin approves it.`,
+      });
+      toast.success('Campaign submitted for admin review.', 'Campaign pending');
       setAdTitle('');
       setAdBudget('5000');
-    } else {
-      setAdError(result.message || 'Ad campaign initialization failed.');
+      setAdTargetId('');
+      setAdBannerUrl('');
+    } catch {
+      setFeedback({
+        tone: 'error',
+        message: 'Campaign submission could not be completed. No charge was recorded.',
+      });
+    } finally {
+      setCreatingAd(false);
     }
   };
 
-  return (
-    <div className="max-w-7xl mx-auto px-4 py-8 font-sans" id="revenue-center">
-      
-      {/* Top Banner */}
-      <div className="bg-gradient-to-r from-ink-500 via-ink-600 to-ink-900 rounded-3xl p-6 md:p-8 text-white shadow-xl relative overflow-hidden mb-8">
-        <div className="absolute right-0 top-0 opacity-10 transform translate-x-12 -translate-y-12">
-          <DollarSign className="w-96 h-96" />
-        </div>
-        <div className="relative z-10 space-y-2 max-w-xl">
-          <div className="inline-flex items-center gap-1.5 bg-ink-400/20 border border-ink-300/30 px-3 py-1 rounded-full text-xs font-semibold tracking-wide text-ink-200">
-            <Sparkles className="w-3.5 h-3.5 text-ink-300" />
-            GoodSale Revenue Engine
+  const filteredTransactions = transactions.filter((entry) => {
+    if (txFilter === 'credit') return entry.amount > 0;
+    if (txFilter === 'debit') return entry.amount < 0;
+    return true;
+  });
+  const visibleTransactions = showAllTx ? filteredTransactions : filteredTransactions.slice(0, 7);
+
+  const featuredPrice = {
+    '3': settings.featured3DaysPrice,
+    '7': settings.featured7DaysPrice,
+    '14': settings.featured14DaysPrice,
+  }[featuredDuration];
+  const selectedProduct = products.find((product) => product.id === Number(selectedProductId));
+
+  if (!user) {
+    return (
+      <div className="mx-auto flex min-h-[70vh] max-w-xl items-center px-4 py-16">
+        <div className="w-full overflow-hidden rounded-[2rem] border border-ink-200 bg-white text-center shadow-xl shadow-ink-950/5 dark:border-ink-800 dark:bg-ink-900">
+          <div className="h-1.5 bg-gradient-to-r from-jade-500 via-jade-300 to-gold-300" />
+          <div className="p-8 sm:p-10">
+            <span className="mx-auto grid h-16 w-16 place-items-center rounded-3xl bg-jade-500/10 text-jade-700 dark:text-jade-300">
+              <WalletIcon className="h-8 w-8" />
+            </span>
+            <p className="mt-5 text-[10px] font-bold uppercase tracking-[0.22em] text-jade-700 dark:text-jade-300">
+              Revenue hub
+            </p>
+            <h1 className="mt-2 font-display text-3xl font-extrabold tracking-tight text-ink-950 dark:text-white">
+              Sign in to grow your money
+            </h1>
+            <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-ink-500 dark:text-ink-400">
+              Track escrow earnings, top up your wallet, withdraw to your bank, and launch
+              promotions from one place.
+            </p>
+            <Button className="mt-6 w-full sm:w-auto" onClick={() => onNavigate?.('marketplace')}>
+              Explore GoodSale
+              <ArrowRight className="h-4 w-4" />
+            </Button>
           </div>
-          <h1 className="text-2xl md:text-4xl font-semibold tracking-tight">
-            Revenue & Wallet Portal
-          </h1>
-          <p className="text-xs md:text-sm text-ink-100 font-medium animate-fade-in">
-            Manage your local payments, business subscriptions, featured listings, escrow disbursements, and PPC Sponsored campaigns directly.
-          </p>
         </div>
       </div>
+    );
+  }
 
-      {!user ? (
-        <div className="text-center py-16 bg-white dark:bg-ink-900 border border-ink-100 dark:border-ink-800 rounded-3xl shadow-md p-8">
-          <AlertCircle className="w-16 h-16 text-ink-500 mx-auto mb-4" />
-          <h3 className="text-lg font-bold text-ink-800 dark:text-white">Authentication Required</h3>
-          <p className="text-xs text-ink-500 dark:text-ink-400 max-w-sm mx-auto mt-2">
-            Please log in to manage your wallets, activate business subscriptions, or promote your listings.
-          </p>
+  const streams: Array<{
+    id: RevenueTab;
+    title: string;
+    value: string;
+    hint: string;
+    icon: React.ComponentType<{ className?: string }>;
+    status: string;
+    ready: boolean;
+  }> = [
+    {
+      id: 'wallet',
+      title: 'Wallet & payouts',
+      value: naira(balance),
+      hint: pendingPayouts > 0 ? `${naira(pendingPayouts)} in transit` : 'Ready to withdraw',
+      icon: Landmark,
+      status: statusLoading
+        ? 'Checking'
+        : fundingAvailable
+          ? 'Funding ready'
+          : 'Funding offline',
+      ready: fundingAvailable,
+    },
+    {
+      id: 'memberships',
+      title: 'Memberships',
+      value: isVerifiedPlus ? 'Verified+' : isBusinessSubbed ? 'Business' : 'Free',
+      hint: isVerifiedPlus
+        ? 'Trust badge & search boost'
+        : isBusinessSubbed
+          ? 'Business growth tools'
+          : 'Upgrade your storefront',
+      icon: Crown,
+      status: isVerifiedPlus || isBusinessSubbed ? 'Active' : 'Available',
+      ready: isVerifiedPlus || isBusinessSubbed,
+    },
+    {
+      id: 'promotions',
+      title: 'Listing boosts',
+      value: String(featuredListings.length),
+      hint:
+        featuredListings.length > 0
+          ? `${products.length} listing${products.length === 1 ? '' : 's'} in inventory`
+          : 'Reach more buyers',
+      icon: Flame,
+      status: featuredListings.length > 0 ? 'Live' : 'Ready',
+      ready: featuredListings.length > 0,
+    },
+    {
+      id: 'ads',
+      title: 'Sponsored ads',
+      value: String(activeCampaigns.length),
+      hint: adSpend > 0 ? `${naira(adSpend)} spent` : 'Budget-funded clicks',
+      icon: Megaphone,
+      status: activeCampaigns.length > 0 ? 'Running' : 'Paused',
+      ready: activeCampaigns.length > 0,
+    },
+  ];
+
+  return (
+    <div className="min-h-screen overflow-x-clip bg-ink-50 pb-28 transition-colors sm:pb-12 dark:bg-ink-950">
+      <div className="mx-auto max-w-6xl space-y-6 px-4 pt-6 sm:px-6 lg:px-8">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.22em] text-jade-700 dark:text-jade-300">
+              <TrendingUp className="h-3.5 w-3.5" />
+              Money &amp; growth
+            </p>
+            <h1 className="mt-1.5 font-display text-3xl font-extrabold tracking-tight text-ink-950 dark:text-white sm:text-[2.2rem]">
+              Revenue hub
+            </h1>
+            <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-ink-500 dark:text-ink-400">
+              Your escrow earnings, wallet, memberships and paid growth tools — organised around
+              what you want to do next.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusPill available={fundingAvailable} label={`Funding ${fundingAvailable ? 'ready' : 'offline'}`} />
+            <StatusPill available={payoutsAvailable} label={`Payouts ${payoutsAvailable ? 'ready' : 'offline'}`} />
+            <button
+              type="button"
+              onClick={() => void refreshWalletStatus()}
+              disabled={statusLoading}
+              className="inline-flex h-9 items-center gap-2 rounded-full border border-ink-200 bg-white px-3.5 text-[11px] font-bold text-ink-600 transition-colors hover:border-jade-400 hover:text-jade-700 disabled:opacity-50 dark:border-ink-800 dark:bg-ink-900 dark:text-white/65"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${statusLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+          </div>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          
-          {/* Side Tabs Menu */}
-          <div className="lg:col-span-1 space-y-6">
-            <div className="bg-white dark:bg-ink-900 border border-ink-100 dark:border-ink-800 rounded-3xl p-5 shadow-sm space-y-4">
-              
-              {/* Wallet Card Balance quick check */}
-              <div className="bg-gradient-to-br from-jade-500/10 to-jade-600/5 dark:from-jade-950/20 border border-jade-500/20 p-4 rounded-2xl space-y-1.5">
-                <span className="text-xs text-jade-600 dark:text-jade-400 font-bold tracking-wider font-mono">Available Wallet Balance</span>
-                <p className="text-2xl font-bold text-jade-600 dark:text-jade-400 font-mono">
-                  ₦{wallet ? wallet.balance.toLocaleString() : '0'}
-                </p>
-                <div className="text-xs text-ink-400">
-                  Secure Escrow Trust Wallet • Nigeria
-                </div>
-              </div>
 
-              {/* Subtabs lists */}
-              <div className="space-y-1">
-                <button
-                  onClick={() => { setActiveSubTab('wallet'); setWalletError(null); setWalletSuccess(null); }}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-bold transition-all ${
-                    activeSubTab === 'wallet' 
-                      ? 'bg-jade-500 text-white shadow-sm' 
-                      : 'text-ink-600 dark:text-ink-400 hover:bg-ink-50 dark:hover:bg-ink-850'
-                  }`}
-                >
-                  <Landmark className="w-4 h-4" />
-                  Wallet, Deposits & Payouts
-                </button>
-
-                <button
-                  onClick={() => { setActiveSubTab('subscriptions'); setWalletError(null); setWalletSuccess(null); }}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-bold transition-all ${
-                    activeSubTab === 'subscriptions' 
-                      ? 'bg-jade-500 text-white shadow-sm' 
-                      : 'text-ink-600 dark:text-ink-400 hover:bg-ink-50 dark:hover:bg-ink-850'
-                  }`}
-                >
-                  <Award className="w-4 h-4" />
-                  Premium Memberships
-                </button>
-
-                <button
-                  onClick={() => { setActiveSubTab('listings'); setPromoteError(null); setPromoteSuccess(null); }}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-bold transition-all ${
-                    activeSubTab === 'listings' 
-                      ? 'bg-jade-500 text-white shadow-sm' 
-                      : 'text-ink-600 dark:text-ink-400 hover:bg-ink-50 dark:hover:bg-ink-850'
-                  }`}
-                >
-                  <Zap className="w-4 h-4" />
-                  Promote Listings (Featured)
-                </button>
-
-                <button
-                  onClick={() => { setActiveSubTab('ads'); setAdError(null); setAdSuccess(null); }}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-bold transition-all ${
-                    activeSubTab === 'ads' 
-                      ? 'bg-jade-500 text-white shadow-sm' 
-                      : 'text-ink-600 dark:text-ink-400 hover:bg-ink-50 dark:hover:bg-ink-850'
-                  }`}
-                >
-                  <MousePointerClick className="w-4 h-4" />
-                  Sponsored CPC Ads Builder
-                </button>
-              </div>
-
+        <section className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-jade-950 via-jade-900 to-ink-950 text-white shadow-2xl shadow-jade-950/15">
+          <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+            <div className="absolute -right-20 -top-28 h-80 w-80 rounded-full bg-jade-400/20 blur-3xl" />
+            <div className="absolute -bottom-32 left-1/4 h-72 w-72 rounded-full bg-gold-300/10 blur-3xl" />
+            <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-jade-300/50 to-transparent" />
+            <div className="absolute right-5 top-4 font-display text-[11rem] font-black leading-none text-white/[0.035] sm:text-[15rem]">
+              ₦
             </div>
           </div>
 
-          {/* Main SubTab Content Container */}
-          <div className="lg:col-span-3">
-            <div className="bg-white dark:bg-ink-900 border border-ink-100 dark:border-ink-800 rounded-3xl p-6 md:p-8 shadow-sm min-h-[500px] space-y-6">
-              
-              {/* WALLET DEPOSITS & PAYOUTS SUBTAB */}
-              {activeSubTab === 'wallet' && (
-                <div className="space-y-8">
-                  
-                  <div className="space-y-1">
-                    <h3 className="text-lg font-bold text-ink-800 dark:text-white">Wallet & Bank Settlement Hub</h3>
-                    <p className="text-xs text-ink-500 dark:text-ink-400">
-                      Disburse secure sales funds, pay for platform premiums, or withdraw directly to your verified local Nigerian bank account.
+          <div className="relative grid gap-8 p-6 sm:p-8 lg:grid-cols-[1.25fr_0.75fr] lg:items-center lg:p-10">
+            <div className="min-w-0">
+              <span className="inline-flex items-center gap-2 rounded-full border border-gold-300/25 bg-gold-300/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-gold-200">
+                <Rocket className="h-3.5 w-3.5" />
+                Revenue command centre
+              </span>
+              <h2 className="mt-5 max-w-xl font-display text-3xl font-extrabold leading-[1.06] tracking-tight sm:text-[2.6rem]">
+                Every naira earned.
+                <span className="block bg-gradient-to-r from-jade-200 via-gold-200 to-gold-300 bg-clip-text text-transparent">
+                  Every next move.
+                </span>
+              </h2>
+              <p className="mt-3 max-w-lg text-sm leading-relaxed text-white/60">
+                Escrow-protected sales settle here. Keep your balance ready for payouts, then
+                invest in visibility when you want more demand.
+              </p>
+
+              <div className="mt-7 flex flex-wrap items-end gap-x-5 gap-y-3">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">
+                    Available balance
+                  </p>
+                  <p className="mt-1 font-display text-4xl font-extrabold tracking-tight sm:text-5xl">
+                    {naira(balance)}
+                  </p>
+                </div>
+                <span className="mb-1.5 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[10px] font-bold text-jade-100/80">
+                  <ShieldCheck className="h-3 w-3" /> Escrow protected
+                </span>
+              </div>
+
+              <div className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!fundingAvailable) {
+                      toast.info('Add funds becomes available when Paystack is configured.');
+                      return;
+                    }
+                    setAddFundsOpen(true);
+                  }}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-gold-300 px-5 text-sm font-bold text-jade-950 shadow-lg shadow-black/10 transition-all press-scale hover:bg-gold-200"
+                >
+                  <Plus className="h-4 w-4" /> Add funds
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    selectTab('wallet');
+                    document.getElementById('revenue-workspace')?.scrollIntoView({
+                      behavior: 'smooth',
+                      block: 'start',
+                    });
+                    window.setTimeout(
+                      () => document.getElementById('withdraw-amount')?.focus(),
+                      350
+                    );
+                  }}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-white px-5 text-sm font-bold text-ink-950 shadow-lg shadow-black/10 transition-all press-scale hover:bg-jade-50"
+                >
+                  <ArrowDownToLine className="h-4 w-4" /> Withdraw
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    selectTab('promotions');
+                    document.getElementById('revenue-workspace')?.scrollIntoView({
+                      behavior: 'smooth',
+                      block: 'start',
+                    });
+                  }}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-5 text-sm font-bold text-white transition-colors hover:bg-white/10"
+                >
+                  <Flame className="h-4 w-4" /> Boost a listing
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-[1.6rem] border border-white/10 bg-white/[0.06] p-5 backdrop-blur-md">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                  Money at a glance
+                </p>
+                <span className="grid h-8 w-8 place-items-center rounded-xl bg-white/[0.07] text-gold-200">
+                  <Gauge className="h-4 w-4" />
+                </span>
+              </div>
+              <div className="mt-4 space-y-4">
+                <div className="flex items-end justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] text-white/45">Seller escrow</p>
+                    <p className="mt-0.5 font-display text-xl font-bold text-white">
+                      {naira(escrowSummary.seller)}
                     </p>
                   </div>
-
-                  {walletError && (
-                    <div className="p-4 bg-ink-500/10 text-ink-500 text-xs rounded-2xl border border-ink-500/20 font-medium flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                      <span>{walletError}</span>
-                    </div>
-                  )}
-
-                  {walletSuccess && (
-                    <div className="p-4 bg-jade-500/10 text-jade-500 text-xs rounded-2xl border border-jade-500/20 font-medium flex items-center gap-2">
-                      <Check className="w-4 h-4 flex-shrink-0" />
-                      <span>{walletSuccess}</span>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    
-                    {/* Wallet Funding Panel */}
-                    <div className="space-y-4">
-                      <h4 className="text-xs font-bold tracking-wider font-mono text-jade-600 dark:text-jade-400">Funding Deposit Portal</h4>
-                      
-                      <form onSubmit={handleDeposit} className="space-y-4 bg-ink-50 dark:bg-ink-950 p-5 rounded-2xl border border-ink-100 dark:border-ink-850">
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-bold text-ink-500 dark:text-ink-400">Amount to Deposit (₦)</label>
-                          <input 
-                            type="number"
-                            value={depositAmount}
-                            onChange={(e) => setDepositAmount(e.target.value)}
-                            placeholder="e.g. 15000"
-                            className="w-full text-xs font-semibold px-4 py-3 rounded-xl bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 focus:outline-none"
-                          />
-                        </div>
-
-                        <div className="p-3 bg-white dark:bg-ink-900 rounded-xl border border-ink-100 dark:border-ink-800 flex items-center justify-between text-xs">
-                          <span className="text-ink-400 font-medium">Gateway Service:</span>
-                          <span className="font-semibold text-jade-600 flex items-center gap-1">
-                            Paystack Secure Checkout
-                          </span>
-                        </div>
-
-                        <button
-                          type="submit"
-                          className="w-full py-3 bg-jade-500 hover:bg-jade-600 text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-transform active:scale-95"
-                        >
-                          Trigger Secure Fund Checkout
-                        </button>
-                      </form>
-                    </div>
-
-                    {/* Withdrawal Payout Form Panel */}
-                    <div className="space-y-4">
-                      <h4 className="text-xs font-bold tracking-wider font-mono text-ink-500">Bank Withdrawal Payout</h4>
-                      
-                      <form onSubmit={handleWithdraw} className="space-y-4 bg-ink-50 dark:bg-ink-950 p-5 rounded-2xl border border-ink-100 dark:border-ink-850">
-                        
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-bold text-ink-500 dark:text-ink-400">Withdrawal Amount (₦)</label>
-                          <input 
-                            type="number"
-                            value={withdrawalAmount}
-                            onChange={(e) => setWithdrawalAmount(e.target.value)}
-                            placeholder="e.g. 50000"
-                            className="w-full text-xs font-semibold px-4 py-3 rounded-xl bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 focus:outline-none"
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-1 gap-3 text-xs">
-                          <div className="space-y-1">
-                            <label className="text-xs font-bold text-ink-400">Destination Bank</label>
-                            <select 
-                              value={bankName}
-                              onChange={(e) => setBankName(e.target.value)}
-                              className="w-full text-xs px-3 py-2.5 rounded-xl bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 cursor-pointer font-bold"
-                            >
-                              <option value="GTBank">Guaranty Trust Bank (GTB)</option>
-                              <option value="Access Bank">Access Bank Plc</option>
-                              <option value="Zenith Bank">Zenith Bank Plc</option>
-                              <option value="UBA">United Bank for Africa (UBA)</option>
-                              <option value="Kuda Bank">Kuda Microfinance Bank</option>
-                            </select>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1">
-                              <label className="text-xs font-bold text-ink-400">Account Name</label>
-                              <input 
-                                type="text"
-                                value={bankAccountName}
-                                onChange={(e) => setBankAccountName(e.target.value)}
-                                placeholder="e.g. Dele Coker"
-                                className="w-full text-xs px-3 py-2.5 rounded-xl bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <label className="text-xs font-bold text-ink-400">Account Number</label>
-                              <input 
-                                type="text"
-                                value={bankAccountNumber}
-                                onChange={(e) => setBankAccountNumber(e.target.value)}
-                                placeholder="10-digit NUBAN"
-                                maxLength={10}
-                                className="w-full text-xs px-3 py-2.5 rounded-xl bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 font-mono"
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        <button
-                          type="submit"
-                          className="w-full py-3 bg-jade-500 hover:bg-jade-600 text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-transform active:scale-95"
-                        >
-                          Request Bank Payout Settlement
-                        </button>
-                      </form>
-                    </div>
-
+                  <span className="text-[10px] text-jade-200/65">Releases after delivery</span>
+                </div>
+                <div className="h-px bg-white/10" />
+                <div className="flex items-end justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] text-white/45">Pending payouts</p>
+                    <p className="mt-0.5 font-display text-xl font-bold text-white">
+                      {naira(pendingPayouts)}
+                    </p>
                   </div>
+                  <span className="text-[10px] text-gold-200/65">Awaiting confirmation</span>
+                </div>
+                <div className="h-px bg-white/10" />
+                <div className="flex items-end justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] text-white/45">This month</p>
+                    <p className="mt-0.5 font-display text-xl font-bold text-white">
+                      {naira(monthEarnings)}
+                    </p>
+                  </div>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-jade-200">
+                    <TrendingUp className="h-3 w-3" /> Sales income
+                  </span>
+                </div>
+              </div>
+              <div className="mt-5 rounded-2xl bg-ink-950/30 px-3.5 py-3 text-[10px] leading-relaxed text-white/45">
+                GoodSale separates promotional coins from naira. Revenue here is real wallet
+                money, not reward points.
+              </div>
+            </div>
+          </div>
+        </section>
 
-                  {/* Transaction Ledger list */}
-                  <div className="space-y-4 pt-6 border-t border-ink-100 dark:border-ink-800">
-                    <h4 className="text-xs font-bold tracking-wider font-mono text-ink-500">Secure Wallet Transaction Ledger</h4>
-                    
-                    {myTransactions.length === 0 ? (
-                      <p className="text-xs text-ink-400 italic text-center py-8">
-                        No transactions logged on your wallet yet. Perform sales or checkout features to populate the ledger.
-                      </p>
-                    ) : (
-                      <div className="space-y-3">
-                        {myTransactions.slice().reverse().map(t => (
-                          <div 
-                            key={t.id}
-                            className="bg-ink-50 dark:bg-ink-950 rounded-2xl p-4 border border-ink-100 dark:border-ink-800/60 flex items-center justify-between text-xs"
-                          >
-                            <div className="space-y-1">
-                              <span className="font-semibold text-ink-800 dark:text-ink-200">
-                                {t.description}
-                              </span>
-                              <div className="flex items-center gap-2 text-xs text-ink-400 font-mono">
-                                <span>{new Date(t.createdAt).toLocaleDateString()}</span>
-                                <span>•</span>
-                                <span className={`font-bold ${t.status === 'COMPLETED' ? 'text-jade-500' : 'text-ink-500'}`}>
-                                  {t.status}
-                                </span>
-                              </div>
-                            </div>
-                            <span className={`font-bold font-mono text-xs ${t.amount > 0 ? 'text-jade-500' : 'text-ink-500'}`}>
-                              {t.amount > 0 ? '+' : ''}₦{t.amount.toLocaleString()}
-                            </span>
-                          </div>
-                        ))}
+        <section aria-label="Revenue streams" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {streams.map((stream) => {
+            const Icon = stream.icon;
+            const active = activeTab === stream.id;
+            return (
+              <button
+                key={stream.id}
+                type="button"
+                aria-pressed={active}
+                onClick={() => {
+                  selectTab(stream.id);
+                  document.getElementById('revenue-workspace')?.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start',
+                  });
+                }}
+                className={`group min-w-0 rounded-2xl border p-4 text-left transition-all press-scale sm:p-5 ${
+                  active
+                    ? 'border-jade-500/35 bg-white shadow-lg shadow-jade-950/5 ring-1 ring-jade-500/15 dark:border-jade-400/30 dark:bg-ink-900'
+                    : 'border-ink-200 bg-white hover:border-jade-400/50 dark:border-ink-800 dark:bg-ink-900'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <span
+                    className={`grid h-9 w-9 place-items-center rounded-xl ${
+                      active
+                        ? 'bg-jade-500 text-white'
+                        : 'bg-jade-500/10 text-jade-700 dark:text-jade-300'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
+                      stream.ready
+                        ? 'bg-jade-500/10 text-jade-700 dark:text-jade-300'
+                        : 'bg-ink-100 text-ink-500 dark:bg-ink-800 dark:text-ink-400'
+                    }`}
+                  >
+                    {stream.status}
+                  </span>
+                </div>
+                <p className="mt-4 truncate font-display text-lg font-extrabold tracking-tight text-ink-950 dark:text-white sm:text-xl">
+                  {stream.value}
+                </p>
+                <p className="mt-0.5 truncate text-[11px] font-bold text-ink-600 dark:text-ink-300">
+                  {stream.title}
+                </p>
+                <p className="mt-1 line-clamp-1 text-[10px] text-ink-400">{stream.hint}</p>
+              </button>
+            );
+          })}
+        </section>
+
+        {feedback && (
+          <div
+            role="status"
+            className={`flex items-start gap-2.5 rounded-2xl border px-4 py-3.5 text-xs leading-relaxed ${
+              feedback.tone === 'success'
+                ? 'border-jade-500/25 bg-jade-500/10 text-jade-800 dark:text-jade-200'
+                : 'border-rose-500/25 bg-rose-500/10 text-rose-700 dark:text-rose-300'
+            }`}
+          >
+            {feedback.tone === 'success' ? (
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+            ) : (
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            )}
+            <span className="min-w-0 break-words">{feedback.message}</span>
+          </div>
+        )}
+
+        <section
+          id="revenue-workspace"
+          className="scroll-mt-24 overflow-hidden rounded-[2rem] border border-ink-200 bg-white shadow-xl shadow-ink-950/5 dark:border-ink-800 dark:bg-ink-900"
+        >
+          <div className="border-b border-ink-150 bg-ink-50/70 p-2 dark:border-ink-800 dark:bg-ink-950/30 sm:p-3">
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+              {[
+                { id: 'wallet' as const, label: 'Wallet', Icon: Landmark },
+                { id: 'memberships' as const, label: 'Memberships', Icon: Award },
+                { id: 'promotions' as const, label: 'Promotions', Icon: Flame },
+                { id: 'ads' as const, label: 'Sponsored ads', Icon: MousePointerClick },
+              ].map(({ id, label, Icon }) => {
+                const selected = activeTab === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setActiveTab(id)}
+                    aria-pressed={selected}
+                    className={`inline-flex min-w-0 items-center justify-center gap-2 rounded-xl px-2 py-2.5 text-[11px] font-bold transition-all sm:text-xs ${
+                      selected
+                        ? 'bg-white text-jade-700 shadow-sm dark:bg-ink-800 dark:text-jade-300'
+                        : 'text-ink-500 hover:bg-white/60 hover:text-ink-800 dark:text-ink-400 dark:hover:bg-ink-800/60 dark:hover:text-white'
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="p-5 sm:p-7 lg:p-8">
+            {activeTab === 'wallet' && (
+              <div className="space-y-7">
+                <SectionHead
+                  eyebrow="Cash flow"
+                  title="Wallet & bank settlement"
+                  description="Fund your wallet through Paystack, keep earnings ready, and request a reviewed bank payout."
+                  action={
+                    <div className="flex flex-wrap gap-1.5">
+                      <StatusPill available={fundingAvailable} label="Funding" />
+                      <StatusPill available={payoutsAvailable} label="Payouts" />
+                    </div>
+                  }
+                />
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="relative overflow-hidden rounded-3xl border border-jade-500/20 bg-gradient-to-br from-jade-500/[0.08] via-white to-white p-5 dark:from-jade-500/10 dark:via-ink-900 dark:to-ink-900 sm:p-6">
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="grid h-11 w-11 place-items-center rounded-2xl bg-jade-500 text-white shadow-lg shadow-jade-500/20">
+                        <Plus className="h-5 w-5" />
+                      </span>
+                      <span className="rounded-full bg-white/80 px-2.5 py-1 text-[10px] font-bold text-ink-500 dark:bg-ink-800 dark:text-ink-300">
+                        Paystack
+                      </span>
+                    </div>
+                    <h3 className="mt-5 font-display text-lg font-bold text-ink-950 dark:text-white">
+                      Add money to your wallet
+                    </h3>
+                    <p className="mt-1.5 text-xs leading-relaxed text-ink-500 dark:text-ink-400">
+                      Use a card, bank transfer or USSD in Paystack&apos;s secure checkout. Your
+                      balance changes only after the server verifies payment.
+                    </p>
+                    <div className="mt-5 grid grid-cols-2 gap-2">
+                      <div className="rounded-xl border border-ink-150 bg-white/70 p-3 dark:border-ink-800 dark:bg-ink-950/30">
+                        <p className="text-[9px] font-bold uppercase tracking-wide text-ink-400">
+                          Minimum
+                        </p>
+                        <p className="mt-0.5 text-sm font-bold text-ink-900 dark:text-white">
+                          {naira(fundingMin)}
+                        </p>
                       </div>
+                      <div className="rounded-xl border border-ink-150 bg-white/70 p-3 dark:border-ink-800 dark:bg-ink-950/30">
+                        <p className="text-[9px] font-bold uppercase tracking-wide text-ink-400">
+                          Maximum
+                        </p>
+                        <p className="mt-0.5 text-sm font-bold text-ink-900 dark:text-white">
+                          {naira(fundingMax)}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      className="mt-5 w-full"
+                      onClick={() => setAddFundsOpen(true)}
+                      disabled={!fundingAvailable || statusLoading}
+                    >
+                      {statusLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <WalletIcon className="h-4 w-4" />
+                      )}
+                      {fundingAvailable ? 'Add funds securely' : 'Funding unavailable'}
+                    </Button>
+                    {!fundingAvailable && !statusLoading && (
+                      <p className="mt-3 text-[10px] leading-relaxed text-ink-400">
+                        Paystack funding keys are not configured for this deployment.
+                      </p>
                     )}
                   </div>
 
-                </div>
-              )}
-
-              {/* PREMIUM MEMBERSHIPS SUBTAB */}
-              {activeSubTab === 'subscriptions' && (
-                <div className="space-y-8">
-                  
-                  <div className="space-y-1">
-                    <h3 className="text-lg font-bold text-ink-800 dark:text-white">Elite Premium Programs</h3>
-                    <p className="text-xs text-ink-500 dark:text-ink-400">
-                      Unlock advanced commerce superpowers. Upgrade your role to Business or apply the prestigious Verified+ badge profile.
+                  <form
+                    onSubmit={handleWithdrawSubmit}
+                    className="rounded-3xl border border-ink-200 bg-ink-50/60 p-5 dark:border-ink-800 dark:bg-ink-950/40 sm:p-6"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="grid h-11 w-11 place-items-center rounded-2xl bg-ink-950 text-white dark:bg-white dark:text-ink-950">
+                        <ArrowDownToLine className="h-5 w-5" />
+                      </span>
+                      <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-ink-500 dark:bg-ink-800 dark:text-ink-300">
+                        Reviewed payout
+                      </span>
+                    </div>
+                    <h3 className="mt-5 font-display text-lg font-bold text-ink-950 dark:text-white">
+                      Withdraw to your bank
+                    </h3>
+                    <p className="mt-1.5 text-xs leading-relaxed text-ink-500 dark:text-ink-400">
+                      Request a payout to your verified Nigerian bank account. Processing continues
+                      until admin review and Paystack confirm the transfer.
                     </p>
-                  </div>
 
-                  {walletError && (
-                    <div className="p-4 bg-ink-500/10 text-ink-500 text-xs rounded-2xl border border-ink-500/20 font-medium">
-                      <span>{walletError}</span>
-                    </div>
-                  )}
-
-                  {walletSuccess && (
-                    <div className="p-4 bg-jade-500/10 text-jade-500 text-xs rounded-2xl border border-jade-500/20 font-medium">
-                      <span>{walletSuccess}</span>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    
-                    {/* Program 1: Verified+ Badge checkout */}
-                    <div className="border border-ink-500/30 rounded-3xl p-6 bg-gradient-to-br from-ink-500/5 to-ink-900/10 relative overflow-hidden flex flex-col justify-between">
-                      <div className="absolute right-0 top-0 opacity-10 font-bold text-9xl text-ink-500">
-                        +
-                      </div>
-                      <div className="space-y-4">
-                        <div className="inline-flex items-center gap-1 bg-ink-500/10 text-ink-600 dark:text-ink-400 text-xs font-bold px-2.5 py-1 rounded-full tracking-wider font-mono">
-                          <Star className="star-filled w-3 h-3" />
-                          Verified+ Premium Member
-                        </div>
-
-                        <div className="space-y-1">
-                          <h4 className="text-lg font-semibold text-ink-850 dark:text-white">Verified+ Professional Profile</h4>
-                          <p className="text-xs text-ink-400 leading-relaxed">
-                            Acquire the prestigious gold star and tick verified badges on your storefront, automatically boosting all search inventory items.
-                          </p>
-                        </div>
-
-                        <div className="space-y-2 text-xs text-ink-600 dark:text-ink-400">
-                          <div className="flex items-center gap-2">
-                            <span className="text-jade-500 font-bold">Secured</span>
-                            <span>Gold Storefront Tick Badge Overlay</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-jade-500 font-bold">Secured</span>
-                            <span>+10 Trust Score rating automatic credit</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-jade-500 font-bold">Secured</span>
-                            <span>Boosted priority search rank listings</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="pt-6 border-t border-ink-100 dark:border-ink-850 mt-6 flex items-center justify-between">
-                        <div>
-                          <span className="text-xs text-ink-400 block">Premium Fee</span>
-                          <span className="text-xl font-bold text-ink-500 font-mono">
-                            ₦{settings.verifiedPlusPrice.toLocaleString()} <span className="text-xs font-normal text-ink-400">/mo</span>
+                    <div className="mt-4 space-y-3">
+                      <div>
+                        <label
+                          htmlFor="withdraw-amount"
+                          className="text-[10px] font-bold uppercase tracking-wide text-ink-500 dark:text-ink-400"
+                        >
+                          Amount
+                        </label>
+                        <div className="relative mt-1.5">
+                          <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-ink-400">
+                            ₦
                           </span>
-                        </div>
-
-                        <button
-                          onClick={handleSubscribeVerifiedPlus}
-                          disabled={isVerifiedPlus}
-                          className={`px-5 py-2.5 rounded-xl font-bold text-xs cursor-pointer flex items-center gap-1 transition-all ${
-                            isVerifiedPlus 
-                              ? 'bg-ink-200 dark:bg-ink-800 text-ink-400 cursor-not-allowed' 
-                              : 'bg-jade-600 hover:bg-jade-700 text-white shadow-md shadow-jade-600/25 active:scale-95'
-                          }`}
-                        >
-                          {isVerifiedPlus ? 'Already Active' : 'Subscribe Now'}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Program 2: Business Premium Subscription */}
-                    <div className="border border-jade-500/20 rounded-3xl p-6 bg-gradient-to-br from-jade-500/5 to-ink-900/10 relative overflow-hidden flex flex-col justify-between">
-                      <div className="space-y-4">
-                        <div className="inline-flex items-center gap-1 bg-jade-500/10 text-jade-600 dark:text-jade-400 text-xs font-bold px-2.5 py-1 rounded-full tracking-wider font-mono">
-                          <Zap className="w-3 h-3 text-jade-500" />
-                          Business Premium Plan
-                        </div>
-
-                        <div className="space-y-1">
-                          <h4 className="text-lg font-semibold text-ink-850 dark:text-white">Business Enterprise Storefront</h4>
-                          <p className="text-xs text-ink-400 leading-relaxed">
-                            Upgrade your individual profile status to a multi-branch corporate business entity, with advanced inventory catalogs, analytics dashboards, and barcode autofills.
-                          </p>
-                        </div>
-
-                        <div className="space-y-2 text-xs text-ink-600 dark:text-ink-400">
-                          <div className="flex items-center gap-2">
-                            <span className="text-jade-500 font-bold">Secured</span>
-                            <span>Unlimited Active Product Catalogs</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-jade-500 font-bold">Secured</span>
-                            <span>Advanced Corporate Analytics Dashboard</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-jade-500 font-bold">Secured</span>
-                            <span>Automated AI Barcode Product Autofill</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="pt-6 border-t border-ink-100 dark:border-ink-850 mt-6 flex items-center justify-between">
-                        <div>
-                          <span className="text-xs text-ink-400 block">Membership Price</span>
-                          <span className="text-xl font-bold text-jade-500 font-mono">
-                            ₦{settings.subPremiumPrice.toLocaleString()} <span className="text-xs font-normal text-ink-400">/mo</span>
-                          </span>
-                        </div>
-
-                        <button
-                          onClick={() => handleSubscribeBusiness('PREMIUM')}
-                          disabled={isBusinessSubbed}
-                          className={`px-5 py-2.5 rounded-xl font-bold text-xs cursor-pointer flex items-center gap-1 transition-all ${
-                            isBusinessSubbed 
-                              ? 'bg-ink-200 dark:bg-ink-800 text-ink-400 cursor-not-allowed' 
-                              : 'bg-jade-500 hover:bg-jade-600 text-white shadow-md active:scale-95'
-                          }`}
-                        >
-                          {isBusinessSubbed ? 'Already Active' : 'Subscribe Now'}
-                        </button>
-                      </div>
-                    </div>
-
-                  </div>
-
-                </div>
-              )}
-
-              {/* LISTINGS PROMOTIONS SUBTAB */}
-              {activeSubTab === 'listings' && (
-                <div className="space-y-8">
-                  
-                  <div className="space-y-1">
-                    <h3 className="text-lg font-bold text-ink-800 dark:text-white">Promote Inventory Listings</h3>
-                    <p className="text-xs text-ink-500 dark:text-ink-400">
-                      Saturate local markets. Boost your listings to Featured feeds or submit products into flash sales.
-                    </p>
-                  </div>
-
-                  {promoteError && (
-                    <div className="p-4 bg-ink-500/10 text-ink-500 text-xs rounded-2xl border border-ink-500/20 font-medium">
-                      <span>{promoteError}</span>
-                    </div>
-                  )}
-
-                  {promoteSuccess && (
-                    <div className="p-4 bg-jade-500/10 text-jade-500 text-xs rounded-2xl border border-jade-500/20 font-medium">
-                      <span>{promoteSuccess}</span>
-                    </div>
-                  )}
-
-                  <div className="bg-ink-50 dark:bg-ink-950 p-6 rounded-3xl border border-ink-100 dark:border-ink-850 space-y-6">
-                    
-                    <div className="space-y-1">
-                      <h4 className="text-xs font-bold tracking-wider font-mono text-ink-500">1. Select Listing to Boost</h4>
-                      {myProducts.length === 0 ? (
-                        <p className="text-xs text-ink-400 italic">
-                          You currently do not have any active product listings in your inventory to promote. Create some in your Dashboard.
-                        </p>
-                      ) : (
-                        <select
-                          value={selectedProductId}
-                          onChange={(e) => setSelectedProductId(e.target.value)}
-                          className="w-full text-xs px-3 py-3 rounded-xl bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 cursor-pointer text-ink-800 dark:text-white font-semibold"
-                        >
-                          <option value="">-- Choose Product Listing --</option>
-                          {myProducts.map(p => (
-                            <option key={p.id} value={p.id}>{p.title} (₦{p.price.toLocaleString()})</option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-ink-100 dark:border-ink-850">
-                      
-                      {/* Promoted Placement 1: Featured Listing */}
-                      <div className="space-y-4 bg-white dark:bg-ink-900 p-5 rounded-2xl border border-ink-100 dark:border-ink-800">
-                        <div className="inline-flex items-center gap-1 bg-ink-500/10 text-ink-600 dark:text-ink-400 text-xs font-bold px-2 py-0.5 rounded">
-                          Featured listing
-                        </div>
-                        <p className="text-xs text-ink-400 leading-relaxed">
-                          Pins the listing at the top of category feeds, doubling impressions and prospective buyer chats.
-                        </p>
-
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-bold text-ink-400 font-mono block">Boost Duration</label>
-                          <select 
-                            value={featuredDuration}
-                            onChange={(e) => setFeaturedDuration(e.target.value as any)}
-                            className="w-full text-xs px-3 py-2 rounded-xl bg-ink-50 dark:bg-ink-950 border border-ink-200 dark:border-ink-800 cursor-pointer"
-                          >
-                            <option value="3">3 Days — ₦{settings.featured3DaysPrice.toLocaleString()}</option>
-                            <option value="7">7 Days — ₦{settings.featured7DaysPrice.toLocaleString()}</option>
-                            <option value="14">14 Days — ₦{settings.featured14DaysPrice.toLocaleString()}</option>
-                            <option value="30">30 Days — ₦{settings.featured30DaysPrice.toLocaleString()}</option>
-                          </select>
-                        </div>
-
-                        <button
-                          onClick={() => handlePromoteProduct('FEATURED')}
-                          className="w-full py-2.5 bg-jade-500 hover:bg-jade-600 text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-transform active:scale-95"
-                        >
-                          Purchase Featured Placement
-                        </button>
-                      </div>
-
-                      {/* Promoted Placement 2: Flash Sales */}
-                      <div className="space-y-4 bg-white dark:bg-ink-900 p-5 rounded-2xl border border-ink-100 dark:border-ink-800 justify-between flex flex-col">
-                        <div className="space-y-4">
-                          <div className="inline-flex items-center gap-1 bg-ink-500/10 text-ink-600 dark:text-ink-400 text-xs font-bold px-2 py-0.5 rounded">
-                            Flash Sale Block scheduler
-                          </div>
-                          <p className="text-xs text-ink-400 leading-relaxed">
-                            Schedules the item into the front-page high-traffic countdown flash sale blocks for instant sellouts.
-                          </p>
-                          <p className="text-xs font-bold text-ink-500 font-mono">
-                            Fixed Promotion Price: ₦{settings.flashSaleFeaturePrice.toLocaleString()}
-                          </p>
-                        </div>
-
-                        <button
-                          onClick={() => handlePromoteProduct('FLASHSALE')}
-                          className="w-full py-2.5 bg-jade-500 hover:bg-jade-600 text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-transform active:scale-95"
-                        >
-                          Schedule into Flash Sales
-                        </button>
-                      </div>
-
-                    </div>
-
-                  </div>
-
-                </div>
-              )}
-
-              {/* SPONSORED CPC ADS SUBTAB */}
-              {activeSubTab === 'ads' && (
-                <div className="space-y-8">
-                  
-                  <div className="space-y-1">
-                    <h3 className="text-lg font-bold text-ink-800 dark:text-white">Sponsored CPC Advertisements</h3>
-                    <p className="text-xs text-ink-500 dark:text-ink-400">
-                      Create highly targeting Pay-Per-Click (PPC) banner campaigns. Only pay when prospective customers click on your ad.
-                    </p>
-                  </div>
-
-                  {adError && (
-                    <div className="p-4 bg-ink-500/10 text-ink-500 text-xs rounded-2xl border border-ink-500/20 font-medium">
-                      <span>{adError}</span>
-                    </div>
-                  )}
-
-                  {adSuccess && (
-                    <div className="p-4 bg-jade-500/10 text-jade-500 text-xs rounded-2xl border border-jade-500/20 font-medium">
-                      <span>{adSuccess}</span>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    
-                    {/* Sponsored Ad Creator Form */}
-                    <div className="space-y-4">
-                      <h4 className="text-xs font-bold tracking-wider font-mono text-jade-600 dark:text-jade-400">Initialize Campaign</h4>
-                      
-                      <form onSubmit={handleCreateAd} className="space-y-4 bg-ink-50 dark:bg-ink-950 p-5 rounded-2xl border border-ink-100 dark:border-ink-850">
-                        
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-ink-500 dark:text-ink-400">Campaign / Banner Title</label>
-                          <input 
-                            type="text"
-                            value={adTitle}
-                            onChange={(e) => setAdTitle(e.target.value)}
-                            placeholder="e.g. 50% Off iPhone Deals!"
-                            className="w-full text-xs px-4 py-2.5 rounded-xl bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 text-ink-800 dark:text-white font-medium focus:outline-none"
+                          <input
+                            id="withdraw-amount"
+                            inputMode="numeric"
+                            value={withdrawalAmount}
+                            onChange={(event) =>
+                              setWithdrawalAmount(event.target.value.replace(/[^\d]/g, ''))
+                            }
+                            placeholder="0"
+                            className="h-11 w-full rounded-xl border border-ink-200 bg-white pl-8 pr-3 text-sm font-bold text-ink-900 focus-ring dark:border-ink-800 dark:bg-ink-900 dark:text-white"
                           />
                         </div>
+                        {withdrawalError && (
+                          <p className="mt-1 text-[10px] font-semibold text-rose-600 dark:text-rose-400">
+                            {withdrawalError}
+                          </p>
+                        )}
+                      </div>
 
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-1">
-                            <label className="text-xs font-bold text-ink-400">Campaign Type</label>
-                            <select 
-                              value={adType}
-                              onChange={(e) => setAdType(e.target.value as any)}
-                              className="w-full text-xs px-3 py-2 rounded-xl bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 cursor-pointer font-bold"
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <div>
+                          <label
+                            htmlFor="withdraw-bank"
+                            className="text-[10px] font-bold uppercase tracking-wide text-ink-500 dark:text-ink-400"
+                          >
+                            Bank
+                          </label>
+                          <select
+                            id="withdraw-bank"
+                            value={bankName}
+                            onChange={(event) => setBankName(event.target.value)}
+                            className="mt-1.5 h-11 w-full rounded-xl border border-ink-200 bg-white px-2.5 text-xs font-semibold text-ink-900 focus-ring dark:border-ink-800 dark:bg-ink-900 dark:text-white"
+                          >
+                            <option value="">Choose bank</option>
+                            {NIGERIAN_BANKS.map((bank) => (
+                              <option key={bank} value={bank}>
+                                {bank}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label
+                            htmlFor="withdraw-account-number"
+                            className="text-[10px] font-bold uppercase tracking-wide text-ink-500 dark:text-ink-400"
+                          >
+                            Account number
+                          </label>
+                          <input
+                            id="withdraw-account-number"
+                            inputMode="numeric"
+                            maxLength={10}
+                            value={bankAccountNumber}
+                            onChange={(event) =>
+                              setBankAccountNumber(event.target.value.replace(/[^\d]/g, ''))
+                            }
+                            placeholder="10-digit NUBAN"
+                            className="mt-1.5 h-11 w-full rounded-xl border border-ink-200 bg-white px-3 text-xs font-semibold text-ink-900 focus-ring dark:border-ink-800 dark:bg-ink-900 dark:text-white"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor="withdraw-account-name"
+                          className="text-[10px] font-bold uppercase tracking-wide text-ink-500 dark:text-ink-400"
+                        >
+                          Account name
+                        </label>
+                        <input
+                          id="withdraw-account-name"
+                          value={bankAccountName}
+                          onChange={(event) => setBankAccountName(event.target.value)}
+                          placeholder="Name on the bank account"
+                          className="mt-1.5 h-11 w-full rounded-xl border border-ink-200 bg-white px-3 text-xs font-semibold text-ink-900 focus-ring dark:border-ink-800 dark:bg-ink-900 dark:text-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between gap-2 text-[10px] text-ink-400">
+                      <span>
+                        Fee {naira(withdrawalFee)} · Min {naira(withdrawalMin)}
+                      </span>
+                      <span className="font-bold text-ink-600 dark:text-ink-300">
+                        Available {naira(balance)}
+                      </span>
+                    </div>
+
+                    <Button
+                      type="submit"
+                      variant="secondary"
+                      className="mt-4 w-full"
+                      disabled={!canWithdraw}
+                    >
+                      <Banknote className="h-4 w-4" />
+                      Review payout
+                    </Button>
+                    {!payoutsAvailable && !statusLoading && (
+                      <p className="mt-2 text-[10px] leading-relaxed text-ink-400">
+                        Bank payouts are unavailable until Paystack transfers are enabled.
+                      </p>
+                    )}
+                  </form>
+                </div>
+
+                <div className="rounded-3xl border border-ink-200 dark:border-ink-800">
+                  <div className="flex flex-col gap-3 border-b border-ink-150 p-4 dark:border-ink-800 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+                    <div>
+                      <h3 className="flex items-center gap-2 font-display text-base font-bold text-ink-950 dark:text-white">
+                        <Layers3 className="h-4 w-4 text-jade-600 dark:text-jade-400" />
+                        Wallet ledger
+                      </h3>
+                      <p className="mt-0.5 text-[10px] text-ink-400">
+                        Every credit, platform fee and payout in one audit trail.
+                      </p>
+                    </div>
+                    <SegmentedControl
+                      aria-label="Filter wallet transactions"
+                      className="w-full sm:w-64"
+                      value={txFilter}
+                      onChange={(value) => setTxFilter(value as TxFilter)}
+                      options={[
+                        { value: 'all', label: 'All' },
+                        { value: 'credit', label: 'In' },
+                        { value: 'debit', label: 'Out' },
+                      ]}
+                    />
+                  </div>
+
+                  {visibleTransactions.length === 0 ? (
+                    <div className="px-5 py-10 text-center">
+                      <span className="mx-auto grid h-11 w-11 place-items-center rounded-2xl bg-ink-100 text-ink-400 dark:bg-ink-800">
+                        <Layers3 className="h-5 w-5" />
+                      </span>
+                      <p className="mt-3 text-sm font-bold text-ink-800 dark:text-white/80">
+                        No wallet activity yet
+                      </p>
+                      <p className="mt-1 text-xs text-ink-400">
+                        Sales, refunds, promotions and payouts will appear here.
+                      </p>
+                    </div>
+                  ) : (
+                    <ul className="divide-y divide-ink-100 dark:divide-ink-800">
+                      {visibleTransactions.map((entry) => (
+                        <li
+                          key={entry.id}
+                          className="flex items-center justify-between gap-3 px-4 py-3.5 sm:px-5"
+                        >
+                          <div className="flex min-w-0 items-center gap-3">
+                            <span
+                              className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${
+                                entry.amount > 0
+                                  ? 'bg-jade-500/10 text-jade-700 dark:text-jade-300'
+                                  : 'bg-ink-100 text-ink-500 dark:bg-ink-800 dark:text-ink-300'
+                              }`}
                             >
-                              <option value="PRODUCT">Product Target</option>
-                              <option value="BUSINESS">Business Brand</option>
-                              <option value="BANNER_HOME">Home Banner</option>
-                              <option value="BANNER_CATEGORY">Category Banner</option>
-                            </select>
+                              {entry.amount > 0 ? (
+                                <ArrowDownLeft className="h-4 w-4" />
+                              ) : (
+                                <ArrowUpRight className="h-4 w-4" />
+                              )}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="truncate text-xs font-bold text-ink-800 dark:text-white/85">
+                                {entry.description}
+                              </p>
+                              <p className="mt-0.5 truncate text-[10px] text-ink-400">
+                                {dateLabel(entry.createdAt)} · {entry.type.replace(/_/g, ' ')}
+                              </p>
+                            </div>
                           </div>
+                          <div className="shrink-0 text-right">
+                            <p
+                              className={`text-xs font-bold ${
+                                entry.amount > 0
+                                  ? 'text-jade-700 dark:text-jade-300'
+                                  : 'text-ink-800 dark:text-white/80'
+                              }`}
+                            >
+                              {entry.amount > 0 ? '+' : '-'}
+                              {naira(Math.abs(entry.amount))}
+                            </p>
+                            <p className="mt-0.5 text-[9px] text-ink-400">{entry.status}</p>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
 
-                          <div className="space-y-1">
-                            <label className="text-xs font-bold text-ink-400">PPC Budget (₦)</label>
-                            <input 
-                              type="number"
+                  {filteredTransactions.length > 7 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllTx((previous) => !previous)}
+                      className="flex w-full items-center justify-center gap-1.5 border-t border-ink-150 py-3 text-[11px] font-bold text-jade-700 transition-colors hover:bg-jade-500/5 dark:border-ink-800 dark:text-jade-300"
+                    >
+                      {showAllTx ? 'Show recent activity' : `View all ${filteredTransactions.length} transactions`}
+                      <ChevronRight
+                        className={`h-3.5 w-3.5 transition-transform ${showAllTx ? '-rotate-90' : ''}`}
+                      />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'memberships' && (
+              <div className="space-y-7">
+                <SectionHead
+                  eyebrow="Storefront status"
+                  title="Memberships that compound"
+                  description="Paid visibility and seller tools, activated only after Paystack payment is verified by the server. Membership never replaces identity or business verification."
+                  action={
+                    <div className="flex flex-wrap gap-1.5">
+                      <StatusPill available={isVerifiedPlus} label="Verified+" />
+                      <StatusPill available={isBusinessSubbed} label="Business" />
+                    </div>
+                  }
+                />
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="relative overflow-hidden rounded-3xl border border-gold-400/30 bg-gradient-to-br from-gold-50 via-white to-white p-5 dark:border-gold-300/20 dark:from-gold-300/10 dark:via-ink-900 dark:to-ink-900 sm:p-6">
+                    <div className="absolute -right-5 -top-8 text-[10rem] font-black leading-none text-gold-400/[0.08]">
+                      +
+                    </div>
+                    <div className="relative">
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="grid h-11 w-11 place-items-center rounded-2xl bg-gold-300 text-ink-950 shadow-lg shadow-gold-400/20">
+                          <Star className="h-5 w-5 fill-current" />
+                        </span>
+                        <span className="rounded-full bg-gold-400/15 px-2.5 py-1 text-[10px] font-bold text-gold-700 dark:text-gold-200">
+                          Seller membership
+                        </span>
+                      </div>
+                      <h3 className="mt-5 font-display text-xl font-extrabold text-ink-950 dark:text-white">
+                        Verified+
+                      </h3>
+                      <p className="mt-1.5 text-xs leading-relaxed text-ink-500 dark:text-ink-400">
+                        A gold Verified+ member badge, configurable discovery boost and seller tooling.
+                        It is not identity verification and does not alter your trust score.
+                      </p>
+                      <ul className="mt-4 space-y-2">
+                        {[
+                          'Gold Verified+ member badge',
+                          'Configurable visibility for eligible listings',
+                          'Seller analytics and priority-support access',
+                          'No automatic trust-score change',
+                        ].map((item) => (
+                          <li key={item} className="flex items-start gap-2 text-xs text-ink-600 dark:text-ink-300">
+                            <BadgeCheck className="mt-0.5 h-4 w-4 shrink-0 text-gold-500" />
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="mt-6 flex flex-col gap-3 border-t border-gold-400/20 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-ink-400">
+                            Per {premiumDurationDays} days · manual renewal
+                          </p>
+                          <p className="font-display text-2xl font-extrabold text-ink-950 dark:text-white">
+                            {naira(settings.verifiedPlusPrice)}
+                          </p>
+                          {isVerifiedPlus && currentVerifiedPlus ? (
+                            <p className="mt-1 text-[10px] text-ink-400">
+                              Active until {dateLabel(currentVerifiedPlus.expiresAt)}
+                            </p>
+                          ) : null}
+                        </div>
+                        <Button
+                          onClick={openVerifiedPlusCheckout}
+                          disabled={premiumProvider.loading}
+                          className="w-full sm:w-auto"
+                        >
+                          {isVerifiedPlus ? (
+                            <>
+                              <RefreshCw className="h-4 w-4" /> Renew
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="h-4 w-4" /> Activate
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="relative overflow-hidden rounded-3xl border border-jade-500/25 bg-gradient-to-br from-jade-950 via-jade-900 to-ink-950 p-5 text-white shadow-xl shadow-jade-950/15 sm:p-6">
+                    <div className="absolute -right-16 -top-20 h-52 w-52 rounded-full bg-jade-400/20 blur-3xl" />
+                    <div className="relative">
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-jade-800 shadow-lg">
+                          <Building2 className="h-5 w-5" />
+                        </span>
+                        <span className="rounded-full border border-white/10 bg-white/10 px-2.5 py-1 text-[10px] font-bold text-jade-100">
+                          Business growth
+                        </span>
+                      </div>
+                      <h3 className="mt-5 font-display text-xl font-extrabold">Business</h3>
+                      <p className="mt-1.5 text-xs leading-relaxed text-white/60">
+                        Business storefront and seller operations, with paid visibility and growth
+                        tools. Business verification remains a separate review.
+                      </p>
+                      <ul className="mt-4 space-y-2">
+                        {[
+                          'Business storefront and catalog operations',
+                          'Deeper seller analytics and performance views',
+                          'Bulk listing and inventory workflows where enabled',
+                          'No automatic business verification',
+                        ].map((item) => (
+                          <li key={item} className="flex items-start gap-2 text-xs text-white/70">
+                            <Check className="mt-0.5 h-4 w-4 shrink-0 text-jade-300" />
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+
+                      <div className="mt-5 grid grid-cols-3 gap-1.5 rounded-2xl border border-white/10 bg-ink-950/25 p-1.5">
+                        {[
+                          { id: 'PRO' as const, label: 'Pro', price: settings.subProPrice },
+                          { id: 'PREMIUM' as const, label: 'Premium', price: settings.subPremiumPrice },
+                          {
+                            id: 'ENTERPRISE' as const,
+                            label: 'Enterprise',
+                            price: settings.subEnterprisePrice,
+                          },
+                        ].map((plan) => (
+                          <button
+                            key={plan.id}
+                            type="button"
+                            onClick={() => setBusinessPlan(plan.id)}
+                            aria-pressed={businessPlan === plan.id}
+                            className={`rounded-xl px-1.5 py-2 text-center transition-colors ${
+                              businessPlan === plan.id
+                                ? 'bg-white text-jade-900 shadow-sm'
+                                : 'text-white/60 hover:bg-white/10 hover:text-white'
+                            }`}
+                          >
+                            <span className="block text-[10px] font-bold">{plan.label}</span>
+                            <span className="mt-0.5 block text-[9px] opacity-70">
+                              {naira(plan.price)}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="mt-4 flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-white/40">
+                            Selected plan · per {premiumDurationDays} days
+                          </p>
+                          <p className="font-display text-2xl font-extrabold">
+                            {naira(
+                              businessPlan === 'PRO'
+                                ? settings.subProPrice
+                                : businessPlan === 'PREMIUM'
+                                  ? settings.subPremiumPrice
+                                  : settings.subEnterprisePrice
+                            )}
+                          </p>
+                          {isBusinessSubbed && currentBusiness ? (
+                            <p className="mt-1 text-[10px] text-white/45">
+                              {currentBusiness.plan} active until {dateLabel(currentBusiness.expiresAt)}
+                            </p>
+                          ) : null}
+                        </div>
+                        <Button
+                          onClick={openBusinessCheckout}
+                          disabled={premiumProvider.loading}
+                          className="w-full bg-white text-jade-900 shadow-lg shadow-black/10 hover:bg-jade-50 sm:w-auto"
+                        >
+                          {isCurrentBusinessPlan ? (
+                            <>
+                              <RefreshCw className="h-4 w-4" /> Renew
+                            </>
+                          ) : (
+                            <>
+                              <Rocket className="h-4 w-4" /> Continue
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2.5 rounded-2xl border border-ink-200 bg-ink-50 px-4 py-3.5 text-[11px] leading-relaxed text-ink-500 dark:border-ink-800 dark:bg-ink-950/40 dark:text-ink-400">
+                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-jade-600 dark:text-jade-400" />
+                  Paystack charges this checkout once. GoodSale has no automatic recurring charge, so
+                  renewal stays manual. Identity Verified, Business Verified and Verified+ Member are
+                  separate labels.
+                </div>
+
+                {premiumProvider.message && (
+                  <div className="flex items-start gap-2.5 rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3.5 text-[11px] leading-relaxed text-amber-800 dark:text-amber-200">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    {premiumProvider.message}
+                  </div>
+                )}
+
+                <div className="rounded-3xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900 sm:p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="font-display text-sm font-bold text-ink-950 dark:text-white">
+                        Membership payment history
+                      </h3>
+                      <p className="mt-0.5 text-[10px] text-ink-400">
+                        Server-recorded Paystack checkouts and their activation status.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void loadPremiumAccount()}
+                      disabled={premiumProvider.loading}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-ink-200 px-3 py-1.5 text-[10px] font-bold text-ink-600 disabled:opacity-50 dark:border-ink-700 dark:text-ink-300"
+                    >
+                      <RefreshCw className={`h-3 w-3 ${premiumProvider.loading ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </button>
+                  </div>
+                  {premiumPayments.length === 0 ? (
+                    <p className="mt-4 rounded-2xl bg-ink-50 px-4 py-5 text-center text-[11px] text-ink-400 dark:bg-ink-950/40">
+                      No membership payments yet. Checkout records appear here after the server
+                      creates a secure Paystack intent.
+                    </p>
+                  ) : (
+                    <ul className="mt-3 divide-y divide-ink-150 dark:divide-ink-800">
+                      {premiumPayments.slice(0, 8).map((payment) => (
+                        <li
+                          key={payment.reference}
+                          className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-[11px]"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-bold text-ink-800 dark:text-ink-100">
+                              {payment.product === 'VERIFIED_PLUS'
+                                ? 'Verified+'
+                                : `Business ${payment.planCode}`}
+                            </p>
+                            <p className="mt-0.5 break-all font-mono text-[9px] text-ink-400">
+                              {payment.reference} · {dateLabel(payment.createdAt)}
+                            </p>
+                          </div>
+                          <div className="ml-auto text-right">
+                            <p className="font-bold text-ink-800 dark:text-ink-100">
+                              {naira(payment.amount)}
+                            </p>
+                            <p
+                              className={`text-[9px] font-bold uppercase ${
+                                payment.status === 'SUCCESS'
+                                  ? 'text-jade-600 dark:text-jade-300'
+                                  : payment.status === 'PENDING'
+                                    ? 'text-gold-600 dark:text-gold-300'
+                                    : 'text-ink-400'
+                              }`}
+                            >
+                              {payment.status}
+                              {payment.expiresAt ? ` · ends ${dateLabel(payment.expiresAt)}` : ''}
+                            </p>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'promotions' && (
+              <div className="space-y-7">
+                <SectionHead
+                  eyebrow="Get discovered"
+                  title="Promote a listing"
+                  description="Put the right product in front of more buyers. Choose a listing, then buy a featured placement or schedule it for a Flash Sale."
+                  action={
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-jade-500/10 px-3 py-1.5 text-[10px] font-bold text-jade-700 dark:text-jade-300">
+                      <Zap className="h-3 w-3" /> {featuredListings.length} active
+                    </span>
+                  }
+                />
+
+                <div className="rounded-3xl border border-ink-200 bg-ink-50/60 p-4 dark:border-ink-800 dark:bg-ink-950/40 sm:p-5">
+                  <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+                    <div className="min-w-0">
+                      <label
+                        htmlFor="promotion-product"
+                        className="text-[10px] font-bold uppercase tracking-wide text-ink-500 dark:text-ink-400"
+                      >
+                        Listing to promote
+                      </label>
+                      <select
+                        id="promotion-product"
+                        value={selectedProductId}
+                        onChange={(event) => setSelectedProductId(event.target.value)}
+                        disabled={products.length === 0}
+                        className="mt-1.5 h-11 w-full rounded-xl border border-ink-200 bg-white px-3 text-xs font-semibold text-ink-900 focus-ring disabled:opacity-60 dark:border-ink-800 dark:bg-ink-900 dark:text-white"
+                      >
+                        <option value="">
+                          {products.length ? 'Choose a listing' : 'No listings available'}
+                        </option>
+                        {products.map((product) => (
+                          <option key={product.id} value={product.id}>
+                            {product.title} — {naira(product.price)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {products.length === 0 && (
+                      <button
+                        type="button"
+                        onClick={() => onNavigate?.('dashboard')}
+                        className="inline-flex h-11 items-center justify-center gap-1.5 rounded-xl border border-ink-200 bg-white px-3.5 text-xs font-bold text-ink-700 transition-colors hover:border-jade-400 dark:border-ink-800 dark:bg-ink-900 dark:text-white"
+                      >
+                        <Plus className="h-3.5 w-3.5" /> Add a listing
+                      </button>
+                    )}
+                    {selectedProduct && (
+                      <span className="max-w-full truncate text-[10px] text-ink-400 sm:max-w-[14rem]">
+                        {selectedProduct.title}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+                  <div className="rounded-3xl border border-ink-200 p-5 dark:border-ink-800 sm:p-6">
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="grid h-11 w-11 place-items-center rounded-2xl bg-jade-500/10 text-jade-700 dark:text-jade-300">
+                        <Flame className="h-5 w-5" />
+                      </span>
+                      <span className="rounded-full bg-jade-500/10 px-2.5 py-1 text-[10px] font-bold text-jade-700 dark:text-jade-300">
+                        Featured placement
+                      </span>
+                    </div>
+                    <h3 className="mt-4 font-display text-lg font-bold text-ink-950 dark:text-white">
+                      Stay at the top of search
+                    </h3>
+                    <p className="mt-1.5 text-xs leading-relaxed text-ink-500 dark:text-ink-400">
+                      Give one listing priority placement in category and search feeds for a fixed
+                      number of days.
+                    </p>
+                    <div className="mt-4 grid grid-cols-3 gap-2">
+                      {(['3', '7', '14'] as const).map((duration) => {
+                        const price =
+                          duration === '3'
+                            ? settings.featured3DaysPrice
+                            : duration === '7'
+                              ? settings.featured7DaysPrice
+                              : settings.featured14DaysPrice;
+                        return (
+                          <button
+                            key={duration}
+                            type="button"
+                            onClick={() => setFeaturedDuration(duration)}
+                            aria-pressed={featuredDuration === duration}
+                            className={`rounded-2xl border px-2 py-3 text-center transition-all ${
+                              featuredDuration === duration
+                                ? 'border-jade-500 bg-jade-500/10 text-jade-800 dark:border-jade-400 dark:text-jade-200'
+                                : 'border-ink-200 text-ink-600 hover:border-jade-400/60 dark:border-ink-800 dark:text-ink-400'
+                            }`}
+                          >
+                            <span className="block text-xs font-extrabold">{duration} days</span>
+                            <span className="mt-0.5 block text-[10px] opacity-75">{naira(price)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-5 flex flex-col gap-2.5 border-t border-ink-150 pt-4 dark:border-ink-800 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-ink-400">
+                          Total today
+                        </p>
+                        <p className="font-display text-xl font-extrabold text-ink-950 dark:text-white">
+                          {naira(featuredPrice)}
+                        </p>
+                      </div>
+                      <Button
+                        onClick={() => void handlePromoteProduct('FEATURED')}
+                        disabled={purchasingPromotion || !selectedProductId}
+                        className="w-full sm:w-auto"
+                      >
+                        {purchasingPromotion ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Zap className="h-4 w-4" />
+                        )}
+                        {purchasingPromotion ? 'Purchasing…' : 'Feature listing'}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="rounded-3xl border border-ink-200 bg-ink-50/60 p-5 dark:border-ink-800 dark:bg-ink-950/40 sm:p-6">
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="grid h-11 w-11 place-items-center rounded-2xl bg-gold-400/15 text-gold-700 dark:text-gold-300">
+                        <Clock3 className="h-5 w-5" />
+                      </span>
+                      <span className="rounded-full bg-gold-400/15 px-2.5 py-1 text-[10px] font-bold text-gold-700 dark:text-gold-200">
+                        Flash Sale
+                      </span>
+                    </div>
+                    <h3 className="mt-4 font-display text-lg font-bold text-ink-950 dark:text-white">
+                      Flash Sale placement
+                    </h3>
+                    <p className="mt-1.5 text-xs leading-relaxed text-ink-500 dark:text-ink-400">
+                      Record a 24-hour Flash Sale placement for this listing in promotions and
+                      eligible discovery feeds. No fake countdown or scarcity is shown.
+                    </p>
+                    <div className="mt-5 rounded-2xl border border-ink-200 bg-white p-3.5 dark:border-ink-800 dark:bg-ink-900">
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <span className="text-ink-500 dark:text-ink-400">Fixed price</span>
+                        <span className="font-bold text-ink-900 dark:text-white">
+                          {naira(settings.flashSaleFeaturePrice)}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between gap-2 text-xs">
+                        <span className="text-ink-500 dark:text-ink-400">Placement</span>
+                        <span className="font-bold text-jade-700 dark:text-jade-300">
+                          24 hours
+                        </span>
+                      </div>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      onClick={() => void handlePromoteProduct('FLASH_SALE')}
+                      disabled={purchasingPromotion || !selectedProductId}
+                      className="mt-4 w-full"
+                    >
+                      {purchasingPromotion ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Clock3 className="h-4 w-4" />
+                      )}
+                      {purchasingPromotion ? 'Purchasing…' : 'Add Flash Sale placement'}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border border-ink-200 dark:border-ink-800">
+                  <div className="flex items-center justify-between gap-3 border-b border-ink-150 p-4 dark:border-ink-800 sm:p-5">
+                    <div>
+                      <h3 className="font-display text-base font-bold text-ink-950 dark:text-white">
+                        Active promotions
+                      </h3>
+                      <p className="mt-0.5 text-[10px] text-ink-400">
+                        Listings currently receiving boosted placement.
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-ink-100 px-2.5 py-1 text-[10px] font-bold text-ink-600 dark:bg-ink-800 dark:text-ink-300">
+                      {featuredListings.length}
+                    </span>
+                  </div>
+                  {featuredListings.length === 0 ? (
+                    <div className="px-5 py-8 text-center">
+                      <Flame className="mx-auto h-6 w-6 text-ink-300" />
+                      <p className="mt-2 text-xs font-bold text-ink-700 dark:text-white/80">
+                        No active promotions
+                      </p>
+                      <p className="mt-1 text-[10px] text-ink-400">
+                        Choose a listing above to put it in front of more buyers.
+                      </p>
+                    </div>
+                  ) : (
+                    <ul className="divide-y divide-ink-100 dark:divide-ink-800">
+                      {featuredListings.map((entry) => {
+                        const product = products.find((item) => item.id === entry.productId);
+                        const daysLeft = Math.max(
+                          0,
+                          Math.ceil(
+                            (new Date(entry.expiresAt).getTime() - Date.now()) / 86_400_000
+                          )
+                        );
+                        return (
+                          <li
+                            key={entry.id}
+                            className="flex items-center justify-between gap-3 px-4 py-3.5 sm:px-5"
+                          >
+                            <div className="flex min-w-0 items-center gap-3">
+                              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gold-400/15 text-gold-700 dark:text-gold-300">
+                                <Flame className="h-4 w-4" />
+                              </span>
+                              <div className="min-w-0">
+                                <p className="truncate text-xs font-bold text-ink-800 dark:text-white/85">
+                                  {product?.title || `Listing #${entry.productId}`}
+                                </p>
+                                <p className="mt-0.5 text-[10px] text-ink-400">
+                                  {entry.featureType === 'FLASH_SALE' ? 'Flash Sale' : 'Featured'} · Ends{' '}
+                                  {dateLabel(entry.expiresAt)}
+                                </p>
+                              </div>
+                            </div>
+                            <span className="shrink-0 rounded-full bg-jade-500/10 px-2.5 py-1 text-[10px] font-bold text-jade-700 dark:text-jade-300">
+                              {daysLeft} days left
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'ads' && (
+              <div className="space-y-7">
+                <SectionHead
+                  eyebrow="Paid reach"
+                  title="Sponsored ads"
+                  description="Submit a pay-per-click campaign for admin review. The budget is reserved from your wallet at submission, and the campaign serves only after approval. Rejected campaigns are refunded."
+                  action={
+                    <div className="flex flex-wrap gap-1.5">
+                      <StatusPill available={activeCampaigns.length > 0} label={`${activeCampaigns.length} live`} />
+                      <StatusPill available={adSpend > 0} label={`${naira(adSpend)} spent`} />
+                    </div>
+                  }
+                />
+
+                <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+                  <form
+                    onSubmit={handleCreateAd}
+                    className="rounded-3xl border border-ink-200 bg-ink-50/60 p-5 dark:border-ink-800 dark:bg-ink-950/40 sm:p-6"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="font-display text-base font-bold text-ink-950 dark:text-white">
+                        Launch a campaign
+                      </h3>
+                      <span className="rounded-full bg-jade-500/10 px-2.5 py-1 text-[10px] font-bold text-jade-700 dark:text-jade-300">
+                        CPC {naira(settings.adCpcPrice)}
+                      </span>
+                    </div>
+
+                    <div className="mt-5 space-y-3.5">
+                      <div>
+                        <label
+                          htmlFor="ad-title"
+                          className="text-[10px] font-bold uppercase tracking-wide text-ink-500 dark:text-ink-400"
+                        >
+                          Campaign title
+                        </label>
+                        <input
+                          id="ad-title"
+                          value={adTitle}
+                          onChange={(event) => setAdTitle(event.target.value)}
+                          placeholder="e.g. Weekend phone deals"
+                          className="mt-1.5 h-11 w-full rounded-xl border border-ink-200 bg-white px-3 text-xs font-semibold text-ink-900 focus-ring dark:border-ink-800 dark:bg-ink-900 dark:text-white"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div>
+                          <label
+                            htmlFor="ad-type"
+                            className="text-[10px] font-bold uppercase tracking-wide text-ink-500 dark:text-ink-400"
+                          >
+                            Placement
+                          </label>
+                          <select
+                            id="ad-type"
+                            value={adType}
+                            onChange={(event) =>
+                              setAdType(event.target.value as typeof adType)
+                            }
+                            className="mt-1.5 h-11 w-full rounded-xl border border-ink-200 bg-white px-2.5 text-xs font-semibold text-ink-900 focus-ring dark:border-ink-800 dark:bg-ink-900 dark:text-white"
+                          >
+                            <option value="PRODUCT">Product</option>
+                            <option value="BUSINESS">Business</option>
+                            <option value="BANNER_HOME">Home banner</option>
+                            <option value="BANNER_CATEGORY">Category banner</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label
+                            htmlFor="ad-budget"
+                            className="text-[10px] font-bold uppercase tracking-wide text-ink-500 dark:text-ink-400"
+                          >
+                            Budget
+                          </label>
+                          <div className="relative mt-1.5">
+                            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-ink-400">
+                              ₦
+                            </span>
+                            <input
+                              id="ad-budget"
+                              inputMode="numeric"
                               value={adBudget}
-                              onChange={(e) => setAdBudget(e.target.value)}
-                              placeholder="e.g. 5000"
-                              className="w-full text-xs px-3 py-2 rounded-xl bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 font-mono font-bold"
+                              onChange={(event) =>
+                                setAdBudget(event.target.value.replace(/[^\d]/g, ''))
+                              }
+                              className="h-11 w-full rounded-xl border border-ink-200 bg-white pl-7 pr-2 text-xs font-bold text-ink-900 focus-ring dark:border-ink-800 dark:bg-ink-900 dark:text-white"
                             />
                           </div>
                         </div>
+                      </div>
 
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-ink-500 dark:text-ink-400">Banner Image URL</label>
-                          <input 
-                            type="text"
-                            value={adBannerUrl}
-                            onChange={(e) => setAdBannerUrl(e.target.value)}
-                            className="w-full text-xs px-4 py-2 rounded-xl bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 font-mono text-ink-500"
-                          />
+                      {adType === 'PRODUCT' && (
+                        <div>
+                          <label
+                            htmlFor="ad-target"
+                            className="text-[10px] font-bold uppercase tracking-wide text-ink-500 dark:text-ink-400"
+                          >
+                            Product to promote
+                          </label>
+                          <select
+                            id="ad-target"
+                            value={adTargetId}
+                            onChange={(event) => setAdTargetId(event.target.value)}
+                            className="mt-1.5 h-11 w-full rounded-xl border border-ink-200 bg-white px-2.5 text-xs font-semibold text-ink-900 focus-ring dark:border-ink-800 dark:bg-ink-900 dark:text-white"
+                          >
+                            <option value="">Choose a listing</option>
+                            {products.map((product) => (
+                              <option key={product.id} value={product.id}>
+                                {product.title}
+                              </option>
+                            ))}
+                          </select>
                         </div>
+                      )}
 
-                        <div className="p-3 bg-white dark:bg-ink-900 rounded-xl border border-ink-100 dark:border-ink-800 text-xs text-ink-400 space-y-1 font-mono">
-                          <div className="flex justify-between">
-                            <span>Cost Per Click (CPC):</span>
-                            <span className="font-bold text-jade-500">₦{settings.adCpcPrice}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Target Impressions:</span>
-                            <span className="font-bold text-jade-500">UNLIMITED / FREE</span>
-                          </div>
-                        </div>
-
-                        <button
-                          type="submit"
-                          className="w-full py-2.5 bg-jade-500 hover:bg-jade-600 text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-transform active:scale-95"
+                      <div>
+                        <label
+                          htmlFor="ad-banner"
+                          className="text-[10px] font-bold uppercase tracking-wide text-ink-500 dark:text-ink-400"
                         >
-                          Launch Sponsored Ad Campaign
-                        </button>
-                      </form>
+                          Banner image URL <span className="font-medium normal-case">(optional)</span>
+                        </label>
+                        <input
+                          id="ad-banner"
+                          value={adBannerUrl}
+                          onChange={(event) => setAdBannerUrl(event.target.value)}
+                          placeholder="https://…"
+                          className="mt-1.5 h-11 w-full rounded-xl border border-ink-200 bg-white px-3 text-[11px] text-ink-900 focus-ring dark:border-ink-800 dark:bg-ink-900 dark:text-white"
+                        />
+                      </div>
                     </div>
 
-                    {/* Active Ad Campaign reports */}
-                    <div className="space-y-4">
-                      <h4 className="text-xs font-bold tracking-wider font-mono text-ink-500">Active CPC Ad Campaigns</h4>
-                      
-                      {myCampaigns.length === 0 ? (
-                        <p className="text-xs text-ink-400 italic py-8 text-center bg-ink-50 dark:bg-ink-950/50 rounded-2xl border border-dashed border-ink-100 dark:border-ink-800">
-                          No active ad campaigns running yet. Create one on the left to start tracking impressions and clicks.
-                        </p>
+                    <div className="mt-4 flex items-center justify-between gap-2 rounded-2xl border border-ink-200 bg-white px-3.5 py-3 text-[10px] dark:border-ink-800 dark:bg-ink-900">
+                      <span className="text-ink-400">Estimated clicks</span>
+                      <span className="font-bold text-ink-800 dark:text-white">
+                        {Number(adBudget) > 0
+                          ? Math.floor(Number(adBudget) / Math.max(1, settings.adCpcPrice))
+                          : 0}{' '}
+                        clicks
+                      </span>
+                    </div>
+
+                    <Button
+                      type="submit"
+                      className="mt-4 w-full"
+                      disabled={creatingAd || !adTitle.trim() || !adBudget || balance <= 0}
+                    >
+                      {creatingAd ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
-                        <div className="space-y-4">
-                          {myCampaigns.map(ad => (
-                            <div 
-                              key={ad.id}
-                              className="bg-ink-50 dark:bg-ink-950 p-4 rounded-2xl border border-ink-100 dark:border-ink-800 space-y-3"
-                            >
-                              <div className="flex justify-between items-start">
-                                <div>
-                                  <h5 className="text-xs font-semibold text-ink-800 dark:text-ink-200 truncate max-w-[200px]">
-                                    {ad.title}
-                                  </h5>
-                                  <span className="text-xs font-bold text-ink-400 bg-ink-100 dark:bg-ink-900 px-1.5 py-0.5 rounded mt-1 inline-block">
-                                    {ad.type}
+                        <Megaphone className="h-4 w-4" />
+                      )}
+                      {creatingAd ? 'Submitting…' : 'Submit campaign for review'}
+                    </Button>
+                    {balance <= 0 && (
+                      <p className="mt-2 text-[10px] leading-relaxed text-ink-400">
+                        Add funds to your wallet before launching a paid campaign.
+                      </p>
+                    )}
+                  </form>
+
+                  <div className="space-y-4">
+                    <div className="rounded-3xl border border-ink-200 p-5 dark:border-ink-800 sm:p-6">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h3 className="font-display text-base font-bold text-ink-950 dark:text-white">
+                            Campaign performance
+                          </h3>
+                          <p className="mt-0.5 text-[10px] text-ink-400">
+                            Live delivery and click-through across your ads.
+                          </p>
+                        </div>
+                        <BarChart3 className="h-5 w-5 text-jade-600 dark:text-jade-400" />
+                      </div>
+
+                      {campaigns.length === 0 ? (
+                        <div className="mt-5 rounded-2xl border border-dashed border-ink-200 px-4 py-10 text-center dark:border-ink-700">
+                          <Target className="mx-auto h-6 w-6 text-ink-300" />
+                          <p className="mt-2 text-xs font-bold text-ink-700 dark:text-white/80">
+                            No campaigns yet
+                          </p>
+                          <p className="mt-1 text-[10px] text-ink-400">
+                            Launch your first campaign to start tracking impressions and clicks.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="mt-4 space-y-3">
+                          {campaigns.map((ad) => {
+                            const ctr = ad.impressions
+                              ? (ad.clicks / ad.impressions) * 100
+                              : 0;
+                            const progress =
+                              ad.budget > 0
+                                ? Math.min(100, (ad.spent / ad.budget) * 100)
+                                : 0;
+                            return (
+                              <div
+                                key={ad.id}
+                                className="rounded-2xl border border-ink-150 bg-ink-50/70 p-3.5 dark:border-ink-800 dark:bg-ink-950/40"
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <p className="truncate text-xs font-bold text-ink-900 dark:text-white">
+                                      {ad.title}
+                                    </p>
+                                    <p className="mt-0.5 text-[9px] uppercase tracking-wide text-ink-400">
+                                      {ad.type.replace(/_/g, ' ')}
+                                    </p>
+                                  </div>
+                                  <span
+                                    className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold ${
+                                      ad.status === 'ACTIVE'
+                                        ? 'bg-jade-500/10 text-jade-700 dark:text-jade-300'
+                                        : 'bg-ink-100 text-ink-500 dark:bg-ink-800 dark:text-ink-400'
+                                    }`}
+                                  >
+                                    {ad.status.replace(/_/g, ' ')}
                                   </span>
                                 </div>
-                                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${ad.status === 'ACTIVE' ? 'bg-jade-100 text-jade-600 dark:bg-jade-950/40 dark:text-jade-400' : 'bg-ink-100 text-ink-500'}`}>
-                                  {ad.status}
-                                </span>
+                                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                                  <div>
+                                    <p className="text-xs font-extrabold text-ink-900 dark:text-white">
+                                      {compactNumber(ad.impressions)}
+                                    </p>
+                                    <p className="text-[9px] text-ink-400">Impressions</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs font-extrabold text-ink-900 dark:text-white">
+                                      {compactNumber(ad.clicks)}
+                                    </p>
+                                    <p className="text-[9px] text-ink-400">Clicks</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs font-extrabold text-ink-900 dark:text-white">
+                                      {ctr.toFixed(1)}%
+                                    </p>
+                                    <p className="text-[9px] text-ink-400">CTR</p>
+                                  </div>
+                                </div>
+                                <div className="mt-3">
+                                  <div className="flex items-center justify-between text-[9px] text-ink-400">
+                                    <span>{naira(ad.spent)} spent</span>
+                                    <span>{naira(ad.budget)} budget</span>
+                                  </div>
+                                  <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-ink-200 dark:bg-ink-800">
+                                    <div
+                                      className="h-full rounded-full bg-gradient-to-r from-jade-500 to-jade-300 transition-all"
+                                      style={{ width: `${progress}%` }}
+                                    />
+                                  </div>
+                                </div>
                               </div>
-
-                              {/* CPC Metrics */}
-                              <div className="grid grid-cols-3 gap-2 text-center text-xs bg-white dark:bg-ink-900 p-2.5 rounded-xl border border-ink-100 dark:border-ink-800 font-mono">
-                                <div>
-                                  <span className="text-xs text-ink-400 block">Impressions</span>
-                                  <span className="font-semibold text-jade-500">{ad.impressions || 0}</span>
-                                </div>
-                                <div>
-                                  <span className="text-xs text-ink-400 block">Clicks</span>
-                                  <span className="font-semibold text-ink-500">{ad.clicks}</span>
-                                </div>
-                                <div>
-                                  <span className="text-xs text-ink-400 block">Spent</span>
-                                  <span className="font-semibold text-ink-500">₦{ad.spent.toLocaleString()}</span>
-                                </div>
-                              </div>
-
-
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </div>
 
+                    <div className="rounded-3xl border border-ink-200 bg-ink-50/60 p-5 dark:border-ink-800 dark:bg-ink-950/40 sm:p-6">
+                      <div className="flex items-start gap-3">
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gold-400/15 text-gold-700 dark:text-gold-300">
+                          <Eye className="h-4 w-4" />
+                        </span>
+                        <div>
+                          <h3 className="font-display text-sm font-bold text-ink-950 dark:text-white">
+                            How CPC works
+                          </h3>
+                          <p className="mt-1 text-[10px] leading-relaxed text-ink-500 dark:text-ink-400">
+                            Your campaign budget is reserved at launch. Impressions are free;
+                            delivery consumes the CPC rate only when someone clicks your ad.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <div className="rounded-xl bg-white p-3 dark:bg-ink-900">
+                          <p className="text-[9px] font-bold uppercase tracking-wide text-ink-400">
+                            Wallet budget
+                          </p>
+                          <p className="mt-0.5 text-sm font-bold text-ink-900 dark:text-white">
+                            {naira(Number(adBudget) || 0)}
+                          </p>
+                        </div>
+                        <div className="rounded-xl bg-white p-3 dark:bg-ink-900">
+                          <p className="text-[9px] font-bold uppercase tracking-wide text-ink-400">
+                            Total allocated
+                          </p>
+                          <p className="mt-0.5 text-sm font-bold text-ink-900 dark:text-white">
+                            {naira(adBudgetTotal)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-
                 </div>
-              )}
-
-            </div>
+              </div>
+            )}
           </div>
+        </section>
 
+        <div className="flex items-center justify-center gap-2 pb-4 text-center text-[10px] text-ink-400">
+          <ShieldCheck className="h-3.5 w-3.5" />
+          Wallet balances, escrow releases and payout decisions are verified by GoodSale&apos;s servers.
         </div>
-      )}
+      </div>
 
+      <AddFundsDialog
+        open={addFundsOpen}
+        onClose={() => setAddFundsOpen(false)}
+        onFunded={handleFunded}
+        email={typeof user.email === 'string' ? user.email : ''}
+        min={fundingMin}
+        max={fundingMax}
+        enabled={fundingAvailable}
+      />
+
+      <WithdrawReviewDialog
+        open={reviewOpen}
+        onClose={() => setReviewOpen(false)}
+        onConfirm={() => void submitWithdrawal()}
+        submitting={submittingPayout}
+        amount={parsedWithdrawal}
+        availableBalance={balance}
+        fee={withdrawalFee}
+        bank={bankName}
+        accountName={bankAccountName}
+        accountNumber={bankAccountNumber}
+      />
+
+      {subscriptionCheckout && (
+        <SubscriptionCheckoutDialog
+          open={Boolean(subscriptionCheckout)}
+          onClose={() => setSubscriptionCheckout(null)}
+          email={typeof user.email === 'string' ? user.email : ''}
+          product={subscriptionCheckout.product}
+          planCode={subscriptionCheckout.planCode}
+          title={subscriptionCheckout.title}
+          price={subscriptionCheckout.price}
+          onActivated={handlePremiumActivated}
+        />
+      )}
     </div>
   );
 }

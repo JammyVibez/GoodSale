@@ -7,7 +7,7 @@ import {
   X, Send, Loader2, ExternalLink, AlertTriangle, BadgeCheck, Search, Ban,
   CircleDollarSign, Gavel, Inbox,
 } from 'lucide-react';
-import { useDBState, dbOperations } from '../lib/store';
+import { useDBState, dbOperations, reloadFromSupabase } from '../lib/store';
 import { useTrustCenter, replyToTicket, updateTicket, resolveProductAppeal } from '../lib/trustCenter';
 import { computeAccountRisk, computeSellerTrust } from '../lib/trust';
 import { OrderStatus, UserRole, type SupportTicket, type SupportTicketStatus } from '../lib/types';
@@ -31,6 +31,7 @@ const STATUS_STYLE: Record<string, string> = {
   RESOLVED: 'bg-jade-500/15 text-jade-700 dark:text-jade-300',
   CLOSED: 'bg-ink-100 text-ink-500 dark:bg-ink-800 dark:text-ink-400',
   PENDING: 'bg-gold-400/15 text-gold-700 dark:text-gold-300',
+  PENDING_REVIEW: 'bg-gold-400/15 text-gold-700 dark:text-gold-300',
   APPROVED: 'bg-jade-500/15 text-jade-700 dark:text-jade-300',
   REJECTED: 'bg-red-500/10 text-red-600 dark:text-red-300',
   HIGH: 'bg-red-500/10 text-red-600 dark:text-red-300',
@@ -64,6 +65,38 @@ export default function AdminTrustSafetyPanel() {
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [appealDraft, setAppealDraft] = useState<Record<number, string>>({});
+
+  const reviewCampaign = async (campaignId: number, action: 'APPROVE' | 'REJECT') => {
+    const reason =
+      action === 'REJECT'
+        ? window.prompt('Reason for rejecting this campaign (shown to the seller and audit log):') || ''
+        : '';
+    if (action === 'REJECT' && !reason.trim()) return;
+
+    setBusy(`campaign-${campaignId}`);
+    try {
+      const res = await fetch('/api/admin/ads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaignId, action, reason }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !payload.success) {
+        toast.error(payload.error || 'Campaign review failed');
+        return;
+      }
+      toast.success(
+        action === 'APPROVE'
+          ? 'Campaign approved and eligible to serve'
+          : 'Campaign rejected and its reserved budget returned'
+      );
+      await reloadFromSupabase();
+    } catch {
+      toast.error('Campaign review failed');
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const openTickets = tickets.filter((t) => t.status !== 'RESOLVED' && t.status !== 'CLOSED');
   const pendingRefunds = db.refunds.filter((r) => r.status === 'PENDING');
@@ -100,7 +133,11 @@ export default function AdminTrustSafetyPanel() {
         sellerName: db.users.find((u) => u.id === ad.sellerId)?.fullName || `Seller #${ad.sellerId}`,
         ctr: ad.impressions ? (ad.clicks / ad.impressions) * 100 : 0,
       }))
-      .sort((a, b) => b.spent - a.spent);
+      .sort(
+        (a, b) =>
+          Number(b.status === 'PENDING_REVIEW') - Number(a.status === 'PENDING_REVIEW') ||
+          b.spent - a.spent
+      );
   }, [db.sponsoredAds, db.users]);
 
   const filteredTickets = tickets.filter((t) => {
@@ -607,6 +644,7 @@ export default function AdminTrustSafetyPanel() {
                   <th className="px-4 py-2.5 text-right font-bold">Clicks</th>
                   <th className="px-4 py-2.5 text-right font-bold">CTR</th>
                   <th className="px-4 py-2.5 text-right font-bold">Spend</th>
+                  <th className="px-4 py-2.5 text-right font-bold">Review</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-100 dark:divide-ink-800">
@@ -619,6 +657,35 @@ export default function AdminTrustSafetyPanel() {
                     <td className="px-4 py-3 text-right tabular-nums text-ink-500 dark:text-ink-400">{ad.clicks.toLocaleString()}</td>
                     <td className="px-4 py-3 text-right tabular-nums text-ink-500 dark:text-ink-400">{ad.ctr.toFixed(1)}%</td>
                     <td className="px-4 py-3 text-right font-semibold text-ink-800 dark:text-ink-100">{naira(ad.spent)} <span className="font-normal text-ink-400">/ {naira(ad.budget)}</span></td>
+                    <td className="px-4 py-3">
+                      {ad.status === 'PENDING_REVIEW' ? (
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            disabled={busy === `campaign-${ad.id}`}
+                            onClick={() => void reviewCampaign(ad.id, 'APPROVE')}
+                            className="inline-flex items-center gap-1 rounded-lg bg-jade-600 px-2 py-1 text-[10px] font-bold text-white disabled:opacity-50"
+                          >
+                            {busy === `campaign-${ad.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                            Approve
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy === `campaign-${ad.id}`}
+                            onClick={() => void reviewCampaign(ad.id, 'REJECT')}
+                            className="inline-flex items-center gap-1 rounded-lg border border-red-300 px-2 py-1 text-[10px] font-bold text-red-600 disabled:opacity-50 dark:border-red-500/30 dark:text-red-300"
+                          >
+                            <X className="h-3 w-3" /> Reject
+                          </button>
+                        </div>
+                      ) : ad.moderationReason ? (
+                        <p className="text-right text-[10px] text-ink-400" title={ad.moderationReason}>
+                          Rejected
+                        </p>
+                      ) : (
+                        <p className="text-right text-[10px] text-ink-400">—</p>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

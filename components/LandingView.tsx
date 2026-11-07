@@ -125,6 +125,7 @@ function ProductCard({
   sellerName,
   sellerVerified = false,
   isFavorite,
+  isFeatured = false,
   onToggleFavorite,
   onSelect,
   onAdd,
@@ -135,6 +136,7 @@ function ProductCard({
   compact?: boolean;
   sellerName?: string;
   sellerVerified?: boolean;
+  isFeatured?: boolean;
   isFavorite: boolean;
   onToggleFavorite: () => void;
   onSelect: () => void;
@@ -169,6 +171,11 @@ function ProductCard({
         {discount === null && lowStock && (
           <span className="absolute left-2 top-2 rounded-md bg-jade-700/90 px-1.5 py-0.5 text-[10px] font-bold text-white shadow-sm">
             {product.quantity} left
+          </span>
+        )}
+        {isFeatured && (
+          <span className="absolute bottom-2 left-2 rounded-md bg-gold-300 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-ink-950 shadow-sm">
+            Featured
           </span>
         )}
 
@@ -323,6 +330,29 @@ export default function LandingView({
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [db.products, stateOf]);
 
+  const activeFeaturedIds = useMemo(
+    () =>
+      new Set(
+        db.featuredListings
+          .filter(
+            (entry) =>
+              entry.status === 'ACTIVE' && new Date(entry.expiresAt).getTime() > Date.now()
+          )
+          .map((entry) => entry.productId)
+      ),
+    [db.featuredListings]
+  );
+
+  const activeVerifiedPlusSellers = useMemo(
+    () =>
+      new Set(
+        db.verifiedPlusSubscriptions
+          .filter((entry) => new Date(entry.expiresAt).getTime() > Date.now())
+          .map((entry) => entry.userId)
+      ),
+    [db.verifiedPlusSubscriptions]
+  );
+
   /* ---- filtering ---- */
   const filteredProducts = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -355,14 +385,26 @@ export default function LandingView({
           return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
         case 'rating':
           return (ratingOf(b.id) || 0) - (ratingOf(a.id) || 0);
-        default:
-          return (ratingOf(b.id) || 0) * 10 + b.viewCount / 100 - ((ratingOf(a.id) || 0) * 10 + a.viewCount / 100);
+        default: {
+          const score = (product: Product) =>
+            (ratingOf(product.id) || 0) * 10 +
+            product.viewCount / 100 +
+            (['IN_STOCK', 'LOW_STOCK'].includes(product.stockStatus) &&
+            activeFeaturedIds.has(product.id)
+              ? Number(db.revenueSettings.featuredRankingBoost) || 0
+              : 0) +
+            (activeVerifiedPlusSellers.has(product.sellerId)
+              ? Number(db.revenueSettings.verifiedPlusRankingBoost) || 0
+              : 0);
+          return score(b) - score(a);
+        }
       }
     });
     return list;
   }, [
-    db.products, searchQuery, selectedCategory, selectedState, onlyVerified, wishlistOnly,
-    dealsOnly, favorites, profilesByUserId, stateOf, sortMode, ratingOf,
+    db.products, db.revenueSettings, searchQuery, selectedCategory, selectedState, onlyVerified,
+    wishlistOnly, dealsOnly, favorites, profilesByUserId, stateOf, sortMode, ratingOf,
+    activeFeaturedIds, activeVerifiedPlusSellers,
   ]);
 
   /* ---- flash deals: real discounts first, then low stock ---- */
@@ -705,6 +747,7 @@ export default function LandingView({
                   rating={ratingOf(product.id)}
                   reviewCount={reviewCountOf(product.id)}
                   {...sellerProps(product.sellerId)}
+                  isFeatured={activeFeaturedIds.has(product.id)}
                   isFavorite={favorites.includes(product.id)}
                   onToggleFavorite={() => toggleFavorite(product.id)}
                   onSelect={() => onSelectProduct(product.id)}
@@ -745,6 +788,7 @@ export default function LandingView({
                   rating={ratingOf(product.id)}
                   reviewCount={reviewCountOf(product.id)}
                   {...sellerProps(product.sellerId)}
+                  isFeatured={activeFeaturedIds.has(product.id)}
                   isFavorite={favorites.includes(product.id)}
                   onToggleFavorite={() => toggleFavorite(product.id)}
                   onSelect={() => onSelectProduct(product.id)}
@@ -901,6 +945,7 @@ export default function LandingView({
                   rating={ratingOf(product.id)}
                   reviewCount={reviewCountOf(product.id)}
                   {...sellerProps(product.sellerId)}
+                  isFeatured={activeFeaturedIds.has(product.id)}
                   isFavorite={favorites.includes(product.id)}
                   onToggleFavorite={() => toggleFavorite(product.id)}
                   onSelect={() => onSelectProduct(product.id)}

@@ -109,7 +109,9 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
   const [fees, setFees] = useState({
     escrowPercentageFee: '1.5', escrowMinFee: '100', escrowMaxFee: '15000',
     deliveryCommissionPercentage: '10', subProPrice: '15000', subPremiumPrice: '35000',
-    subEnterprisePrice: '85000', verifiedPlusPrice: '10000', flashSaleFeaturePrice: '7500',
+    subEnterprisePrice: '85000', verifiedPlusPrice: '10000', premiumDurationDays: '30', flashSaleFeaturePrice: '7500',
+    featured3DaysPrice: '2500', featured7DaysPrice: '5000', featured14DaysPrice: '9000',
+    featuredRankingBoost: '30', verifiedPlusRankingBoost: '8',
     auctionSuccessFeePercentage: '2.5', adCpcPrice: '150', goodSaleProtectFee: '1500',
   });
   const [enabledMethods, setEnabledMethods] = useState<string[]>(['escrow', 'cod', 'card', 'bank', 'invoice', 'partial']);
@@ -129,7 +131,13 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
       subProPrice: String(rs.subProPrice ?? 15000),
       subPremiumPrice: String(rs.subPremiumPrice ?? 35000),
       subEnterprisePrice: String(rs.subEnterprisePrice ?? 85000),
+      featured3DaysPrice: String(rs.featured3DaysPrice ?? 2500),
+      featured7DaysPrice: String(rs.featured7DaysPrice ?? 5000),
+      featured14DaysPrice: String(rs.featured14DaysPrice ?? 9000),
+      featuredRankingBoost: String(rs.featuredRankingBoost ?? 30),
+      verifiedPlusRankingBoost: String(rs.verifiedPlusRankingBoost ?? 8),
       verifiedPlusPrice: String(rs.verifiedPlusPrice ?? 10000),
+      premiumDurationDays: String(rs.premiumDurationDays ?? 30),
       flashSaleFeaturePrice: String(rs.flashSaleFeaturePrice ?? 7500),
       auctionSuccessFeePercentage: String(rs.auctionSuccessFeePercentage ?? 2.5),
       adCpcPrice: String(rs.adCpcPrice ?? 150),
@@ -1002,7 +1010,13 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
                     subProPrice: num('subProPrice'),
                     subPremiumPrice: num('subPremiumPrice'),
                     subEnterprisePrice: num('subEnterprisePrice'),
+                    featured3DaysPrice: num('featured3DaysPrice'),
+                    featured7DaysPrice: num('featured7DaysPrice'),
+                    featured14DaysPrice: num('featured14DaysPrice'),
+                    featuredRankingBoost: num('featuredRankingBoost'),
+                    verifiedPlusRankingBoost: num('verifiedPlusRankingBoost'),
                     verifiedPlusPrice: num('verifiedPlusPrice'),
+                    premiumDurationDays: num('premiumDurationDays'),
                     flashSaleFeaturePrice: num('flashSaleFeaturePrice'),
                     auctionSuccessFeePercentage: num('auctionSuccessFeePercentage'),
                     adCpcPrice: num('adCpcPrice'),
@@ -1071,10 +1085,16 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
                     <Sparkles className="w-4 h-4 text-jade-500" /><h4 className="font-bold text-sm text-ink-900 dark:text-white">Listing Features</h4>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <Field label="Verified+ ₦"><input type="number" value={fees.verifiedPlusPrice} onChange={(e) => setFee('verifiedPlusPrice', e.target.value)} className={inp} required /></Field>
+                    <Field label="Featured 3 days ₦"><input type="number" min="0" value={fees.featured3DaysPrice} onChange={(e) => setFee('featured3DaysPrice', e.target.value)} className={inp} required /></Field>
+                    <Field label="Featured 7 days ₦"><input type="number" min="0" value={fees.featured7DaysPrice} onChange={(e) => setFee('featured7DaysPrice', e.target.value)} className={inp} required /></Field>
+                    <Field label="Featured 14 days ₦"><input type="number" min="0" value={fees.featured14DaysPrice} onChange={(e) => setFee('featured14DaysPrice', e.target.value)} className={inp} required /></Field>
                     <Field label="Flash Sale ₦"><input type="number" value={fees.flashSaleFeaturePrice} onChange={(e) => setFee('flashSaleFeaturePrice', e.target.value)} className={inp} required /></Field>
+                    <Field label="Verified+ ₦"><input type="number" value={fees.verifiedPlusPrice} onChange={(e) => setFee('verifiedPlusPrice', e.target.value)} className={inp} required /></Field>
+                    <Field label="Membership days"><input type="number" min="1" max="366" value={fees.premiumDurationDays} onChange={(e) => setFee('premiumDurationDays', e.target.value)} className={inp} required /></Field>
                     <Field label="Auction %"><input type="number" step="0.1" value={fees.auctionSuccessFeePercentage} onChange={(e) => setFee('auctionSuccessFeePercentage', e.target.value)} className={inp} required /></Field>
                     <Field label="Ads CPC ₦"><input type="number" value={fees.adCpcPrice} onChange={(e) => setFee('adCpcPrice', e.target.value)} className={inp} required /></Field>
+                    <Field label="Featured rank pts"><input type="number" min="0" value={fees.featuredRankingBoost} onChange={(e) => setFee('featuredRankingBoost', e.target.value)} className={inp} required /></Field>
+                    <Field label="Verified+ rank pts"><input type="number" min="0" value={fees.verifiedPlusRankingBoost} onChange={(e) => setFee('verifiedPlusRankingBoost', e.target.value)} className={inp} required /></Field>
                   </div>
                 </div>
                 <div className={`${card} p-5 space-y-3 md:col-span-2`}>
