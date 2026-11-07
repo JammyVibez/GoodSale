@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { clientIpFromRequest, rateLimitAsync } from '@/lib/rate-limit';
 import { logger, publicErrorMessage } from '@/lib/logger';
+import {
+  normalizeReferralCode,
+  REFERRAL_CODE_PATTERN,
+  referralIpHash,
+} from '@/lib/referrals/server';
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const NIGERIAN_PHONE = /^(?:\+?234|0)[789]\d{9}$/;
@@ -83,6 +88,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const referralCode = normalizeReferralCode(body.referralCodeUsed);
+    const signupIpHash = referralIpHash(req);
+
     const { data, error } = await admin.auth.admin.createUser({
       email,
       password,
@@ -92,7 +100,7 @@ export async function POST(req: NextRequest) {
         username: body.username || '',
         phone_number: phone,
         role: body.role || 'BUYER',
-        referral_code_used: body.referralCodeUsed || null,
+        ...(signupIpHash ? { signup_ip_hash: signupIpHash } : {}),
       },
     });
 
@@ -103,7 +111,45 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: message }, { status: 400 });
     }
 
-    return NextResponse.json({ success: true, userId: data.user?.id ?? null });
+    let referralApplied = false;
+    if (data.user?.id && REFERRAL_CODE_PATTERN.test(referralCode)) {
+      try {
+        // The profile is created by the auth trigger. Attribution is server-only
+        // and can never be changed by the browser after this point.
+        const { data: profile } = await admin
+          .from('profiles')
+          .select('id')
+          .eq('auth_id', data.user.id)
+          .maybeSingle();
+
+        if (profile?.id) {
+          const { data: attributed, error: referralError } = await admin.rpc(
+            'attribute_referral',
+            {
+              p_referee_id: profile.id,
+              p_code: referralCode,
+              p_ip_hash: signupIpHash,
+            }
+          );
+          if (referralError) {
+            logger.warn('Referral attribution skipped', { error: referralError.message });
+          } else {
+            referralApplied = Boolean(
+              attributed && typeof attributed === 'object' && attributed.success
+            );
+          }
+        }
+      } catch (referralError) {
+        // An invalid/expired campaign must never block a real registration.
+        logger.warn('Referral attribution failed', { error: String(referralError) });
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      userId: data.user?.id ?? null,
+      referralApplied,
+    });
   } catch (error) {
     logger.error('Registration route failed', { error: String(error) });
     return NextResponse.json(

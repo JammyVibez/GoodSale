@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { 
   Shield, Award, MapPin, CheckCircle, Package, Clock, AlertTriangle, 
   ChevronRight, Calendar, Star, ArrowLeft, Key, CreditCard, Lock,
-  Download, Check, Compass, Sliders, Truck, Store, Camera, Loader2, ShieldCheck
+  Download, Check, Compass, Sliders, Truck, Store, Camera, Loader2, ShieldCheck, Gift
 } from 'lucide-react';
 import { useDBState, dbOperations, OrderStatus, Order, UserRole } from '../lib/store';
 import LiveSafeMeetMap from './LiveSafeMeetMap';
@@ -434,7 +434,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
           Quick access
         </h3>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {/* Dispatch Partner Dashboard */}
           <button
             type="button"
@@ -471,6 +471,25 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
               </h4>
               <p className="text-xs text-ink-400 mt-0.5 leading-snug">
                 {canSell ? 'Manage your store and inventory.' : 'Switch your account type in Settings.'}
+              </p>
+            </div>
+          </button>
+
+          {/* Referral & rewards centre */}
+          <button
+            type="button"
+            onClick={() => onNavigate?.('referrals')}
+            className="flex items-center gap-3 p-3.5 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 hover:border-gold-400 dark:hover:border-gold-400 rounded-2xl shadow-xs text-left cursor-pointer transition-all group"
+          >
+            <div className="p-2.5 rounded-xl bg-gold-400/15 text-gold-700 dark:text-gold-300 group-hover:bg-gold-400 group-hover:text-jade-950 transition-all">
+              <Gift className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-ink-900 dark:text-white group-hover:text-gold-600 transition-colors">
+                Referrals &amp; rewards
+              </h4>
+              <p className="text-xs text-ink-400 mt-0.5 leading-snug">
+                Share your code and earn GoodSale Coins.
               </p>
             </div>
           </button>

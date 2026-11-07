@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: true },
 };
 
-type SearchParams = Promise<{ next?: string }>;
+type SearchParams = Promise<{ next?: string; ref?: string }>;
 
 export default async function RegisterPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
@@ -18,6 +18,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Sea
     <AuthExperience
       initialMode="register"
       next={params.next ? safeNextPath(params.next) : undefined}
+      referralCode={params.ref}
     />
   );
 }

@@ -321,20 +321,8 @@ export const dbOperations = {
       profile.role = role;
     }
 
-    if (profile && referralCodeUsed) {
-      const state = getDBState();
-      const referrer = state.users.find((u) => u.referralCode === referralCodeUsed);
-      if (referrer) {
-        await client.from('profiles').update({ referred_by_id: referrer.id }).eq('id', profile.id);
-        await client.from('referrals').insert({
-          referrer_id: referrer.id,
-          referee_id: profile.id,
-          referee_name: fullName,
-          status: 'REGISTERED',
-          points_reward: 150,
-        });
-      }
-    }
+    // Referral attribution happens atomically inside /api/auth/register using
+    // the service role. The browser never inserts referrals or decides rewards.
 
     await reloadFromSupabase();
     const state = getDBState();

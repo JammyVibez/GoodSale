@@ -2,12 +2,15 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Award, Gift, Sparkles, Share2, Clipboard, HeartHandshake, CheckCircle2 } from 'lucide-react';
-import { getDBState, saveDBState, dbOperations } from '../lib/store';
+import { Award, Gift, Share2, HeartHandshake } from 'lucide-react';
+import { getDBState, dbOperations } from '../lib/store';
 
-export default function LoyaltyHubView() {
+export default function LoyaltyHubView({
+  onNavigate,
+}: {
+  onNavigate?: (view: string, payload?: unknown) => void;
+}) {
   const [db, setDb] = useState(getDBState());
-  const [copied, setCopied] = useState(false);
   const [claimSuccess, setClaimSuccess] = useState<string | null>(null);
 
   useEffect(() => {
@@ -42,11 +45,6 @@ export default function LoyaltyHubView() {
     dbOperations.subtractUserPoints(cost);
     setClaimSuccess(`Voucher redeemed: 1x "${label}". Code sent to your notifications tray.`);
     setTimeout(() => setClaimSuccess(null), 5000);
-  };
-
-  const handleCopyLink = () => {
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
@@ -129,44 +127,38 @@ export default function LoyaltyHubView() {
             </div>
           </div>
 
-          {/* Referral Link copy portal */}
+          {/* Referral dashboard */}
           <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-6 shadow-sm space-y-4">
             <h3 className="font-sans font-semibold text-sm text-ink-900 dark:text-white flex items-center gap-2">
               <Share2 className="w-5 h-5 text-jade-500" />
-              Refer Merchants & Buyers
+              Refer merchants &amp; buyers
             </h3>
 
             <p className="text-xs text-ink-500 leading-relaxed">
-              Grow the Nigeria secure trading circle! Earn <strong>150 GP</strong> instantly when any referred friend registers an account and closes their first escrow delivery validation checkout.
+              Share your personal code, QR code and referral link. GoodSale Coins are credited only
+              after the new account meets the campaign&apos;s real qualification rules.
             </p>
 
-            <div className="p-4 bg-ink-50 dark:bg-ink-800/40 rounded-2xl space-y-3 text-xs">
-              <div>
-                <span className="text-ink-400 block text-xs font-bold mb-1">Your Referral Invite Code</span>
-                <div className="flex gap-2">
-                  <span className="flex-1 px-3.5 py-2 bg-white dark:bg-ink-900 border border-ink-100 dark:border-ink-800 font-mono font-bold text-ink-800 dark:text-ink-300 rounded-xl flex items-center">
-                    GOOD-{user.username.toUpperCase()}-REF
-                  </span>
-                  <button
-                    onClick={handleCopyLink}
-                    className="p-2 bg-jade-500 text-white rounded-xl hover:bg-jade-600 cursor-pointer flex items-center justify-center transition-colors shrink-0"
-                    title="Copy Code"
-                  >
-                    {copied ? <CheckCircle2 className="w-4 h-4" /> : <Clipboard className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              {copied && (
-                <span className="text-xs font-semibold text-jade-500 block text-center">
-                  Invite Link Code copied to clipboard!
-                </span>
-              )}
+            <div className="rounded-2xl border border-gold-400/25 bg-gradient-to-br from-gold-50 to-white p-4 dark:from-gold-400/10 dark:to-ink-950">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-ink-400">
+                Your referral code
+              </p>
+              <p className="mt-1 font-mono text-xl font-black tracking-wider text-ink-950 dark:text-white">
+                {user.referralCode || 'Pending'}
+              </p>
             </div>
+
+            <button
+              type="button"
+              onClick={() => onNavigate?.('referrals')}
+              className="w-full rounded-xl bg-jade-600 px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-jade-700"
+            >
+              Open referral &amp; rewards centre
+            </button>
 
             <div className="p-3 bg-jade-500/5 border border-jade-500/10 rounded-2xl flex items-center gap-3 text-xs text-ink-600 dark:text-ink-400">
               <HeartHandshake className="w-5 h-5 text-jade-500 shrink-0" />
-              <span>referred friends are tracked via browser state. No limit!</span>
+              <span>Every registration and reward is tracked by GoodSale&apos;s servers.</span>
             </div>
 
           </div>

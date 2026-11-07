@@ -6,8 +6,8 @@ import {
   Settings, User, Shield, Bell, HelpCircle, Save, Database, Key, 
   MapPin, CheckCircle, RefreshCw, Smartphone, Mail, Sparkles, ArrowLeft,
   Sun, Moon, Monitor, Eye, EyeOff, Lock, Users, CreditCard, ShoppingBag, Gift,
-  Share2, Phone, Building, Info, FileText, Download, Trash2, ShieldAlert,
-  Grid, Copy, Check, Menu, AlertTriangle, Play, HelpCircle as HelpIcon, Calendar, Clock, Wallet, ChevronRight,
+  Phone, Building, Info, FileText, Download, Trash2, ShieldAlert,
+  Grid, Menu, AlertTriangle, Play, HelpCircle as HelpIcon, Calendar, Clock, Wallet, ChevronRight,
   LogOut, Store
 } from 'lucide-react';
 import { useDBState, dbOperations, getDBState, saveDBState, reloadFromSupabase, UserRole } from '../lib/store';
@@ -183,8 +183,6 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
   const [redeemedVoucher, setRedeemedVoucher] = useState<string | null>(null);
   const [redeeming, setRedeeming] = useState(false);
 
-  // 10. Referral Share Link Copy
-  const [referralLinkCopied, setReferralLinkCopied] = useState(false);
 
   // 11. Delivery Preferences
   const [preferredCourier, setPreferredCourier] = useState('GIG Logistics');
@@ -448,14 +446,6 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
       }
     };
     input.click();
-  };
-
-  const handleCopyReferral = () => {
-    const code = currentUser?.referralCode || 'GS-HAMZA-12';
-    const link = `https://goodsale.ng/join?ref=${code}`;
-    navigator.clipboard.writeText(link);
-    setReferralLinkCopied(true);
-    setTimeout(() => setReferralLinkCopied(false), 2000);
   };
 
   const handleRedeemPoints = async (cost: number, voucherVal: string) => {
@@ -2348,71 +2338,32 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
           {/* TAB 10: REFERRAL CENTER */}
           {activeTab === 'referrals' && (
             <div className="space-y-6 animate-fade-in">
-              <div className="bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 p-6 sm:p-8 rounded-[32px] shadow-sm space-y-6">
-                <div>
-                  <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
-                    <Gift className="w-5 h-5 text-jade-400" />
-                    Referral Center
+              <div className="relative overflow-hidden rounded-[32px] bg-gradient-to-br from-jade-950 via-jade-900 to-ink-950 p-6 text-white shadow-lg sm:p-8">
+                <div className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full bg-gold-400/20 blur-3xl" />
+                <div className="relative max-w-xl space-y-4">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-gold-300/25 bg-gold-300/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-gold-200">
+                    <Gift className="h-3.5 w-3.5" /> Referral centre
+                  </span>
+                  <h2 className="font-display text-2xl font-extrabold tracking-tight sm:text-3xl">
+                    Invite real people. Earn GoodSale Coins.
                   </h2>
-                  <p className="text-xs text-ink-400 mt-1">Invite other merchants or buyers to earn +150 GP for every first completed escrow deal.</p>
-                </div>
-
-                {/* Referral Link Box */}
-                <div className="p-5 bg-jade-500/5 border border-jade-500/10 rounded-2xl space-y-3">
-                  <span className="text-xs font-sans font-bold text-jade-600 block tracking-wider">Your Unique Invite Coordinates</span>
-                  <div className="flex gap-2">
-                    <input 
-                      type="text" 
-                      readOnly 
-                      value={`https://goodsale.ng/join?ref=${currentUser.referralCode || 'GS-HAMZA-12'}`}
-                      className="flex-1 px-3 py-2.5 bg-white dark:bg-ink-950 border border-ink-200 rounded-xl text-xs font-mono select-all focus:outline-none"
-                    />
+                  <p className="text-xs leading-relaxed text-white/65 sm:text-sm">
+                    Your personal code, QR code, share tools, referral history and coin rewards now
+                    live in one dedicated dashboard. Attribution and qualification are verified
+                    server-side — registration alone does not earn a reward.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
                     <button
-                      onClick={handleCopyReferral}
-                      className="px-4 py-2.5 bg-jade-500 hover:bg-jade-600 text-white font-semibold text-xs rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+                      type="button"
+                      onClick={() => onNavigate?.('referrals')}
+                      className="inline-flex items-center gap-2 rounded-xl bg-gold-300 px-4 py-2.5 text-xs font-bold text-jade-950 transition-colors hover:bg-gold-200"
                     >
-                      {referralLinkCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                      {referralLinkCopied ? 'Copied' : 'Copy'}
+                      <Gift className="h-4 w-4" /> Open referral dashboard
                     </button>
+                    <span className="rounded-full border border-white/15 px-3 py-1.5 font-mono text-[10px] text-white/60">
+                      {currentUser.referralCode || 'Code pending'}
+                    </span>
                   </div>
-                </div>
-
-                {/* Social Share Badges */}
-                <div className="space-y-2">
-                  <p className="text-xs font-bold text-ink-400 tracking-wider">Share To Social Channels</p>
-                  <div className="flex flex-wrap gap-2 text-xs">
-                    <button onClick={() => toast.info('Opening WhatsApp to share your referral link...')} className="px-3.5 py-2 bg-jade-600/10 text-jade-700 dark:text-jade-300 hover:bg-jade-600 hover:text-white rounded-xl font-bold cursor-pointer transition-all">WhatsApp</button>
-                    <button onClick={() => toast.info('Opening X to share your referral link...')} className="px-3.5 py-2 bg-black/10 text-ink-950 dark:text-white hover:bg-ink-900 rounded-xl font-bold cursor-pointer transition-all">X / Twitter</button>
-                    <button onClick={() => toast.info('Opening Facebook to share your referral link...')} className="px-3.5 py-2 bg-jade-600/10 text-jade-700 dark:text-jade-300 hover:bg-jade-600 hover:text-white rounded-xl font-bold cursor-pointer transition-all">Facebook</button>
-                  </div>
-                </div>
-
-                {/* Referrals ledger */}
-                <div className="border-t border-ink-100 dark:border-ink-850 pt-5 space-y-3">
-                  <h3 className="text-xs font-bold text-ink-800 dark:text-white tracking-wider">Referred Friends Registry</h3>
-                  
-                  {db.referrals.length === 0 ? (
-                    <p className="text-xs text-ink-400 py-4">No successful referrals yet. Share your code to get started!</p>
-                  ) : (
-                    <div className="divide-y divide-ink-150 dark:divide-ink-850">
-                      {db.referrals.filter(r => r.referrerId === currentUser.id).map((ref) => (
-                        <div key={ref.id} className="py-3 flex justify-between items-center text-xs">
-                          <div>
-                            <p className="font-semibold text-ink-800 dark:text-white">{ref.refereeName}</p>
-                            <p className="text-xs text-ink-400">Signed up {new Date(ref.createdAt).toLocaleDateString()}</p>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <span className={`px-2 py-0.5 text-xs font-bold rounded ${
-                              ref.status === 'FIRST_ORDER_COMPLETED' ? 'bg-jade-100 text-jade-800' : 'bg-ink-100 text-ink-800'
-                            }`}>
-                              {ref.status === 'FIRST_ORDER_COMPLETED' ? 'Concluded (Earned)' : 'Pending Checkout'}
-                            </span>
-                            <span className="font-mono font-bold text-ink-500">+ {ref.pointsReward} GP</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </div>
               </div>
             </div>

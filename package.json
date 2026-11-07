@@ -17,7 +17,8 @@
     "seed:reset": "tsx scripts/seed-marketplace.ts --force",
     "verify:realtime": "tsx scripts/verify-realtime.ts",
     "verify:tracking": "node scripts/verify-premium-tracking.mjs",
-    "verify:wallet": "node scripts/verify-wallet-ledger.mjs"
+    "verify:wallet": "node scripts/verify-wallet-ledger.mjs",
+    "verify:referrals": "node scripts/verify-referrals.mjs"
   },
   "engines": {
     "node": ">=20"
@@ -32,6 +33,7 @@
     "motion": "^11.11.17",
     "next": "15.5.20",
     "pg": "^8.23.1",
+    "qrcode.react": "^4.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

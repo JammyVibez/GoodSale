@@ -35,6 +35,7 @@
    - Set `PAYSTACK_WEBHOOK_SECRET` (or reuse secret key)
    - Enable **Transfers** + fund balance for seller payouts
    - Apply `supabase/migrations/025_wallet_ledger.sql`. Wallet funding, wallet checkout, seller earnings, payout state, refunds-to-wallet and the admin finance ledger depend on it. Without Paystack keys the UI stays usable for viewing/history but funding and payouts are explicitly unavailable.
+   - Apply `supabase/migrations/026_referrals_rewards.sql`. It creates unique referral codes, privacy-safe click records, admin-configurable campaigns, server-only attribution, qualification rules, GoodSale Coin reward transactions, fraud flags and reversal support. Set an optional long random `REFERRAL_HASH_SECRET` to keep visitor/IP hashes stable and private; otherwise the server key is used as the salt.
    - **Regulatory note:** wallet balances are marketplace ledger entries settled through Paystack. Do not launch stored-value/wallet functionality until GoodSale's payment partner and Nigerian regulatory counsel confirm the structure. GoodSale must not hold customer funds in its own bank account without an authorised arrangement.
 
 3. **App URL**
@@ -84,7 +85,7 @@ See **`.env.example`** for the complete variable list.
 | Disputes open/resolve + optional email | Done |
 | Seller withdrawals + admin Paystack Transfer | Done |
 | Append-only wallet ledger, Paystack funding, wallet checkout, payout webhook lifecycle, refunds-to-wallet, admin finance controls | Done (migration 025) |
-| Append-only wallet ledger, Paystack funding, wallet checkout, payout webhook lifecycle, refunds-to-wallet, admin finance controls | Done (migration 025) |
+| Referral campaigns, server attribution, qualification, GoodSale Coin rewards, fraud review and reversals | Done (migration 026) |
 | Admin force escrow API | Done |
 | Orders UPDATE locked (RPC-only status changes) | Done (migration 005) |
 | `credit_wallet` / `mark_order_paid` service_role only | Done (migration 005) |

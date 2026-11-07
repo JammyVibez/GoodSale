@@ -81,6 +81,7 @@ See **[PRODUCTION.md](./PRODUCTION.md)** for the full go-live checklist (credent
 23. `supabase/migrations/023_onboarding.sql` (buyer + seller onboarding state, store details, notification preferences)
 24. `supabase/migrations/024_seller_verification.sql` (seller verification lifecycle, private documents, audit trail, approval RPCs)
 25. `supabase/migrations/025_wallet_ledger.sql` (append-only wallet ledger, Paystack funding, wallet checkout, payout lifecycle, refunds to wallet, admin finance controls)
+26. `supabase/migrations/026_referrals_rewards.sql` (referral campaigns, privacy-safe attribution, qualification, idempotent GoodSale Coin rewards, fraud review and reversal)
 
 ### Seller verification
 
@@ -135,6 +136,7 @@ Paystack step-by-step: **[docs/PAYSTACK.md](./docs/PAYSTACK.md)**. Full env list
 - **Disputes / payouts**: `/api/disputes/*`, `/api/wallet/withdraw`, `/api/admin/withdrawals`
 - **Wallet**: `Wallet & payouts` shows database-backed available, pending, escrow-held and seller earnings. Funding uses `/api/wallet/fund` → Paystack → `/api/wallet/fund/verify` or signed webhook; the balance is credited only after intent, amount, currency and provider reference checks. Eligible pending orders can be paid from the wallet through `pay_order_with_wallet` (atomic debit + escrow hold). Funding and payouts report **unavailable** unless the Paystack keys are configured.
 - **Wallet admin**: **Admin panel → Finance & Wallet** for ledger search, pending payouts, refund-to-wallet/provider, audited adjustments, limits/fees and reconciliation. `npm run verify:wallet` runs a rollback-only database test of funding, duplicate prevention, immutable ledger rows, withdrawal reservation, wallet checkout and refunds.
+- **Referrals & rewards**: every account gets a unique code and share link at `/auth/register?ref=CODE`. **You → Referrals & rewards** shows the QR code, WhatsApp/X/Facebook/Telegram/native sharing, clicks, registrations, qualified referrals, pending/earned Coins and privacy-safe history. Attribution is server-only; rewards are issued only after the campaign's configured email, onboarding and genuine marketplace actions. **Admin panel → Referrals & Rewards** manages campaigns, limits, fraud flags, disqualification, reward transactions and audit history. `npm run verify:referrals` runs the rollback-only referral test.
 - **Admin panel**: sign in as an `ADMIN` / `SUPER_ADMIN` account, open the account menu (top-right),
   and choose **Admin panel** → **Revenue & Payment Settings** to toggle the per-item platform fee
   and set its percentage. It is **OFF at launch** — buyers pay only the item price plus delivery.

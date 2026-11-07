@@ -10,6 +10,7 @@ import {
   CheckCheck,
   ChevronRight,
   Gavel,
+  Gift,
   Info,
   Lock,
   MessageCircle,
@@ -50,6 +51,8 @@ const TYPE_STYLES: Record<
   BID: { Icon: Gavel, tone: 'bg-gold-400/15 text-gold-700 dark:text-gold-300', label: 'Offer' },
   DISPUTE: { Icon: ShieldAlert, tone: 'bg-rose-500/10 text-rose-600 dark:text-rose-300', label: 'Dispute' },
   POINTS: { Icon: Sparkles, tone: 'bg-gold-400/15 text-gold-700 dark:text-gold-300', label: 'Rewards' },
+  REFERRAL: { Icon: Gift, tone: 'bg-gold-400/15 text-gold-700 dark:text-gold-300', label: 'Referral' },
+  WALLET: { Icon: Lock, tone: 'bg-jade-500/10 text-jade-700 dark:text-jade-300', label: 'Wallet' },
   CHAT: { Icon: MessageCircle, tone: 'bg-jade-500/10 text-jade-700 dark:text-jade-300', label: 'Message' },
   VERIFICATION: { Icon: BadgeCheck, tone: 'bg-jade-500/10 text-jade-700 dark:text-jade-300', label: 'Verification' },
   SAFEMEET: { Icon: UserRound, tone: 'bg-ink-100 text-ink-600 dark:bg-white/10 dark:text-ink-200', label: 'SafeMeet' },
@@ -166,8 +169,12 @@ export default function NotificationMenu({ onNavigate, onOpenAuth }: Notificatio
     switch (type) {
       case 'CHAT':
         return 'chats';
+      case 'REFERRAL':
+        return 'referrals';
       case 'POINTS':
         return 'loyalty';
+      case 'WALLET':
+        return 'wallet';
       case 'PROMOTION':
       case 'BID':
         return 'marketplace';

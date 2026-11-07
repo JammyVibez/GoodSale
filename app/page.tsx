@@ -20,6 +20,7 @@ import ChatView from '../components/ChatView';
 import CartCheckoutView from '../components/CartCheckoutView';
 import SellerVerificationCenter from '../components/seller/SellerVerificationCenter';
 import LoyaltyHubView from '../components/LoyaltyHubView';
+import ReferralCenter from '../components/referral/ReferralCenter';
 import BrandCenterView from '../components/BrandCenterView';
 import SellerProfileView from '../components/SellerProfileView';
 import SettingsView from '../components/SettingsView';
@@ -90,7 +91,7 @@ export default function Home() {
     if (!pendingView) return;
     const known = [
       'marketplace', 'dashboard', 'wallet', 'chats', 'settings', 'buyer-profile', 'cart',
-      'loyalty', 'dispatch', 'revenue', 'verification', 'brand-center', 'admin',
+      'loyalty', 'referrals', 'dispatch', 'revenue', 'verification', 'brand-center', 'admin',
     ];
     if (!known.includes(pendingView)) {
       setPendingView(null);
@@ -354,7 +355,15 @@ export default function Home() {
         )}
 
         {currentView === 'loyalty' && (
-          <LoyaltyHubView />
+          <LoyaltyHubView onNavigate={handleNavigate} />
+        )}
+
+        {currentView === 'referrals' && (
+          <ReferralCenter
+            onBack={handleGoBack}
+            onNavigate={handleNavigate}
+            onOpenAuth={() => setAuthModalOpen(true)}
+          />
         )}
 
         {currentView === 'brand-center' && (
@@ -432,6 +441,7 @@ export default function Home() {
                   <li><Link href="/sellers" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Verified sellers</Link></li>
                   <li><Link href="/promotions" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Featured deals</Link></li>
                   <li><button onClick={() => handleNavigate('cart')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Your cart</button></li>
+                  <li><button onClick={() => handleNavigate('referrals')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Refer &amp; earn Coins</button></li>
                 </ul>
               </div>
 

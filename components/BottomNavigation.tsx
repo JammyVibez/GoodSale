@@ -142,7 +142,7 @@ export default function BottomNavigation({
       id: 'you',
       label: 'You',
       icon: User,
-      active: ['buyer-profile', 'settings'].includes(currentView),
+      active: ['buyer-profile', 'settings', 'referrals'].includes(currentView),
       onClick: () => (user ? onNavigate('buyer-profile') : onOpenAuth('login')),
     },
   ];

@@ -749,6 +749,16 @@ export function mapReferral(row: Record<string, unknown>): Referral {
     refereeName: s(row.referee_name),
     status: s(row.status, 'REGISTERED') as Referral['status'],
     pointsReward: n(row.points_reward),
+    rewardReleased: b(row.reward_released),
+    campaignId: row.campaign_id != null ? n(row.campaign_id) : undefined,
+    code: row.code ? s(row.code) : undefined,
+    referrerReward: n(row.referrer_reward),
+    refereeReward: n(row.referee_reward),
+    qualifiedAt: row.qualified_at ? s(row.qualified_at) : undefined,
+    rewardedAt: row.rewarded_at ? s(row.rewarded_at) : undefined,
+    disqualificationReason: row.disqualification_reason
+      ? s(row.disqualification_reason)
+      : undefined,
     createdAt: s(row.created_at, new Date().toISOString()),
   };
 }

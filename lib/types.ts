@@ -517,14 +517,29 @@ export interface GoodPointsTransaction {
   createdAt: string;
 }
 
+export type ReferralLifecycleStatus =
+  | 'REGISTERED'
+  | 'VERIFICATION_PENDING'
+  | 'QUALIFIED'
+  | 'REWARD_PENDING'
+  | 'REWARDED'
+  | 'DISQUALIFIED';
+
 export interface Referral {
   id: number;
   referrerId: number;
   refereeId: number;
   refereeName: string;
-  status: 'REGISTERED' | 'FIRST_ORDER_COMPLETED';
+  status: ReferralLifecycleStatus;
   pointsReward: number;
   rewardReleased?: boolean;
+  campaignId?: number;
+  code?: string;
+  referrerReward: number;
+  refereeReward: number;
+  qualifiedAt?: string;
+  rewardedAt?: string;
+  disqualificationReason?: string;
   createdAt: string;
 }
 
@@ -533,7 +548,7 @@ export interface Notification {
   userId: number;
   title: string;
   message: string;
-  type: 'ORDER' | 'BID' | 'DISPUTE' | 'POINTS' | 'CHAT' | 'VERIFICATION' | 'SAFEMEET' | 'ESCROW' | 'SYSTEM' | 'DELIVERY' | 'STOCK' | 'PROMOTION';
+  type: 'ORDER' | 'BID' | 'DISPUTE' | 'POINTS' | 'REFERRAL' | 'CHAT' | 'VERIFICATION' | 'SAFEMEET' | 'ESCROW' | 'SYSTEM' | 'DELIVERY' | 'STOCK' | 'PROMOTION' | 'WALLET';
   isRead: boolean;
   createdAt: string;
 }

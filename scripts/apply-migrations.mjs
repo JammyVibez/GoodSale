@@ -105,6 +105,17 @@ const VERIFY_RPCS = [
   'generate_shipment_tracking_id',
   'shipment_tracking_lookup',
   'delivery_tracking_public_id',
+  // Referral campaigns, attribution, qualification and rewards
+  'generate_referral_code',
+  'attribute_referral',
+  'referral_evaluate',
+  'referral_issue_rewards',
+  'referral_reverse_rewards',
+  'evaluate_my_referral',
+  'ensure_my_referral_code',
+  'admin_disqualify_referral',
+  'admin_mark_referral_reviewed',
+  'admin_referral_analytics',
 ];
 
 /** Tables the schema is expected to create (mirrors supabase/schema.sql). */
@@ -149,6 +160,10 @@ const VERIFY_TABLES = [
   'products',
   'profiles',
   'referrals',
+  'referral_campaigns',
+  'referral_clicks',
+  'referral_rewards',
+  'referral_events',
   'refunds',
   'revenue_settings',
   'rider_earnings',

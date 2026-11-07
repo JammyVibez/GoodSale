@@ -8,13 +8,17 @@ export const metadata: Metadata = {
   robots: { index: false, follow: true },
 };
 
-type SearchParams = Promise<{ mode?: string; next?: string }>;
+type SearchParams = Promise<{ mode?: string; next?: string; ref?: string }>;
 
 export default async function AuthPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
   const mode = params.mode === 'reset' || params.mode === 'forgot' ? params.mode : 'login';
 
   return (
-    <AuthExperience initialMode={mode} next={params.next ? safeNextPath(params.next) : undefined} />
+    <AuthExperience
+      initialMode={mode}
+      next={params.next ? safeNextPath(params.next) : undefined}
+      referralCode={params.ref}
+    />
   );
 }

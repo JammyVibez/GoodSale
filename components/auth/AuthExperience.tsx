@@ -31,6 +31,28 @@ interface AuthExperienceProps {
   initialMode?: Mode;
   /** Internal path to return to after a successful sign-in. */
   next?: string;
+  /** Referral code captured from /auth/register?ref=… */
+  referralCode?: string;
+}
+
+type ReferralPreview = {
+  valid: boolean;
+  code: string;
+  referrerLabel?: string;
+  campaign?: {
+    referrerReward: number;
+    refereeReward: number;
+    name: string;
+  };
+  error?: string;
+};
+
+function cleanReferralCode(value?: string | null): string {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9-]/g, '')
+    .slice(0, 40);
 }
 
 const NIGERIAN_PHONE = /^(?:\+?234|0)[789]\d{9}$/;
@@ -101,7 +123,11 @@ function Field({
   );
 }
 
-export default function AuthExperience({ initialMode = 'login', next }: AuthExperienceProps) {
+export default function AuthExperience({
+  initialMode = 'login',
+  next,
+  referralCode,
+}: AuthExperienceProps) {
   const router = useRouter();
   const db = useDBState();
   const [mode, setMode] = useState<Mode>(initialMode);
@@ -132,6 +158,8 @@ export default function AuthExperience({ initialMode = 'login', next }: AuthExpe
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showRecovery, setShowRecovery] = useState(false);
+  const [inviteCode, setInviteCode] = useState('');
+  const [referralPreview, setReferralPreview] = useState<ReferralPreview | null>(null);
   const recoveryRef = useRef<HTMLInputElement>(null);
 
   const strength = strengthOf(newPassword);
@@ -145,6 +173,50 @@ export default function AuthExperience({ initialMode = 'login', next }: AuthExpe
     : undefined;
 
   const signedInDestination = postAuthDestination(onboardingSnapshot(currentProfile), next);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let stored = '';
+    try {
+      stored = sessionStorage.getItem('goodsale_referral_code') || '';
+    } catch {
+      // storage disabled
+    }
+    if (!stored) {
+      const cookie = document.cookie
+        .split('; ')
+        .find((entry) => entry.startsWith('gs_ref='));
+      stored = cookie ? decodeURIComponent(cookie.split('=').slice(1).join('=')) : '';
+    }
+    const fromUrl = new URLSearchParams(window.location.search).get('ref') || '';
+    const code = cleanReferralCode(referralCode || fromUrl || stored);
+    if (!code) return;
+
+    setInviteCode(code);
+    try {
+      sessionStorage.setItem('goodsale_referral_code', code);
+    } catch {
+      // storage disabled
+    }
+    document.cookie = `gs_ref=${encodeURIComponent(code)}; path=/; max-age=${60 * 60 * 24 * 30}; samesite=lax`;
+
+    void fetch('/api/referrals/click', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    })
+      .then(async (res) => {
+        const payload = (await res.json().catch(() => ({}))) as ReferralPreview & { success?: boolean };
+        setReferralPreview({
+          valid: Boolean(payload.valid),
+          code,
+          referrerLabel: payload.referrerLabel,
+          campaign: payload.campaign,
+          error: payload.error,
+        });
+      })
+      .catch(() => setReferralPreview({ valid: false, code, error: 'lookup_failed' }));
+  }, [referralCode]);
 
   useEffect(() => {
     if (mode === 'reset') {
@@ -238,8 +310,15 @@ export default function AuthExperience({ initialMode = 'login', next }: AuthExpe
         cleanPhone,
         // Selling is chosen in onboarding, so new accounts start as buyers.
         UserRole.BUYER,
-        newPassword
+        newPassword,
+        inviteCode || undefined
       );
+      try {
+        sessionStorage.removeItem('goodsale_referral_code');
+      } catch {
+        // storage disabled
+      }
+      document.cookie = 'gs_ref=; path=/; max-age=0; samesite=lax';
       rememberSession(true);
       if (!user) {
         setNotice('Account created. Check your email to confirm it, then sign in.');
@@ -483,6 +562,40 @@ export default function AuthExperience({ initialMode = 'login', next }: AuthExpe
         {/* ── REGISTER ────────────────────────────────────────────────────── */}
         {mode === 'register' ? (
           <form onSubmit={handleRegister} className="mt-6 space-y-4" noValidate>
+            {inviteCode ? (
+              <div
+                className={`flex items-start gap-3 rounded-2xl border px-3.5 py-3 ${
+                  referralPreview?.valid
+                    ? 'border-gold-400/35 bg-gradient-to-br from-gold-50 to-jade-50/40 dark:from-gold-400/10 dark:to-jade-400/5'
+                    : 'border-ink-200 bg-ink-50 dark:border-white/10 dark:bg-white/[0.04]'
+                }`}
+              >
+                <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-gold-300 text-jade-950">
+                  <CheckCircle2 className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 text-xs leading-relaxed">
+                  {referralPreview?.valid ? (
+                    <>
+                      <p className="font-bold text-ink-900 dark:text-white">
+                        Referred by {referralPreview.referrerLabel || 'a GoodSale member'}
+                      </p>
+                      <p className="mt-0.5 text-ink-500 dark:text-white/55">
+                        Join with code{' '}
+                        <span className="font-mono font-bold text-gold-700 dark:text-gold-300">{inviteCode}</span>.
+                        {referralPreview.campaign
+                          ? ` Your friend earns ${referralPreview.campaign.referrerReward.toLocaleString('en-NG')} coins after you qualify, and you receive ${referralPreview.campaign.refereeReward.toLocaleString('en-NG')}.`
+                          : ' Your referral will be tracked securely.'}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-ink-500 dark:text-white/55">
+                      Referral code <span className="font-mono">{inviteCode}</span> could not be
+                      matched. You can still create your account normally.
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : null}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field id="first-name" label="First name" error={errors.firstName}>
                 <div className="relative">

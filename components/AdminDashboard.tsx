@@ -25,6 +25,7 @@ import AdminShippingPanel from './AdminShippingPanel';
 import AdminDeliveryPanel from './AdminDeliveryPanel';
 import AdminRiderPanel from './AdminRiderPanel';
 import AdminFinancePanel from './admin/AdminFinancePanel';
+import AdminReferralPanel from './admin/AdminReferralPanel';
 import { SmartImage } from './ui/SmartImage';
 
 type Tab =
@@ -34,6 +35,7 @@ type Tab =
   | 'products'
   | 'orders_escrow'
   | 'finance'
+  | 'referrals'
   | 'disputes'
   | 'dispatch'
   | 'riders'
@@ -232,6 +234,7 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
     { id: 'products', label: 'Products' },
     { id: 'orders_escrow', label: 'Orders / Escrow' },
     { id: 'finance', label: 'Finance & Wallet' },
+    { id: 'referrals', label: 'Referrals & Rewards' },
     { id: 'disputes', label: 'Disputes', count: openDisputes.length },
     { id: 'riders', label: 'Rider Management', count: pendingPartners.length },
     { id: 'dispatch', label: 'Partner Applications' },
@@ -427,6 +430,9 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
 
         {/* Wallet ledger, funding, payouts, refunds and audited adjustments */}
         {activeTab === 'finance' && <AdminFinancePanel />}
+
+        {/* Referral campaigns, attribution, fraud review and coin rewards */}
+        {activeTab === 'referrals' && <AdminReferralPanel />}
 
         {/* Orders / Escrow */}
         {activeTab === 'orders_escrow' && (
