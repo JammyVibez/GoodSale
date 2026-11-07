@@ -2,7 +2,7 @@
 'use client';
 
 import React from 'react';
-import { Home, Tag, User, ShoppingCart, MessageSquare, Shield, Store, Package } from 'lucide-react';
+import { Home, Tag, User, ShoppingCart, MessageSquare, Shield, Store, Wallet } from 'lucide-react';
 import { useDBState, UserRole } from '../lib/store';
 
 interface BottomNavigationProps {
@@ -33,7 +33,6 @@ interface Tab {
 export default function BottomNavigation({
   currentView,
   onNavigate,
-  cartCount,
   onOpenAuth,
   onSearchChange,
 }: BottomNavigationProps) {
@@ -54,7 +53,7 @@ export default function BottomNavigation({
 
   // Role-aware middle tab: buyers Buy, sellers Sell, businesses get their
   // dashboard, staff get the Admin panel. Everyone still keeps Home / Chats /
-  // Cart / You, so a business can do everything a buyer and seller can.
+  // Wallet / You, so a business can do everything a buyer and seller can.
   const isAdmin = !!user && (user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN);
   const isBusiness =
     !!user && (user.role === UserRole.BUSINESS || user.role === UserRole.VERIFIED_BUSINESS);
@@ -132,12 +131,11 @@ export default function BottomNavigation({
       requiresAuth: middle.requiresAuth,
     },
     {
-      id: 'cart',
-      label: 'Cart',
-      icon: ShoppingCart,
-      active: currentView === 'cart',
-      onClick: () => go('cart', 'register'),
-      badge: cartCount,
+      id: 'wallet',
+      label: 'Wallet',
+      icon: Wallet,
+      active: currentView === 'wallet',
+      onClick: () => go('wallet'),
       requiresAuth: true,
     },
     {
