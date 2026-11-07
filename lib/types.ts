@@ -6,6 +6,7 @@ export enum UserRole {
   VERIFIED_SELLER = 'VERIFIED_SELLER',
   BUSINESS = 'BUSINESS',
   VERIFIED_BUSINESS = 'VERIFIED_BUSINESS',
+  RIDER = 'RIDER',
   MODERATOR = 'MODERATOR',
   ADMIN = 'ADMIN',
   SUPER_ADMIN = 'SUPER_ADMIN',
@@ -152,6 +153,7 @@ export interface Profile {
   coverUrl: string;
   bio: string;
   address: string;
+  area: string;
   city: string;
   state: string;
   lat?: number;
@@ -160,6 +162,27 @@ export interface Profile {
   pushEnabled: boolean;
   emailEnabled: boolean;
   smsEnabled: boolean;
+  /** Guided onboarding: 0 = not started, 6 = finished. */
+  onboardingStep: number;
+  onboardingCompletedAt?: string;
+  /** What the account wants to do on GoodSale (a single account can do both). */
+  wantsBuying: boolean;
+  wantsSelling: boolean;
+  marketplaceNotifications: boolean;
+  marketingOptIn: boolean;
+  /** Seller store onboarding: 0 = not started, 5 = finished. */
+  sellerOnboardingStep: number;
+  storeOnboardingCompletedAt?: string;
+  /**
+   * Public verification state written only by GoodSale's review functions.
+   * UNVERIFIED | DRAFT | PENDING | UNDER_REVIEW | VERIFIED | REJECTED |
+   * INFO_REQUIRED | SUSPENDED | REVOKED | EXPIRED
+   */
+  verificationStatus?: string;
+  /** INDIVIDUAL | BUSINESS — set when a reviewer approves the application. */
+  verificationType?: string;
+  verifiedAt?: string;
+  verificationExpiresAt?: string;
 }
 
 export interface Business {
@@ -171,8 +194,15 @@ export interface Business {
   description: string;
   openingHours: string;
   address: string;
+  area: string;
   city: string;
   state: string;
+  /** Self-declared seller type — verification is a separate GoodSale review. */
+  sellerType: 'INDIVIDUAL' | 'BUSINESS';
+  contactPhone: string;
+  contactEmail: string;
+  /** Store policies the seller wrote (returns, delivery, response times). */
+  policies: string;
   isVerified: boolean;
   trustScore: number;
   followers: number;
@@ -242,9 +272,36 @@ export interface Bid {
   createdAt: string;
 }
 
+export interface ShippingBreakdown {
+  sellerId: number;
+  sellerName: string;
+  method: string;
+  service: string;
+  distanceKm?: number;
+  baseFee: number;
+  distanceFee: number;
+  weightFee: number;
+  sizeFee: number;
+  remoteFee: number;
+  handlingFee: number;
+  platformFee: number;
+  zoneFee: number;
+  discount: number;
+  total: number;
+  ruleId?: number;
+  ruleName?: string;
+  zoneId?: number;
+  zoneName?: string;
+  courierName?: string;
+  etaMinDays: number;
+  etaMaxDays: number;
+  freeShipping: boolean;
+  manualQuote: boolean;
+}
+
 export interface Order {
   id: number;
-  orderNumber: string; // GS-2026-000001
+  orderNumber: string; // GS-20261106-48291
   buyerId: number;
   sellerId: number;
   productId: number;
@@ -259,6 +316,10 @@ export interface Order {
   deliveryAddress: string;
   deliveryCity: string;
   deliveryState: string;
+  deliveryPhone?: string;
+  deliveryInstructions?: string;
+  /** Groups seller sub-orders created by one checkout. */
+  checkoutGroupId?: string;
   deliveryLat?: number;
   deliveryLng?: number;
   pickupLat?: number;
@@ -273,6 +334,13 @@ export interface Order {
   serviceType?: 'ECONOMY' | 'STANDARD' | 'EXPRESS';
   hasGoodSaleProtect?: boolean;
   protectFee?: number;
+  /** Immutable shipping snapshot captured at order time. */
+  shippingBreakdown?: ShippingBreakdown;
+  shippingRuleId?: number;
+  shippingZoneId?: number;
+  shippingQuoteId?: string;
+  estimatedDeliveryMinDays?: number;
+  estimatedDeliveryMaxDays?: number;
   
   // Custom Merchant Payment System fields
   depositPercent?: number;
@@ -282,6 +350,22 @@ export interface Order {
   isBalanceSettled?: boolean;
   bankTransferReceipt?: string;
   invoiceTerms?: string;
+}
+
+export interface SavedAddress {
+  id: number;
+  label: string;
+  contactName: string;
+  phone: string;
+  state: string;
+  city: string;
+  area: string;
+  street: string;
+  landmark: string;
+  instructions: string;
+  lat?: number;
+  lng?: number;
+  isDefault: boolean;
 }
 
 export interface Escrow {
@@ -402,6 +486,27 @@ export interface IdentityVerification {
   reviewedBy?: number;
   reviewedAt?: string;
   createdAt: string;
+  // Migration 024 — guided seller verification detail
+  sellerType?: 'INDIVIDUAL' | 'BUSINESS';
+  dateOfBirth?: string;
+  contactPhone?: string;
+  contactEmail?: string;
+  residenceState?: string;
+  residenceCity?: string;
+  residenceAddress?: string;
+  businessRegistrationNumber?: string;
+  businessContactName?: string;
+  storeName?: string;
+  storeDescription?: string;
+  storeCity?: string;
+  storeState?: string;
+  storePhone?: string;
+  infoRequestNote?: string;
+  statusReason?: string;
+  submittedAt?: string;
+  reviewStartedAt?: string;
+  decidedAt?: string;
+  expiresAt?: string;
 }
 
 export interface GoodPointsTransaction {
@@ -522,7 +627,17 @@ export interface Refund {
   orderId: number;
   amount: number;
   reason: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  status:
+    | 'PENDING'
+    | 'APPROVED'
+    | 'REJECTED'
+    | 'REQUESTED'
+    | 'UNDER_REVIEW'
+    | 'PROCESSING'
+    | 'COMPLETED'
+    | 'FAILED';
+  providerReference?: string;
+  adminNotes?: string;
   createdAt: string;
 }
 
@@ -603,7 +718,13 @@ export interface WithdrawalRequest {
   bankName: string;
   accountNumber: string;
   accountName: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  status: 'PENDING' | 'PROCESSING' | 'SUCCESS' | 'FAILED' | 'CANCELLED' | 'APPROVED' | 'REJECTED';
+  fee?: number;
+  netAmount?: number;
+  walletTransactionId?: number;
+  providerReference?: string;
+  providerTransferCode?: string;
+  failedReason?: string;
   createdAt: string;
 }
 
@@ -662,7 +783,7 @@ export interface DeliveryPartner {
   year: number;
   capacity: string;
   photoUrl: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
   isAvailable: boolean;
   trustScore: number;
   rating: number;
@@ -675,12 +796,23 @@ export interface DeliveryPartner {
   lastLat?: number;
   lastLng?: number;
   lastLocationAt?: string;
+  locationPermission: 'UNKNOWN' | 'GRANTED' | 'DENIED';
+  locationSharing: boolean;
+  locationSharingUpdatedAt?: string;
   nin: string;
   selfieUrl: string;
   licenseUrl?: string;
   /** Every document the rider uploaded for review. */
   documents: VerificationDocument[];
   rejectionReason?: string;
+  suspensionReason?: string;
+  suspendedAt?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  emergencyContactRelation?: string;
+  commissionPercentage?: number;
+  serviceStates: string[];
+  lastSeenAt?: string;
   reviewedBy?: number;
   reviewedAt?: string;
   createdAt: string;
@@ -708,8 +840,577 @@ export interface DeliveryJob {
 }
 
 // ==========================================
+// DELIVERY & TRACKING (Phase 1)
+// ==========================================
+
+/**
+ * Canonical delivery lifecycle. This is intentionally separate from
+ * `OrderStatus`: an order can stay OUT_FOR_DELIVERY while its delivery is
+ * already DELIVERED and awaiting the buyer's escrow release.
+ */
+export type DeliveryStatus =
+  | 'AWAITING_SELLER_PREPARATION'
+  | 'READY_FOR_PICKUP'
+  | 'AWAITING_RIDER'
+  | 'RIDER_ASSIGNED'
+  | 'PICKED_UP'
+  | 'IN_TRANSIT'
+  | 'ARRIVED_AT_HUB'
+  | 'OUT_FOR_DELIVERY'
+  | 'DELIVERY_ATTEMPTED'
+  | 'DELIVERED'
+  | 'FAILED_DELIVERY'
+  | 'RETURNED_TO_SELLER'
+  | 'CANCELLED';
+
+/** The immutable delivery-fee snapshot captured when the order was paid. */
+export interface Delivery {
+  id: number;
+  orderId: number;
+  deliveryNumber: string;
+  /** GoodSale shipment tracking id, e.g. GSD-829174620. */
+  trackingId: string;
+  buyerId: number;
+  sellerId: number;
+  pickupAddress: string;
+  pickupCity: string;
+  pickupState: string;
+  pickupLat?: number;
+  pickupLng?: number;
+  deliveryAddress: string;
+  deliveryCity: string;
+  deliveryState: string;
+  deliveryPhone: string;
+  deliveryLat?: number;
+  deliveryLng?: number;
+  routeDistanceKm?: number;
+  routeDurationMinutes?: number;
+  routeProvider: string;
+  routeIsEstimate: boolean;
+  routeComputedAt?: string;
+  deliveryMethod: string;
+  serviceType: 'ECONOMY' | 'STANDARD' | 'EXPRESS';
+  deliveryFee: number;
+  feeSnapshot?: ShippingBreakdown;
+  status: DeliveryStatus;
+  riderId?: number;
+  courierName: string;
+  trackingNumber: string;
+  estimatedDeliveryDate?: string;
+  deliveryInstructions: string;
+  failureReason: string;
+  cancellationReason: string;
+  pickedUpAt?: string;
+  deliveredAt?: string;
+  returnedAt?: string;
+  cancelledAt?: string;
+  confirmationExpiresAt?: string;
+  confirmedAt?: string;
+  confirmedBy?: number;
+  assignmentStatus: DeliveryAssignmentStatus;
+  assignmentOfferedAt?: string;
+  assignmentExpiresAt?: string;
+  assignmentMode: 'AUTO' | 'MANUAL';
+  autoOfferRound: number;
+  riderAcceptedAt?: string;
+  arrivedPickupAt?: string;
+  arrivedDestinationAt?: string;
+  attemptCount: number;
+  courierProvider: string;
+  courierExternalId: string;
+  courierStatus: string;
+  courierLastSyncedAt?: string;
+  courierLastError: string;
+  courierSyncAttempts: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type DeliveryAssignmentStatus = 'UNASSIGNED' | 'OFFERED' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED';
+
+export interface DeliverySettings {
+  autoAssignEnabled: boolean;
+  offerTimeoutMinutes: number;
+  maxActiveDeliveries: number;
+  maxPickupDistanceKm: number;
+  maxOffersPerDelivery: number;
+  locationUpdateIntervalSeconds: number;
+  trackingStaleMinutes: number;
+}
+
+export type DeliveryOfferStatus = 'OFFERED' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED' | 'SUPERSEDED';
+
+export interface DeliveryAssignmentOffer {
+  id: number;
+  deliveryId: number;
+  riderId: number;
+  round: number;
+  status: DeliveryOfferStatus;
+  score?: number;
+  distanceKm?: number;
+  vehicleSuitable: boolean;
+  offeredAt: string;
+  expiresAt?: string;
+  respondedAt?: string;
+  reason: string;
+}
+
+export interface DeliveryLiveLocation {
+  deliveryId: number;
+  riderId: number;
+  lat: number;
+  lng: number;
+  accuracyM?: number;
+  speedKmh?: number;
+  headingDegrees?: number;
+  updatedAt: string;
+}
+
+export type DeliveryFailureReason =
+  | 'BUYER_UNAVAILABLE'
+  | 'SELLER_UNAVAILABLE'
+  | 'INCORRECT_ADDRESS'
+  | 'RIDER_CANCELLATION'
+  | 'COURIER_DELAY'
+  | 'DAMAGED_PACKAGE'
+  | 'OTHER';
+
+export type DeliveryFailureStatus =
+  | 'OPEN'
+  | 'REASSIGNED'
+  | 'RESCHEDULED'
+  | 'RETURNED'
+  | 'CANCELLED'
+  | 'REFUND_REQUESTED'
+  | 'RESOLVED';
+
+export interface DeliveryFailure {
+  id: number;
+  deliveryId: number;
+  reasonCode: DeliveryFailureReason;
+  note: string;
+  source: 'BUYER' | 'SELLER' | 'RIDER' | 'ADMIN' | 'COURIER' | 'SYSTEM';
+  status: DeliveryFailureStatus;
+  reportedBy?: number;
+  resolvedBy?: number;
+  resolutionNote: string;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt?: string;
+}
+
+export type DeliveryReturnStatus = 'INITIATED' | 'IN_TRANSIT' | 'RECEIVED' | 'CANCELLED';
+
+export interface DeliveryReturn {
+  id: number;
+  deliveryId: number;
+  failureId?: number;
+  status: DeliveryReturnStatus;
+  reason: string;
+  notes: string;
+  initiatedBy?: number;
+  receivedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CourierShipment {
+  id: number;
+  deliveryId: number;
+  provider: string;
+  externalShipmentId: string;
+  trackingNumber: string;
+  labelUrl: string;
+  status: string;
+  lastEventAt?: string;
+  lastSyncedAt?: string;
+  syncAttempts: number;
+  lastError: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DeliveryTrackingView {
+  deliveryId: number;
+  deliveryNumber: string;
+  status: DeliveryStatus;
+  assignmentStatus: DeliveryAssignmentStatus;
+  trackingActive: boolean;
+  trackingStatus: 'LIVE' | 'ENDED' | 'PERMISSION_DENIED' | 'NOT_SHARING' | 'RIDER_OFFLINE' | 'RIDER_UNAVAILABLE' | 'NOT_ASSIGNED' | 'NO_LOCATION' | 'STALE' | 'UNAVAILABLE';
+  reason: string;
+  lastUpdated?: string;
+  riderLocation?: { lat: number; lng: number; accuracyM?: number; speedKmh?: number; headingDegrees?: number };
+  destination?: { lat: number; lng: number };
+  pickup?: { lat: number; lng: number };
+  routeDistanceKm?: number;
+  routeDurationMinutes?: number;
+  routeProvider: string;
+  routeIsEstimate: boolean;
+}
+
+export interface ShipmentTrackingEvent {
+  id: number;
+  status: DeliveryStatus;
+  note: string;
+  actorRole: string;
+  createdAt: string;
+}
+
+export interface ShipmentTrackingRider {
+  id: number;
+  name: string;
+  photoUrl: string;
+  phone: string;
+  vehicleType: string;
+  vehicle: string;
+  plateNumber: string;
+  rating: number;
+  completedDeliveries: number;
+  trustScore: number;
+}
+
+export interface ShipmentTrackingSibling {
+  trackingId: string;
+  status: DeliveryStatus;
+  sellerName: string;
+  productTitle: string;
+  isCurrent: boolean;
+}
+
+export interface ShipmentTrackingResult {
+  found: boolean;
+  deliveryId: number;
+  trackingId: string;
+  deliveryNumber: string;
+  orderNumber: string;
+  checkoutGroupId: string;
+  status: DeliveryStatus;
+  deliveryMethod: string;
+  serviceType: 'ECONOMY' | 'STANDARD' | 'EXPRESS';
+  courierName: string;
+  courierTrackingNumber: string;
+  estimatedDeliveryDate?: string;
+  createdAt: string;
+  deliveredAt?: string;
+  confirmedAt?: string;
+  cancelledAt?: string;
+  lastUpdated: string;
+  authorized: boolean;
+  accessLevel: 'PUBLIC' | 'PARTICIPANT' | 'ADMIN';
+  viewerRole: '' | 'BUYER' | 'SELLER' | 'RIDER' | 'ADMIN' | 'PARTICIPANT';
+  destination: {
+    address: string;
+    city: string;
+    state: string;
+    phone: string;
+    instructions: string;
+    lat?: number;
+    lng?: number;
+  };
+  events: ShipmentTrackingEvent[];
+  rider?: ShipmentTrackingRider | null;
+  live?: DeliveryTrackingView | null;
+  order?: {
+    id: number;
+    orderNumber: string;
+    checkoutGroupId: string;
+    productTitle: string;
+    productImage: string;
+    totalAmount: number;
+    deliveryFee: number;
+    paymentMethod: string;
+    status: string;
+    createdAt: string;
+    deliveredAt?: string;
+    confirmedAt?: string;
+  } | null;
+  shipments: ShipmentTrackingSibling[];
+  sellerName: string;
+  deliveryPin?: string | null;
+  canConfirmReceipt: boolean;
+  canReportIssue: boolean;
+}
+
+export interface DeliveryAnalytics {
+  totals: {
+    total: number;
+    completed: number;
+    failed: number;
+    cancelled: number;
+    active: number;
+    delayed: number;
+    avgDeliveryHours: number;
+    deliveryCosts: number;
+    completedDeliveryCosts: number;
+    riderEarnings: number;
+    successfulDeliveryPercentage: number | null;
+  };
+  courierPerformance: { courier: string; shipments: number; completed: number; failed: number }[];
+  byState: { state: string; total: number; completed: number; failed: number; avgHours: number }[];
+  byCity: { city: string; state: string; total: number; completed: number; failed: number; avgHours: number }[];
+  routeDistanceEstimateCount: number;
+}
+
+/** A redacted open delivery request shown to an eligible rider. */
+export interface AvailableDelivery {
+  id: number;
+  pickupCity: string;
+  pickupState: string;
+  deliveryCity: string;
+  deliveryState: string;
+  serviceType: 'ECONOMY' | 'STANDARD' | 'EXPRESS';
+  deliveryFee: number;
+  riderNet: number;
+  estimatedDeliveryDate?: string;
+  status: DeliveryStatus;
+  createdAt: string;
+}
+
+export type RiderEarningStatus = 'PENDING' | 'APPROVED' | 'PAID' | 'VOID';
+
+/** Per-delivery rider payout ledger entry. Money is never moved automatically. */
+export interface RiderEarning {
+  id: number;
+  deliveryId: number;
+  orderId: number;
+  riderId: number;
+  grossAmount: number;
+  platformCommission: number;
+  adjustmentAmount: number;
+  netAmount: number;
+  status: RiderEarningStatus;
+  payoutReference: string;
+  notes: string;
+  approvedAt?: string;
+  paidAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RiderEarningAuditLog {
+  id: number;
+  earningId: number;
+  riderId: number;
+  actorId?: number;
+  actorName: string;
+  action: string;
+  amountBefore: number;
+  amountAfter: number;
+  details: string;
+  createdAt: string;
+}
+
+/** One timestamped entry in a delivery's tracking history. */
+export interface DeliveryEvent {
+  id: number;
+  deliveryId: number;
+  status: DeliveryStatus;
+  note: string;
+  actorId?: number;
+  actorRole: string;
+  createdAt: string;
+}
+
+/** Admin-only audit trail of delivery actions. */
+export interface DeliveryAuditLog {
+  id: number;
+  deliveryId: number;
+  actorId?: number;
+  actorName: string;
+  actorRole: string;
+  action: string;
+  previousStatus?: string;
+  newStatus?: string;
+  details: string;
+  createdAt: string;
+}
+
+// ==========================================
 // GOODSALE REVENUE SYSTEM TYPES
 // ==========================================
+
+// ==========================================
+// SHIPPING ENGINE
+// ==========================================
+
+export type ShippingServiceType = 'ECONOMY' | 'STANDARD' | 'EXPRESS';
+export type ShippingDeliveryMethod = 'GOODSALE_PARTNER' | 'THIRD_PARTY_COURIER' | 'PICKUP';
+export type ShippingRuleScope = 'GLOBAL' | 'STATE' | 'CITY' | 'ZONE';
+export type ShippingZoneKind = 'LOCAL' | 'INTERSTATE' | 'REMOTE';
+
+export interface ShippingSettings {
+  enabled: boolean;
+  localBaseFee: number;
+  perKmFee: number;
+  minFee: number;
+  maxFee: number;
+  interstateBaseFee: number;
+  interstatePerKmFee: number;
+  weightSurchargePerKg: number;
+  oversizeSurcharge: number;
+  remoteSurcharge: number;
+  freeShippingThreshold: number;
+  handlingFee: number;
+  platformShippingFee: number;
+  economyFee: number;
+  standardFee: number;
+  expressFee: number;
+  manualQuoteAboveKm: number;
+  manualQuotesEnabled: boolean;
+  sellerSponsoredShipping: boolean;
+  platformSponsoredShipping: boolean;
+  defaultEtaMinDays: number;
+  defaultEtaMaxDays: number;
+  updatedAt?: string;
+}
+
+export interface ShippingDistanceTier {
+  id: number;
+  label: string;
+  minKm: number;
+  maxKm?: number;
+  fee: number;
+  enabled: boolean;
+  priority: number;
+}
+
+export interface ShippingZone {
+  id: number;
+  name: string;
+  state: string;
+  city?: string;
+  kind: ShippingZoneKind;
+  surcharge: number;
+  enabled: boolean;
+  priority: number;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface ShippingRule {
+  id: number;
+  name: string;
+  enabled: boolean;
+  priority: number;
+  scope: ShippingRuleScope;
+  zoneId?: number;
+  /** Destination state/city. */
+  state?: string;
+  city?: string;
+  /** Optional origin (seller pickup) state/city for pair pricing. */
+  originState?: string;
+  originCity?: string;
+  deliveryMethod: 'ANY' | ShippingDeliveryMethod;
+  serviceType: 'ANY' | ShippingServiceType;
+  baseFee?: number;
+  perKmFee?: number;
+  minFee?: number;
+  maxFee?: number;
+  weightPerKg?: number;
+  oversizeSurcharge?: number;
+  remoteSurcharge?: number;
+  freeShippingThreshold?: number;
+  handlingFee?: number;
+  platformFee?: number;
+  sellerSponsored: boolean;
+  platformSponsored: boolean;
+  etaMinDays?: number;
+  etaMaxDays?: number;
+  manualQuote: boolean;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface ShippingCourier {
+  id: number;
+  name: string;
+  code: string;
+  mode: 'MANUAL' | 'AUTO';
+  enabled: boolean;
+  baseFee: number;
+  perKmFee: number;
+  expressMultiplier: number;
+  apiProvider?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface SellerShippingSettings {
+  sellerId: number;
+  pickupAddress: string;
+  pickupCity: string;
+  pickupState: string;
+  pickupLat?: number;
+  pickupLng?: number;
+  handlingDays: number;
+  localEnabled: boolean;
+  interstateEnabled: boolean;
+  pickupEnabled: boolean;
+  freeShippingThreshold?: number;
+  defaultWeightKg: number;
+  updatedAt: string;
+}
+
+export interface ShippingManualQuote {
+  id: number;
+  sellerId: number;
+  state: string;
+  city: string;
+  amount: number;
+  etaMinDays: number;
+  etaMaxDays: number;
+  notes?: string;
+  active: boolean;
+  expiresAt?: string;
+  createdAt: string;
+}
+
+export interface ShippingAuditLog {
+  id: number;
+  userId?: number;
+  userName: string;
+  action: string;
+  entityType: string;
+  entityId: number;
+  details: string;
+  createdAt: string;
+}
+
+export interface ShippingOption {
+  method: ShippingDeliveryMethod;
+  service: ShippingServiceType;
+  label: string;
+  fee: number;
+  etaMinDays: number;
+  etaMaxDays: number;
+  courierName?: string;
+  ruleName?: string;
+  freeShipping: boolean;
+  manualQuote: boolean;
+  breakdown: ShippingBreakdown;
+}
+
+export interface SellerShippingQuoteGroup {
+  sellerId: number;
+  sellerName: string;
+  subtotal: number;
+  items: { productId: number; quantity: number; title?: string }[];
+  options: ShippingOption[];
+  selected?: ShippingOption;
+  requiresManualQuote: boolean;
+  message?: string;
+  unavailableReasons?: string[];
+}
+
+export interface ShippingQuoteResult {
+  quoteId?: string;
+  groups: SellerShippingQuoteGroup[];
+  total: number;
+  requiresManualQuote: boolean;
+  message?: string;
+  expiresAt?: string;
+  serviceTotals?: Record<ShippingServiceType, number>;
+}
 
 export interface RevenueSettings {
   /** Admin toggle: when false, buyers pay no per-item platform fee. */
@@ -797,10 +1498,35 @@ export interface Wallet {
 export interface WalletTransaction {
   id: number;
   walletId: number;
+  reference?: string;
   amount: number;
-  type: 'CREDIT_SALE' | 'CREDIT_DELIVERY' | 'DEBIT_WITHDRAWAL' | 'DEBIT_FEES' | 'DEBIT_SUBCRIPTION' | 'DEBIT_AD' | 'DEBIT_PROTECT';
+  type:
+    | 'CREDIT_SALE'
+    | 'CREDIT_DELIVERY'
+    | 'DEBIT_WITHDRAWAL'
+    | 'DEBIT_FEES'
+    | 'DEBIT_SUBCRIPTION'
+    | 'DEBIT_AD'
+    | 'DEBIT_PROTECT'
+    | 'WALLET_FUNDING'
+    | 'ORDER_PAYMENT'
+    | 'SELLER_EARNINGS'
+    | 'MARKETPLACE_COMMISSION'
+    | 'REFUND'
+    | 'WITHDRAWAL_REVERSAL'
+    | 'ADJUSTMENT'
+    | 'PROMOTIONAL_CREDIT'
+    | 'PROMOTIONAL_DEBIT';
   description: string;
-  status: 'PENDING' | 'COMPLETED' | 'FAILED';
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  orderId?: number;
+  provider?: string;
+  providerReference?: string;
+  channel?: string;
+  balanceAfter?: number;
+  currency?: string;
+  affectsBalance?: boolean;
+  metadata?: Record<string, unknown>;
   createdAt: string;
 }
 
@@ -857,7 +1583,26 @@ export interface GoodSaleDBState {
   productBundles: ProductBundle[];
   deliveryPartners: DeliveryPartner[];
   deliveryJobs: DeliveryJob[];
+  deliveries: Delivery[];
+  deliveryEvents: DeliveryEvent[];
+  deliveryAuditLogs: DeliveryAuditLog[];
+  deliverySettings: DeliverySettings;
+  deliveryAssignmentOffers: DeliveryAssignmentOffer[];
+  deliveryLiveLocations: DeliveryLiveLocation[];
+  deliveryFailures: DeliveryFailure[];
+  deliveryReturns: DeliveryReturn[];
+  courierShipments: CourierShipment[];
+  riderEarnings: RiderEarning[];
+  riderEarningAuditLogs: RiderEarningAuditLog[];
   revenueSettings: RevenueSettings;
+  shippingSettings: ShippingSettings;
+  shippingZones: ShippingZone[];
+  shippingTiers: ShippingDistanceTier[];
+  shippingRules: ShippingRule[];
+  shippingCouriers: ShippingCourier[];
+  sellerShippingSettings: SellerShippingSettings[];
+  shippingManualQuotes: ShippingManualQuote[];
+  shippingAuditLogs: ShippingAuditLog[];
   sponsoredAds: SponsoredAd[];
   featuredListings: FeaturedListing[];
   announcements: Announcement[];

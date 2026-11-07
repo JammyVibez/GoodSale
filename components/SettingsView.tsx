@@ -135,7 +135,9 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
   });
 
   // 4. Appearance
-  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'system'>('light');
+  // Matches the pre-paint script in app/layout.tsx: an account with no saved
+  // choice follows the system, rather than claiming "Light" while rendering dark.
+  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'system'>('system');
   const [fontSize, setFontSize] = useState<'small' | 'medium' | 'large'>('medium');
   const [density, setDensity] = useState<'cozy' | 'compact'>('cozy');
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -1312,8 +1314,8 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
 
               {/* Interactive 2FA Modal */}
               {showTwoFactorModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
-                  <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 p-6 rounded-[32px] max-w-sm w-full shadow-2xl space-y-4">
+                <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center sm:p-4">
+                  <div className="max-h-[calc(100dvh-1rem)] w-full max-w-sm space-y-4 overflow-y-auto rounded-t-3xl border border-ink-200 bg-white p-5 pb-safe-bottom shadow-2xl dark:border-ink-800 dark:bg-ink-900 sm:rounded-[32px] sm:p-6">
                     <div>
                       <h3 className="font-display font-bold text-base text-ink-900 dark:text-white">Configure Two-Factor Auth</h3>
                       <p className="text-xs text-ink-500 mt-1 font-sans">Scan the QR code with Google Authenticator or enter the manual code below.</p>
@@ -2379,9 +2381,9 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 <div className="space-y-2">
                   <p className="text-xs font-bold text-ink-400 tracking-wider">Share To Social Channels</p>
                   <div className="flex flex-wrap gap-2 text-xs">
-                    <button onClick={() => toast.info('Opening WhatsApp to share your referral link...')} className="px-3.5 py-2 bg-[#0A854B]/10 text-[#0A854B] hover:bg-[#0A854B] hover:text-white rounded-xl font-bold cursor-pointer transition-all">WhatsApp</button>
+                    <button onClick={() => toast.info('Opening WhatsApp to share your referral link...')} className="px-3.5 py-2 bg-jade-600/10 text-jade-700 dark:text-jade-300 hover:bg-jade-600 hover:text-white rounded-xl font-bold cursor-pointer transition-all">WhatsApp</button>
                     <button onClick={() => toast.info('Opening X to share your referral link...')} className="px-3.5 py-2 bg-black/10 text-ink-950 dark:text-white hover:bg-ink-900 rounded-xl font-bold cursor-pointer transition-all">X / Twitter</button>
-                    <button onClick={() => toast.info('Opening Facebook to share your referral link...')} className="px-3.5 py-2 bg-[#0A854B]/10 text-[#0A854B] hover:bg-[#0A854B] hover:text-white rounded-xl font-bold cursor-pointer transition-all">Facebook</button>
+                    <button onClick={() => toast.info('Opening Facebook to share your referral link...')} className="px-3.5 py-2 bg-jade-600/10 text-jade-700 dark:text-jade-300 hover:bg-jade-600 hover:text-white rounded-xl font-bold cursor-pointer transition-all">Facebook</button>
                   </div>
                 </div>
 

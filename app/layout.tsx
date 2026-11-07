@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { Inter, Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
+import { JsonLd } from '@/components/seo/JsonLd';
+import { organizationLd, websiteLd } from '@/lib/seo/structured';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -24,17 +26,23 @@ export const metadata: Metadata = {
     template: '%s | GoodSale',
   },
   description:
-    "Nigeria's premier trust-driven C2C marketplace with escrow payments, identity verification, and AI-assisted shopping safety.",
+    "GoodSale is Nigeria's escrow-protected marketplace for buying and selling from verified sellers, with tracked delivery and real buyer reviews.",
   applicationName: 'GoodSale',
   keywords: [
     'GoodSale',
     'Nigeria marketplace',
+    'buy and sell in Nigeria',
     'escrow',
-    'C2C',
+    'verified sellers',
     'secure payments',
-    'Paystack',
+    'online shopping Nigeria',
   ],
-  authors: [{ name: 'GoodSale' }],
+  authors: [{ name: 'GoodSale', url: appUrl }],
+  creator: 'GoodSale',
+  publisher: 'GoodSale',
+  category: 'shopping',
+  alternates: { canonical: '/' },
+  icons: { icon: [{ url: '/goodsale-mark.svg', type: 'image/svg+xml' }] },
   openGraph: {
     type: 'website',
     locale: 'en_NG',
@@ -42,17 +50,24 @@ export const metadata: Metadata = {
     siteName: 'GoodSale',
     title: 'GoodSale — Premium Secure Escrow Marketplace',
     description:
-      'Buy and sell with escrow protection, verified sellers, and SafeMeet delivery across Nigeria.',
+      'Buy and sell with escrow protection, verified sellers, and tracked delivery across Nigeria.',
   },
   twitter: {
     card: 'summary_large_image',
     title: 'GoodSale — Premium Secure Escrow Marketplace',
     description:
-      'Buy and sell with escrow protection, verified sellers, and SafeMeet delivery across Nigeria.',
+      'Buy and sell with escrow protection, verified sellers, and tracked delivery across Nigeria.',
   },
   robots: {
     index: true,
     follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+      'max-video-preview': -1,
+    },
   },
 };
 
@@ -60,6 +75,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${inter.variable} ${plusJakarta.variable}`}>
       <head>
+        <JsonLd data={[organizationLd(), websiteLd()]} />
         {/* Pre-paint theme: apply the saved mode before first render to avoid a flash */}
         <script
           dangerouslySetInnerHTML={{

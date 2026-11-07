@@ -156,9 +156,9 @@ export default function PaystackPayment({
   };
 
   return (
-    <div className="fixed inset-0 bg-ink-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 select-none">
-      <div className="bg-jade-900 w-full max-w-md border border-jade-800 rounded-3xl overflow-hidden shadow-2xl relative text-white flex flex-col">
-        <div className="bg-jade-950 px-6 py-4 flex items-center justify-between border-b border-jade-800]">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink-950/80 p-0 backdrop-blur-sm select-none sm:items-center sm:p-4">
+      <div className="relative flex max-h-[calc(100dvh-0.5rem)] w-full max-w-md flex-col overflow-y-auto rounded-t-3xl border border-jade-800 bg-jade-900 text-white shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-3xl">
+        <div className="flex shrink-0 items-center justify-between border-b border-jade-800 bg-jade-950 px-5 py-4 sm:px-6">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-full bg-[#1fb377]/10 flex items-center justify-center border border-[#1fb377]/30">
               <Shield className="w-4 h-4 text-[#1fb377]" />

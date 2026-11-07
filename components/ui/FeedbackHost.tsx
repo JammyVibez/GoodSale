@@ -49,12 +49,17 @@ export default function FeedbackHost() {
         title={confirm?.title}
         description={confirm?.message}
       >
-        <div className="mt-2 flex justify-end gap-2">
-          <Button variant="ghost" onClick={() => resolveConfirm(false)}>
+        <div className="mt-2 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button
+            variant="ghost"
+            className="w-full sm:w-auto"
+            onClick={() => resolveConfirm(false)}
+          >
             {confirm?.cancelText || 'Cancel'}
           </Button>
           <Button
             variant={confirm?.danger ? 'danger' : 'primary'}
+            className="w-full sm:w-auto"
             onClick={() => resolveConfirm(true)}
           >
             {confirm?.confirmText || 'Confirm'}

@@ -7,6 +7,7 @@ import { DEFAULT_LAGOS } from '@/lib/geo';
 export type LiveLocationState = {
   coords: LatLng | null;
   accuracy: number | null;
+  speedKmh: number | null;
   error: string | null;
   watching: boolean;
   source: 'gps' | 'fallback' | null;
@@ -18,7 +19,7 @@ type Options = {
   watch?: boolean;
   /** Minimum ms between updates when watching */
   throttleMs?: number;
-  /** Use Lagos fallback when permission denied */
+  /** Approximate location fallback for non-delivery location previews. */
   fallback?: LatLng | null;
   enabled?: boolean;
   highAccuracy?: boolean;
@@ -38,6 +39,7 @@ export function useLiveLocation(options: Options = {}): LiveLocationState {
 
   const [coords, setCoords] = useState<LatLng | null>(null);
   const [accuracy, setAccuracy] = useState<number | null>(null);
+  const [speedKmh, setSpeedKmh] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [watching, setWatching] = useState(false);
   const [source, setSource] = useState<'gps' | 'fallback' | null>(null);
@@ -54,6 +56,11 @@ export function useLiveLocation(options: Options = {}): LiveLocationState {
         lng: position.coords.longitude,
       });
       setAccuracy(position.coords.accuracy ?? null);
+      setSpeedKmh(
+        position.coords.speed != null && Number.isFinite(position.coords.speed)
+          ? Math.max(0, position.coords.speed * 3.6)
+          : null
+      );
       setSource('gps');
       setError(null);
     },
@@ -64,10 +71,10 @@ export function useLiveLocation(options: Options = {}): LiveLocationState {
     (err: GeolocationPositionError | Error) => {
       const message = 'message' in err ? err.message : 'Geolocation unavailable';
       setError(message);
-      if (fallback) {
-        setCoords(fallback);
-        setSource('fallback');
-      }
+      setCoords(fallback);
+      setAccuracy(null);
+      setSpeedKmh(null);
+      setSource(fallback ? 'fallback' : null);
     },
     [fallback]
   );
@@ -112,5 +119,5 @@ export function useLiveLocation(options: Options = {}): LiveLocationState {
     };
   }, [enabled, watch, refresh, applyPosition, applyError, highAccuracy]);
 
-  return { coords, accuracy, error, watching, source, refresh };
+  return { coords, accuracy, speedKmh, error, watching, source, refresh };
 }

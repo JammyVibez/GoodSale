@@ -12,7 +12,8 @@
  * so buyers and admins can see exactly why a seller ranks where they do.
  */
 import type { GoodSaleDBState } from './types';
-import { OrderStatus, VerificationStatus, UserRole } from './types';
+import { OrderStatus, VerificationStatus } from './types';
+import { isVerifiedSeller } from './verification';
 
 export interface TrustFactor {
   key: 'verification' | 'fulfilment' | 'ratings' | 'engagement' | 'reliability';
@@ -70,9 +71,13 @@ export function computeSellerTrust(state: GoodSaleDBState, sellerId: number): Tr
   );
   const responseRate = buyerInitiated.length ? answered.length / buyerInitiated.length : 0;
 
-  const isVerified = !!seller && (
-    seller.role === UserRole.VERIFIED_SELLER || seller.role === UserRole.VERIFIED_BUSINESS
-  );
+  // Verification is read from the public badge state written by GoodSale's
+  // review functions, not from the (coarser) account role.
+  const sellerProfile = state.profiles.find((profile) => profile.userId === sellerId);
+  const isVerified = isVerifiedSeller({
+    verificationStatus: sellerProfile?.verificationStatus,
+    verificationExpiresAt: sellerProfile?.verificationExpiresAt,
+  });
   const pendingApplication = state.verifications.some(
     (v) => v.userId === sellerId && v.status === VerificationStatus.PENDING
   );

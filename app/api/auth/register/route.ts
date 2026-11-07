@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { clientIpFromRequest, rateLimitAsync } from '@/lib/rate-limit';
 import { logger, publicErrorMessage } from '@/lib/logger';
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const NIGERIAN_PHONE = /^(?:\+?234|0)[789]\d{9}$/;
 
 /**
  * Auto-confirming registration.
@@ -15,6 +19,21 @@ import { logger, publicErrorMessage } from '@/lib/logger';
  */
 export async function POST(req: NextRequest) {
   try {
+    // Account creation is the most abused endpoint on any marketplace.
+    const limited = await rateLimitAsync(`register:${clientIpFromRequest(req)}`, 6, 10 * 60_000);
+    if (!limited.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Too many sign-up attempts. Try again in ${Math.max(
+            1,
+            Math.ceil(limited.retryAfterMs / 1000)
+          )} seconds.`,
+        },
+        { status: 429 }
+      );
+    }
+
     const admin = createAdminClient();
     if (!admin) {
       return NextResponse.json(
@@ -41,6 +60,28 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    if (!EMAIL.test(email)) {
+      return NextResponse.json(
+        { success: false, error: 'Enter a valid email address.' },
+        { status: 400 }
+      );
+    }
+    if (password.length < 8) {
+      return NextResponse.json(
+        { success: false, error: 'Password must be at least 8 characters.' },
+        { status: 400 }
+      );
+    }
+    const phone = (body.phoneNumber || '').replace(/[\s-]/g, '');
+    if (phone && !NIGERIAN_PHONE.test(phone)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Enter a Nigerian phone number, for example 08030001111 or +2348030001111.',
+        },
+        { status: 400 }
+      );
+    }
 
     const { data, error } = await admin.auth.admin.createUser({
       email,
@@ -49,7 +90,7 @@ export async function POST(req: NextRequest) {
       user_metadata: {
         full_name: body.fullName || '',
         username: body.username || '',
-        phone_number: body.phoneNumber || '',
+        phone_number: phone,
         role: body.role || 'BUYER',
         referral_code_used: body.referralCodeUsed || null,
       },

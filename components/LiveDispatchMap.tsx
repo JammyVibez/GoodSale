@@ -1,11 +1,10 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Compass, Navigation, MapPin, Bike, CheckCircle2, AlertTriangle } from 'lucide-react';
 import GoogleMapCanvas, { type MapMarker } from './GoogleMapCanvas';
 import {
   haversineKm,
-  estimateEtaMinutes,
   formatDistanceKm,
   isValidLatLng,
   type LatLng,
@@ -37,25 +36,29 @@ export default function LiveDispatchMap({
   className = '',
   height = '320px',
 }: LiveDispatchMapProps) {
-  const center: LatLng = isValidLatLng(rider)
+  const center: LatLng | null = isValidLatLng(rider)
     ? rider
     : isValidLatLng(destination)
       ? destination
       : isValidLatLng(pickup)
         ? pickup
-        : { lat: 6.5244, lng: 3.3792 };
-
-  const distanceKm =
+        : null;
+  const straightLineKm =
     isValidLatLng(rider) && isValidLatLng(destination)
       ? haversineKm(rider, destination)
       : isValidLatLng(pickup) && isValidLatLng(destination)
         ? haversineKm(pickup, destination)
         : null;
-
-  const eta =
-    distanceKm != null
-      ? estimateEtaMinutes(distanceKm, speedKmh && speedKmh > 5 ? speedKmh : 30)
-      : null;
+  const [routeMetrics, setRouteMetrics] = useState<{ distanceKm: number; durationMinutes: number } | null>(null);
+  const onRouteMetrics = useCallback((metrics: { distanceKm: number; durationMinutes: number } | null) => {
+    setRouteMetrics(metrics);
+  }, []);
+  const route = useMemo(
+    () => gpsLocked && isValidLatLng(rider) && isValidLatLng(destination)
+      ? { origin: rider, destination }
+      : null,
+    [gpsLocked, rider, destination]
+  );
 
   const markers: MapMarker[] = useMemo(() => {
     const list: MapMarker[] = [];
@@ -90,14 +93,6 @@ export default function LiveDispatchMap({
     return list;
   }, [pickup, rider, destination]);
 
-  const path = useMemo(() => {
-    const pts: LatLng[] = [];
-    if (isValidLatLng(pickup)) pts.push(pickup);
-    if (isValidLatLng(rider)) pts.push(rider);
-    if (isValidLatLng(destination)) pts.push(destination);
-    return pts;
-  }, [pickup, rider, destination]);
-
   return (
     <div className={`w-full space-y-3 rounded-3xl border border-ink-800 bg-ink-900 p-4 shadow-xl ${className}`}>
       <div className="grid grid-cols-3 gap-3 rounded-2xl border border-ink-800 bg-ink-950 p-3 text-xs">
@@ -106,7 +101,11 @@ export default function LiveDispatchMap({
             Distance
           </span>
           <p className="font-mono text-sm font-semibold text-jade-400">
-            {distanceKm != null ? formatDistanceKm(distanceKm) : '—'}
+            {routeMetrics
+              ? formatDistanceKm(routeMetrics.distanceKm)
+              : gpsLocked && straightLineKm != null
+                ? `~${formatDistanceKm(straightLineKm)}`
+                : '—'}
           </p>
         </div>
         <div className="space-y-0.5 border-l border-ink-800 pl-3">
@@ -114,7 +113,7 @@ export default function LiveDispatchMap({
             ETA
           </span>
           <p className="font-mono text-sm font-semibold text-jade-400">
-            {eta != null ? `${eta} mins` : '—'}
+            {routeMetrics ? `~${routeMetrics.durationMinutes} mins` : 'Unavailable'}
           </p>
         </div>
         <div className="space-y-0.5 border-l border-ink-800 pl-3">
@@ -122,16 +121,29 @@ export default function LiveDispatchMap({
             Speed
           </span>
           <p className="font-mono text-sm font-semibold text-ink-400">
-            {speedKmh != null ? `${Math.round(speedKmh)} km/h` : '—'}
+            {gpsLocked && speedKmh != null ? `${Math.round(speedKmh)} km/h` : '—'}
           </p>
         </div>
       </div>
 
       <div className="relative">
-        <GoogleMapCanvas center={center} zoom={13} markers={markers} path={path} height={height} />
+        {center ? (
+          <GoogleMapCanvas
+            center={center}
+            zoom={13}
+            markers={markers}
+            route={route}
+            onRouteMetrics={onRouteMetrics}
+            height={height}
+          />
+        ) : (
+          <div className="grid place-items-center rounded-2xl border border-ink-800 bg-ink-950 px-5 text-center text-xs text-ink-400" style={{ height }}>
+            No real coordinates are available yet. The map will appear after location data is shared.
+          </div>
+        )}
 
         <div className="absolute left-2.5 top-2.5 z-10 flex items-center gap-1.5 rounded-lg border border-ink-800/80 bg-ink-950/80 px-2 py-1 text-xs font-bold text-ink-300 shadow-md backdrop-blur-md">
-          <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-jade-500" />
+          <div className={`h-1.5 w-1.5 rounded-full ${gpsLocked ? 'animate-pulse bg-jade-500' : 'bg-ink-400'}`} />
           <span>{statusLabel}</span>
         </div>
 
@@ -142,7 +154,7 @@ export default function LiveDispatchMap({
           </span>
           {geoError || !gpsLocked ? (
             <span className="flex items-center gap-0.5 text-ink-500">
-              <AlertTriangle className="h-3 w-3" /> Approximate
+              <AlertTriangle className="h-3 w-3" /> GPS unavailable
             </span>
           ) : (
             <span className="flex items-center gap-0.5 text-jade-500">
@@ -152,6 +164,10 @@ export default function LiveDispatchMap({
         </div>
       </div>
 
+      {gpsLocked && straightLineKm != null && !routeMetrics && (
+        <p className="text-[10px] text-ink-500">Distance is a straight-line estimate. Road route and ETA require a configured Google Maps key.</p>
+      )}
+
       <div className="flex flex-wrap gap-2 text-xs text-ink-400">
         {isValidLatLng(pickup) && (
           <span className="inline-flex items-center gap-1 rounded-lg border border-ink-800 bg-ink-950 px-2 py-1">
@@ -160,7 +176,7 @@ export default function LiveDispatchMap({
         )}
         {isValidLatLng(rider) && (
           <span className="inline-flex items-center gap-1 rounded-lg border border-ink-800 bg-ink-950 px-2 py-1">
-            <Bike className="h-3 w-3 text-jade-400" /> Rider live
+            <Bike className="h-3 w-3 text-jade-400" /> {gpsLocked ? 'Rider live' : 'Last rider location'}
           </span>
         )}
         {isValidLatLng(destination) && (

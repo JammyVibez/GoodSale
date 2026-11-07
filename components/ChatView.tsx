@@ -23,6 +23,8 @@ import {
 } from '../lib/store';
 import { startCall } from '../lib/realtime-call';
 import { toast } from '../lib/feedback';
+import { isVerifiedSeller } from '@/lib/verification';
+import { VerifiedMark } from '@/components/verification/VerifiedBadge';
 
 /** Emoji set offered in the message reaction picker. */
 const REACTION_EMOJI = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
@@ -152,6 +154,11 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
     ? (activeRoom.buyerId === user.id ? activeRoom.sellerId : activeRoom.buyerId)
     : null;
   const partner = partnerId ? db.users.find((u) => u.id === partnerId) || null : null;
+  const partnerProfile = partnerId ? db.profiles.find((p) => p.userId === partnerId) : undefined;
+  const partnerVerified = isVerifiedSeller({
+    verificationStatus: partnerProfile?.verificationStatus,
+    verificationExpiresAt: partnerProfile?.verificationExpiresAt,
+  });
   const partnerName = partner?.fullName || (activeRoom ? (activeRoom.buyerId === user?.id ? activeRoom.sellerName : activeRoom.buyerName) : '') || 'GoodSale member';
   const myOrders = user
     ? db.orders.filter((order) => order.buyerId === user.id || order.sellerId === user.id)
@@ -349,6 +356,11 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
               myRooms.map((room) => {
                 const otherId = room.buyerId === user.id ? room.sellerId : room.buyerId;
                 const other = db.users.find((u) => u.id === otherId);
+                const otherProfile = db.profiles.find((p) => p.userId === otherId);
+                const otherVerified = isVerifiedSeller({
+                  verificationStatus: otherProfile?.verificationStatus,
+                  verificationExpiresAt: otherProfile?.verificationExpiresAt,
+                });
                 const prod = db.products.find((p) => p.id === room.productId);
                 const roomMsgs = db.messages.filter((m) => m.roomId === room.id);
                 const lastMsg = roomMsgs.length > 0 ? roomMsgs[roomMsgs.length - 1] : null;
@@ -372,8 +384,14 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
                     />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline justify-between gap-2">
-                        <h4 className="truncate text-sm font-bold text-ink-900 dark:text-white">
-                          {other?.fullName || 'GoodSale member'}
+                        <h4 className="flex min-w-0 items-center gap-1 text-sm font-bold text-ink-900 dark:text-white">
+                          <span className="truncate">{other?.fullName || 'GoodSale member'}</span>
+                          {otherVerified && (
+                            <VerifiedMark
+                              status={otherProfile?.verificationStatus}
+                              expiresAt={otherProfile?.verificationExpiresAt}
+                            />
+                          )}
                         </h4>
                         {lastMsg && (
                           <span className="shrink-0 font-mono text-xs text-ink-400">
@@ -432,12 +450,18 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
                       className="h-10 w-10 shrink-0"
                     />
                     <span className="min-w-0">
-                      <span className="block truncate text-sm font-bold text-ink-900 transition-colors group-hover:text-jade-600 dark:text-white dark:group-hover:text-jade-400">
-                        {partnerName}
+                      <span className="flex min-w-0 items-center gap-1 text-sm font-bold text-ink-900 transition-colors group-hover:text-jade-600 dark:text-white dark:group-hover:text-jade-400">
+                        <span className="truncate">{partnerName}</span>
+                        {partnerVerified && (
+                          <VerifiedMark
+                            status={partnerProfile?.verificationStatus}
+                            expiresAt={partnerProfile?.verificationExpiresAt}
+                          />
+                        )}
                       </span>
                       <span className="flex items-center gap-1.5 font-mono text-xs text-ink-400">
                         <ShieldCheck className="h-3 w-3 text-jade-500" />
-                        {partner ? `Trust ${partner.trustScore}%` : 'Verified member'}
+                        {partner ? `Trust ${partner.trustScore}%` : 'GoodSale member'}
                       </span>
                     </span>
                   </button>

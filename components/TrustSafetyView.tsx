@@ -11,6 +11,7 @@ import { useDBState } from '../lib/store';
 import { createSupportTicket, useTrustCenter } from '../lib/trustCenter';
 import { toast } from '@/lib/feedback';
 import { computeSellerTrust } from '../lib/trust';
+import { isVerifiedSeller } from '@/lib/verification';
 import { OrderStatus, UserRole, VerificationStatus } from '../lib/types';
 import { NOTIFICATION_PREFERENCE_META } from '../lib/notificationPrefs';
 
@@ -56,9 +57,13 @@ export default function TrustSafetyView({ onBack, onNavigate }: TrustSafetyViewP
     : undefined;
 
   const stats = useMemo(() => {
-    const verifiedSellers = db.users.filter(
-      (u) => u.role === UserRole.VERIFIED_SELLER || u.role === UserRole.VERIFIED_BUSINESS
-    ).length;
+    const verifiedSellers = db.users.filter((user) => {
+      const profile = db.profiles.find((entry) => entry.userId === user.id);
+      return isVerifiedSeller({
+        verificationStatus: profile?.verificationStatus,
+        verificationExpiresAt: profile?.verificationExpiresAt,
+      });
+    }).length;
     const delivered = db.orders.filter((o) => o.status === OrderStatus.DELIVERED_SUCCESS).length;
     const disputes = db.disputes.length;
     const resolved = db.disputes.filter((d) => d.resolution !== 'PENDING').length;

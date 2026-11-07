@@ -5,10 +5,10 @@ import React, { useState, useEffect } from 'react';
 import {
   ArrowLeft, ArrowRight, BadgeCheck, Camera, Clock, Flag, Flame, Heart,
   Loader2, MapPin, MessageSquare, Package, Share2, Shield, ShieldCheck,
-  ShoppingCart, Star, Store, Tag, Truck, UserCheck, UserPlus, Users, X,
+  ShoppingCart, Star, Store, Tag, Truck, UserCheck, UserPlus, Users,
 } from 'lucide-react';
 import {
-  getDBState, dbOperations, UserRole, VerificationKind, VerificationStatus,
+  getDBState, dbOperations, UserRole,
   type GoodSaleDBState,
 } from '../lib/store';
 import { SmartAvatar, SmartImage } from './ui/SmartImage';
@@ -17,6 +17,9 @@ import Chip from './ui/Chip';
 import { toast } from '@/lib/feedback';
 import { uploadMedia } from '@/lib/upload';
 import { computeSellerTrust } from '@/lib/trust';
+import VerifiedBadge from '@/components/verification/VerifiedBadge';
+import Dialog from '@/components/ui/Dialog';
+import { isVerifiedSeller } from '@/lib/verification';
 
 interface SellerProfileViewProps {
   sellerId: number;
@@ -101,18 +104,10 @@ export default function SellerProfileView({
     ? sellerReviews.reduce((sum, r) => sum + r.rating, 0) / sellerReviews.length
     : 0;
 
-  const isVerified = !!seller
-    ? seller.role === UserRole.VERIFIED_SELLER || seller.role === UserRole.VERIFIED_BUSINESS
-    : false;
-
-  const applications = db.verifications.filter(
-    (v) =>
-      v.userId === sellerId &&
-      (v.applicationKind === VerificationKind.SELLER || v.applicationKind === VerificationKind.BUSINESS)
-  );
-  const latestApplication = [...applications].sort((a, b) =>
-    (b.createdAt || '').localeCompare(a.createdAt || '')
-  )[0];
+  const isVerified = isVerifiedSeller({
+    verificationStatus: profile?.verificationStatus,
+    verificationExpiresAt: profile?.verificationExpiresAt,
+  });
 
   useEffect(() => {
     if (business) {
@@ -449,7 +444,14 @@ export default function SellerProfileView({
                 <h2 className="truncate font-display text-lg font-black tracking-tight text-ink-900 dark:text-white sm:text-xl">
                   {displayName}
                 </h2>
-                {isVerified && <BadgeCheck className="h-4 w-4 shrink-0 text-jade-600" />}
+                {isVerified && (
+                  <VerifiedBadge
+                    sellerId={sellerId}
+                    status={profile?.verificationStatus}
+                    expiresAt={profile?.verificationExpiresAt}
+                    fallbackName={displayName}
+                  />
+                )}
               </div>
               <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-ink-500 dark:text-ink-400">
                 <span className="font-semibold text-ink-600 dark:text-ink-300">
@@ -809,44 +811,40 @@ export default function SellerProfileView({
               </div>
 
               <div className="rounded-2xl border border-ink-150 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
-                <div className="flex items-center gap-2">
-                  <BadgeCheck className={`h-4 w-4 ${isVerified ? 'text-jade-600' : 'text-ink-300'}`} />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Shield className={`h-4 w-4 ${isVerified ? 'text-jade-600' : 'text-ink-400'}`} />
                   <h2 className="text-sm font-bold text-ink-900 dark:text-white">Verification</h2>
-                  {isVerified && (
+                  {isVerified ? (
                     <Chip tone="jade" icon={<Shield className="h-3 w-3" />}>Verified</Chip>
+                  ) : (
+                    <span className="rounded-full border border-ink-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink-500 dark:border-ink-700 dark:text-ink-400">
+                      Not verified
+                    </span>
                   )}
                 </div>
 
                 {isVerified ? (
-                  <p className="mt-2 text-xs leading-relaxed text-ink-500 dark:text-ink-400">
-                    This store passed GoodSale verification and shows the badge across the marketplace.
-                  </p>
-                ) : latestApplication ? (
-                  <div className="mt-2 space-y-1.5">
-                    <Chip tone={latestApplication.status === VerificationStatus.REJECTED ? 'outline' : 'neutral'}>
-                      {latestApplication.status === VerificationStatus.PENDING
-                        ? 'Under review by GoodSale'
-                        : latestApplication.status === VerificationStatus.APPROVED
-                          ? 'Approved'
-                          : 'Not approved'}
-                    </Chip>
+                  <div className="mt-2 space-y-2">
                     <p className="text-xs leading-relaxed text-ink-500 dark:text-ink-400">
-                      {latestApplication.status === VerificationStatus.PENDING
-                        ? `Submitted ${new Date(latestApplication.createdAt).toLocaleDateString()} — an admin is checking the ${latestApplication.documents?.length || 1} document(s) you uploaded.`
-                        : latestApplication.rejectionReason
-                          ? `Reason: ${latestApplication.rejectionReason}`
-                          : 'You can submit a new application with updated documents.'}
+                      This store passed GoodSale verification and shows the badge across the marketplace.
                     </p>
+                    <VerifiedBadge
+                      sellerId={sellerId}
+                      status={profile?.verificationStatus}
+                      expiresAt={profile?.verificationExpiresAt}
+                      variant="pill"
+                      fallbackName={displayName}
+                    />
                   </div>
                 ) : (
                   <p className="mt-2 text-xs leading-relaxed text-ink-500 dark:text-ink-400">
-                    {business
-                      ? 'Apply for the verified business badge with your CAC, ID and proof of address.'
-                      : 'Apply for the verified seller badge with your ID, selfie and proof of address.'}
+                    {isOwner
+                      ? 'Your store has not completed GoodSale verification yet. Apply from the Verification Center — a reviewer checks every document before the badge is issued.'
+                      : 'This store has not completed GoodSale verification. Keep payments inside GoodSale escrow for protection.'}
                   </p>
                 )}
 
-                {!isVerified && (isOwner || !latestApplication) && (
+                {!isVerified && isOwner && (
                   <Button
                     variant="primary"
                     size="sm"
@@ -859,10 +857,8 @@ export default function SellerProfileView({
                       onNavigate('verification');
                     }}
                   >
-                    <BadgeCheck className="h-4 w-4" />
-                    {latestApplication && latestApplication.status === VerificationStatus.REJECTED
-                      ? 'Re-apply with new documents'
-                      : 'Apply for verification'}
+                    <Shield className="h-4 w-4" />
+                    Open Verification Center
                   </Button>
                 )}
 
@@ -911,28 +907,15 @@ export default function SellerProfileView({
       </div>
 
       {/* ── Report store dialog ─────────────────────────────────────── */}
-      {reportOpen && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-ink-950/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-3xl border border-ink-200 bg-white p-6 shadow-2xl animate-fade-in-scale dark:border-ink-800 dark:bg-ink-900">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="font-display text-base font-bold tracking-tight text-ink-900 dark:text-white">
-                  Report {displayName}
-                </h2>
-                <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">
-                  Reports go straight to GoodSale admins for triage. False reports can affect your account.
-                </p>
-              </div>
-              <button
-                onClick={() => setReportOpen(false)}
-                className="rounded-xl p-1.5 text-ink-400 transition hover:bg-ink-100 hover:text-ink-700 dark:hover:bg-ink-800 cursor-pointer"
-                aria-label="Close report dialog"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <label className="mt-4 block text-xs font-bold text-ink-700 dark:text-ink-200">Reason</label>
+      <Dialog
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
+        title={`Report ${displayName}`}
+        description="Reports go straight to GoodSale admins for triage. False reports can affect your account."
+      >
+        <div className="space-y-3">
+          <label className="block text-xs font-bold text-ink-700 dark:text-ink-200">
+            Reason
             <select
               value={reportReason}
               onChange={(e) => setReportReason(e.target.value)}
@@ -944,10 +927,10 @@ export default function SellerProfileView({
                 </option>
               ))}
             </select>
+          </label>
 
-            <label className="mt-3 block text-xs font-bold text-ink-700 dark:text-ink-200">
-              What happened? <span className="font-medium text-ink-400">(optional)</span>
-            </label>
+          <label className="block text-xs font-bold text-ink-700 dark:text-ink-200">
+            What happened? <span className="font-medium text-ink-400">(optional)</span>
             <textarea
               value={reportDetails}
               onChange={(e) => setReportDetails(e.target.value)}
@@ -955,18 +938,18 @@ export default function SellerProfileView({
               placeholder="Share order numbers, dates or links so the admin can verify quickly."
               className="mt-1.5 w-full resize-none rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-xs text-ink-800 placeholder:text-ink-400 focus:border-jade-500 focus:outline-none dark:border-ink-800 dark:bg-ink-950 dark:text-ink-100"
             />
+          </label>
 
-            <div className="mt-5 flex gap-2">
-              <Button variant="secondary" className="flex-1" onClick={() => setReportOpen(false)}>
-                Cancel
-              </Button>
-              <Button variant="primary" className="flex-1" loading={sendingReport} onClick={submitReport}>
-                <Flag className="h-4 w-4" /> Send report
-              </Button>
-            </div>
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row">
+            <Button variant="secondary" className="flex-1" onClick={() => setReportOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" className="flex-1" loading={sendingReport} onClick={submitReport}>
+              <Flag className="h-4 w-4" /> Send report
+            </Button>
           </div>
         </div>
-      )}
+      </Dialog>
     </div>
   );
 }

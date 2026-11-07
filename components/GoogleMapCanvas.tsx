@@ -15,14 +15,22 @@ export type MapMarker = {
   pulse?: boolean;
 };
 
+export type GoogleRouteMetrics = {
+  distanceKm: number;
+  durationMinutes: number;
+};
+
 type GoogleMapCanvasProps = {
   center: LatLng;
   zoom?: number;
   markers?: MapMarker[];
   className?: string;
   height?: string;
-  /** Draw a simple path between ordered marker positions */
+  /** Draw an explicitly supplied path (used by SafeMeet, not delivery ETA). */
   path?: LatLng[];
+  /** Draw a provider-calculated road route (requires the Maps JavaScript API). */
+  route?: { origin: LatLng; destination: LatLng } | null;
+  onRouteMetrics?: (metrics: GoogleRouteMetrics | null) => void;
 };
 
 /**
@@ -35,11 +43,14 @@ export default function GoogleMapCanvas({
   className = '',
   height = '280px',
   path,
+  route,
+  onRouteMetrics,
 }: GoogleMapCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
-  const polyRef = useRef<google.maps.Polyline | null>(null);
+  const routeRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
+  const pathRef = useRef<google.maps.Polyline | null>(null);
   const [mode, setMode] = useState<'js' | 'embed' | 'loading'>('loading');
 
   useEffect(() => {
@@ -130,22 +141,6 @@ export default function GoogleMapCanvas({
       markersRef.current.push(marker);
     });
 
-    if (polyRef.current) {
-      polyRef.current.setMap(null);
-      polyRef.current = null;
-    }
-    const pathPts = (path || []).filter(isValidLatLng);
-    if (pathPts.length >= 2) {
-      polyRef.current = new maps.Polyline({
-        map: mapRef.current,
-        path: pathPts,
-        geodesic: true,
-        strokeColor: '#1fb377',
-        strokeOpacity: 0.85,
-        strokeWeight: 3,
-      });
-    }
-
     if (markers.length > 1) {
       const bounds = new maps.LatLngBounds();
       markers.forEach((m) => {
@@ -153,12 +148,70 @@ export default function GoogleMapCanvas({
       });
       mapRef.current.fitBounds(bounds, 48);
     }
+
+    pathRef.current?.setMap(null);
+    pathRef.current = null;
+    const pathPoints = (path || []).filter(isValidLatLng);
+    if (pathPoints.length > 1) {
+      pathRef.current = new maps.Polyline({
+        map: mapRef.current,
+        path: pathPoints,
+        geodesic: true,
+        strokeColor: '#1fb377',
+        strokeOpacity: 0.85,
+        strokeWeight: 3,
+      });
+    }
   }, [markers, path, center, mode]);
 
+  useEffect(() => {
+    const maps = typeof window !== 'undefined' ? window.google?.maps : undefined;
+    if (!maps || !mapRef.current || mode !== 'js' || !route) {
+      routeRendererRef.current?.setMap(null);
+      routeRendererRef.current = null;
+      onRouteMetrics?.(null);
+      return;
+    }
+
+    onRouteMetrics?.(null);
+    const renderer = new maps.DirectionsRenderer({
+      map: mapRef.current,
+      suppressMarkers: true,
+      preserveViewport: true,
+      polylineOptions: { strokeColor: '#1fb377', strokeOpacity: 0.9, strokeWeight: 5 },
+    });
+    routeRendererRef.current?.setMap(null);
+    routeRendererRef.current = renderer;
+
+    let cancelled = false;
+    const service = new maps.DirectionsService();
+    void service.route({
+      origin: route.origin,
+      destination: route.destination,
+      travelMode: maps.TravelMode.DRIVING,
+    }).then((result) => {
+      if (cancelled) return;
+      renderer.setDirections(result);
+      const leg = result.routes[0]?.legs[0];
+      if (leg?.distance?.value != null && leg.duration?.value != null) {
+        onRouteMetrics?.({
+          distanceKm: leg.distance.value / 1000,
+          durationMinutes: Math.max(1, Math.round(leg.duration.value / 60)),
+        });
+      }
+    }).catch(() => {
+      if (!cancelled) onRouteMetrics?.(null);
+    });
+
+    return () => {
+      cancelled = true;
+      renderer.setMap(null);
+      if (routeRendererRef.current === renderer) routeRendererRef.current = null;
+    };
+  }, [route, mode, onRouteMetrics]);
+
   const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-  const embedSrc = key
-    ? `https://www.google.com/maps/embed/v1/view?key=${key}&center=${center.lat},${center.lng}&zoom=${zoom}&maptype=roadmap`
-    : `https://maps.google.com/maps?q=${center.lat},${center.lng}&z=${zoom}&output=embed`;
+  const embedSrc = `https://maps.google.com/maps?q=${center.lat},${center.lng}&z=${zoom}&output=embed`;
 
   return (
     <div className={`relative overflow-hidden rounded-2xl border border-ink-800 bg-ink-950 ${className}`} style={{ height }}>

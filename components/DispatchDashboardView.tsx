@@ -12,16 +12,35 @@ import { motion } from 'motion/react';
 import { 
   getDBState, saveDBState, dbOperations, DeliveryPartner, DeliveryJob, DeliveryJobStatus, OrderStatus, UserRole, DeliveryVehicleType
 } from '../lib/store';
+import type { DeliveryStatus } from '@/lib/types';
 import { SmartAvatar } from './ui/SmartImage';
 import LiveDispatchMap from './LiveDispatchMap';
 import { useLiveLocation } from '@/lib/hooks/useLiveLocation';
-import { bestCoords, formatDistanceKm, haversineKm, estimateEtaMinutes, resolveCityCoords } from '@/lib/geo';
+import { bestCoords, haversineKm, estimateEtaMinutes } from '@/lib/geo';
 import { toast } from '@/lib/feedback';
 import { deliveryStates, deliveryCitiesFor } from '@/lib/serviceAreas';
+import { deliveryStatusLabel, isDeliveryTerminal, nextDeliveryStatuses } from '@/lib/delivery';
+import { DeliveryStatusBadge } from './DeliveryTimeline';
+import RiderDeliveryCard from './RiderDeliveryCard';
+import RiderRequestsPanel from './RiderRequestsPanel';
+import RiderEarningsPanel from './RiderEarningsPanel';
+import RiderAvailabilityPanel from './RiderAvailabilityPanel';
+import RiderProfilePanel from './RiderProfilePanel';
+
+type RiderTab =
+  | 'onboarding'
+  | 'overview'
+  | 'marketplace'
+  | 'my_deliveries'
+  | 'active_jobs'
+  | 'history'
+  | 'earnings'
+  | 'profile'
+  | 'availability';
 
 export default function DispatchDashboardView() {
   const [db, setDb] = useState(getDBState());
-  const [activeSubTab, setActiveSubTab] = useState<'onboarding' | 'marketplace' | 'active_jobs' | 'earnings'>('onboarding');
+  const [activeSubTab, setActiveSubTab] = useState<RiderTab>('onboarding');
   
   // Registration Form state
   const [fullName, setFullName] = useState('');
@@ -42,9 +61,14 @@ export default function DispatchDashboardView() {
   const [photoUrl, setPhotoUrl] = useState('');
   const [licenseUrl, setLicenseUrl] = useState('');
   const [selfieUrl, setSelfieUrl] = useState('');
+  const [emergencyName, setEmergencyName] = useState('');
+  const [emergencyPhone, setEmergencyPhone] = useState('');
+  const [emergencyRelation, setEmergencyRelation] = useState('');
+  const [serviceStates, setServiceStates] = useState<string[]>([]);
   
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState(false);
+  const [reapply, setReapply] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState<'selfie' | 'license' | 'vehicle' | null>(null);
 
   // Active tracking state
@@ -54,17 +78,30 @@ export default function DispatchDashboardView() {
   const [pinError, setPinError] = useState<string | null>(null);
   const [pinSuccess, setPinSuccess] = useState(false);
 
-  // Live GPS (rider)
+  // Canonical delivery confirmation (buyer's one-time code)
+  const [deliveryCode, setDeliveryCode] = useState('');
+  const [deliveryCodeError, setDeliveryCodeError] = useState<string | null>(null);
+  const [deliveryBusy, setDeliveryBusy] = useState(false);
+
+  // Request GPS only for an approved, online rider with an active delivery.
+  const locationRider = db.deliveryPartners.find((partner) => partner.userId === db.currentUser?.id);
+  const canWatchRiderGps = Boolean(
+    locationRider?.status === 'APPROVED' &&
+    locationRider.isAvailable &&
+    activeJob &&
+    activeJob.status !== DeliveryJobStatus.COMPLETED &&
+    activeJob.status !== DeliveryJobStatus.CANCELLED
+  );
   const liveGps = useLiveLocation({
     watch: true,
     throttleMs: 5000,
-    enabled: true,
+    enabled: canWatchRiderGps,
     highAccuracy: true,
+    fallback: null,
   });
 
-  const mapLat = liveGps.coords?.lat ?? activeJob?.currentLat ?? 6.5244;
-  const mapLng = liveGps.coords?.lng ?? activeJob?.currentLng ?? 3.3792;
-  const currentSpeed = activeJob?.currentSpeed ?? (liveGps.watching ? 25 : 0);
+  const mapLocation = canWatchRiderGps && liveGps.source === 'gps' ? liveGps.coords : null;
+  const currentSpeed = liveGps.source === 'gps' ? liveGps.speedKmh : null;
 
   // GoodDispatch Safety & SOS states
   const [sosActive, setSosActive] = useState(false);
@@ -85,69 +122,82 @@ export default function DispatchDashboardView() {
   const user = db.currentUser;
   const courier = db.deliveryPartners.find(p => p.userId === user?.id);
 
-  // Handle active sub tab defaults based on approval status
+  // Keep the approved rider on their current tab; everyone else stays on the
+  // application/status screen. Suspension immediately removes dashboard access.
   useEffect(() => {
-    if (courier) {
-      if (courier.status === 'APPROVED') {
-        const activeJobRecord = db.deliveryJobs.find(j => j.partnerId === courier.id && j.status !== DeliveryJobStatus.COMPLETED);
-        if (activeJobRecord) {
-          setActiveSubTab('active_jobs');
-          setActiveJob(activeJobRecord);
-        } else {
-          setActiveSubTab('marketplace');
-        }
-      } else {
-        setActiveSubTab('onboarding');
-      }
-    } else {
+    if (courier?.status === 'APPROVED') {
+      setActiveSubTab((current) => (current === 'onboarding' ? 'overview' : current));
+    } else if (activeSubTab !== 'onboarding') {
       setActiveSubTab('onboarding');
     }
-  }, [courier]);
+  }, [courier?.id, courier?.status, activeSubTab]);
 
   // Handle Courier Registration Onboarding
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) {
       setFormError('Please log in first to apply as a Delivery Partner.');
       return;
     }
 
-    if (!fullName || !phone || !email || !brand || !model || !plateNumber || !nin || !licenseNumber) {
-      setFormError('Please fill in all required fields, including vehicle registration documents.');
+    const needsPlate = !['BICYCLE', 'LOGISTICS', 'FLEET'].includes(vehicleType);
+    if (!fullName || !phone || !email || !nin || !address || !stateName || !cityName) {
+      setFormError('Please complete your name, contact, operating location and government ID.');
+      return;
+    }
+    if (needsPlate && !plateNumber) {
+      setFormError('Enter your vehicle registration number, or choose Bicycle / Logistics / Fleet.');
+      return;
+    }
+    if (!dbOperations.isDeliveryArea(stateName, cityName)) {
+      setFormError('Choose a city where GoodDispatch delivery is available.');
       return;
     }
 
     setFormError(null);
-    try {
-      const partner = dbOperations.registerDeliveryPartner({
-        userId: user.id,
-        fullName,
-        phone,
-        email,
-        vehicleType,
-        brand,
-        model,
-        plateNumber,
-        color,
-        year: parseInt(year) || 2024,
-        capacity,
-        address,
-        state: stateName,
-        city: cityName,
-        nin,
-        licenseNumber,
-        photoUrl,
-        selfieUrl,
-        licenseUrl
-      });
+    setFormSuccess(false);
+    const documents = [
+      selfieUrl ? { label: 'Selfie with vehicle', url: selfieUrl, kind: 'SELFIE' } : null,
+      licenseUrl ? { label: "Driver's licence", url: licenseUrl, kind: 'LICENSE' } : null,
+      photoUrl ? { label: 'Vehicle photo', url: photoUrl, kind: 'VEHICLE' } : null,
+      nin ? { label: 'NIN number', url: '', kind: 'IDENTITY', note: nin } : null,
+      licenseNumber
+        ? { label: "Driver's licence number", url: '', kind: 'LICENSE', note: licenseNumber }
+        : null,
+    ].filter(Boolean);
 
-      if (partner) {
-        setFormSuccess(true);
-        dbOperations.addAuditLog(user.id, 'REGISTER_DELIVERY_PARTNER', 'deliveryPartners', partner.id, `Submitted courier driver application as ${vehicleType}`);
-      }
-    } catch (err: any) {
-      setFormError(err.message || 'An error occurred during onboarding registration.');
+    const result = await dbOperations.riderApply({
+      fullName,
+      phone,
+      email,
+      vehicleType,
+      brand,
+      model,
+      plateNumber,
+      color,
+      year: parseInt(year) || undefined,
+      capacity,
+      address,
+      state: stateName,
+      city: cityName,
+      nin,
+      selfieUrl,
+      licenseUrl: licenseUrl || null,
+      photoUrl,
+      documents,
+      emergencyContactName: emergencyName,
+      emergencyContactPhone: emergencyPhone,
+      emergencyContactRelation: emergencyRelation,
+      serviceStates: serviceStates.length ? serviceStates : [stateName],
+    });
+
+    if (result.error) {
+      setFormError(result.error);
+      return;
     }
+    setFormSuccess(true);
+    setDb(getDBState());
+    toast.success('Rider application submitted for review.');
   };
 
   // Real document uploads for rider onboarding (stored in the private bucket).
@@ -180,51 +230,30 @@ export default function DispatchDashboardView() {
     );
   };
 
-  // Claim/Accept Delivery Job from Marketplace list
-  const claimJob = (jobId: number) => {
-    if (!courier) return;
-    if (courier.status !== 'APPROVED') {
-      toast.error('Only approved dispatch riders can accept delivery jobs.');
-      return;
-    }
-    if (liveGps.coords) {
-      dbOperations.updatePartnerLiveLocation(courier.id, liveGps.coords.lat, liveGps.coords.lng);
-    }
-    const updatedJob = dbOperations.acceptDeliveryJob(jobId, courier.id);
-    if (updatedJob) {
-      setActiveJob(updatedJob);
-      setActiveSubTab('active_jobs');
-      dbOperations.addAuditLog(user?.id || 0, 'ACCEPT_DELIVERY_JOB', 'deliveryJobs', jobId, `Courier accepted delivery request`);
-    }
-  };
-
   // Stream the rider's real device GPS to the buyer + seller while the job is moving.
   useEffect(() => {
     if (!activeJob || !liveGps.coords) return;
     const moving =
-      activeJob.status === DeliveryJobStatus.PICKED_UP ||
-      activeJob.status === DeliveryJobStatus.IN_TRANSIT;
+      (activeJob.status === DeliveryJobStatus.PICKED_UP ||
+        activeJob.status === DeliveryJobStatus.IN_TRANSIT) &&
+      courier?.isAvailable &&
+      liveGps.source === 'gps';
     if (!moving) {
       setGpsBroadcasting(false);
       return;
     }
-    const speed =
-      typeof liveGps.accuracy === 'number'
-        ? Math.max(8, Math.min(55, 40 - liveGps.accuracy / 5))
-        : 28;
-
     setGpsBroadcasting(true);
     dbOperations.updateDeliveryJobStatus(activeJob.id, activeJob.status, {
       lat: liveGps.coords.lat,
       lng: liveGps.coords.lng,
-      speed,
+      speed: liveGps.speedKmh ?? undefined,
     });
 
     if (courier) {
       dbOperations.updatePartnerLiveLocation(courier.id, liveGps.coords.lat, liveGps.coords.lng);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveGps.coords?.lat, liveGps.coords?.lng, liveGps.accuracy, activeJob?.id, activeJob?.status, courier?.id]);
+  }, [liveGps.coords?.lat, liveGps.coords?.lng, liveGps.accuracy, liveGps.speedKmh, liveGps.source, activeJob?.id, activeJob?.status, courier?.id, courier?.isAvailable]);
 
   // Keep active job synced from store (Realtime)
   useEffect(() => {
@@ -255,7 +284,7 @@ export default function DispatchDashboardView() {
         dbOperations.updateDeliveryJobStatus(activeJob.id, DeliveryJobStatus.IN_TRANSIT, {
           lat: liveGps.coords.lat,
           lng: liveGps.coords.lng,
-          speed: 25,
+          ...(liveGps.speedKmh != null ? { speed: liveGps.speedKmh } : {}),
         });
       } else {
         dbOperations.updateDeliveryJobStatus(activeJob.id, DeliveryJobStatus.IN_TRANSIT);
@@ -300,6 +329,43 @@ export default function DispatchDashboardView() {
   };
 
   // SOS emergency trigger
+  // Canonical delivery lifecycle (separate from the legacy dispatch job)
+  const advanceCanonicalDelivery = async (status: DeliveryStatus) => {
+    if (!activeJob) return;
+    const delivery = (db.deliveries || []).find(d => d.orderId === activeJob.orderId);
+    if (!delivery) return;
+    const result = await dbOperations.advanceDelivery(delivery.id, status, {
+      note: `Rider updated delivery to ${deliveryStatusLabel(status)}`,
+    });
+    if ('error' in result && result.error) {
+      toast.error(result.error);
+      return;
+    }
+    setDb(getDBState());
+    toast.success(`Delivery updated: ${deliveryStatusLabel(status)}`);
+  };
+
+  const handleConfirmDeliveryCode = async () => {
+    if (!activeJob) return;
+    const delivery = (db.deliveries || []).find(d => d.orderId === activeJob.orderId);
+    if (!delivery) return;
+    if (!/^\d{4,8}$/.test(deliveryCode.trim())) {
+      setDeliveryCodeError('Enter the buyer’s confirmation code.');
+      return;
+    }
+    setDeliveryBusy(true);
+    setDeliveryCodeError(null);
+    const result = await dbOperations.confirmDeliveryWithCode(delivery.id, deliveryCode.trim());
+    setDeliveryBusy(false);
+    if ('error' in result && result.error) {
+      setDeliveryCodeError(result.error);
+      return;
+    }
+    setDeliveryCode('');
+    setDb(getDBState());
+    toast.success('Delivery confirmed. The buyer still releases escrow separately.');
+  };
+
   const handleTriggerSos = () => {
     if (!activeJob) return;
     const state = getDBState();
@@ -308,7 +374,7 @@ export default function DispatchDashboardView() {
       job.trackingHistory.push({
         status: DeliveryJobStatus.IN_TRANSIT,
         time: new Date().toISOString(),
-        note: `SOS EMERGENCY TRIGGERED: ${courier?.fullName || user?.fullName || 'Courier'} reported an active safety/security alert. Live coordinates: ${mapLat.toFixed(4)}° N, ${mapLng.toFixed(4)}° E.`
+        note: `SOS EMERGENCY TRIGGERED: ${courier?.fullName || user?.fullName || 'Courier'} reported an active safety/security alert.${liveGps.source === 'gps' && liveGps.coords ? ` Live GPS coordinates: ${liveGps.coords.lat.toFixed(4)}, ${liveGps.coords.lng.toFixed(4)}.` : ' No current GPS fix was available.'}`
       });
       saveDBState(state);
       setDb(state);
@@ -330,7 +396,7 @@ export default function DispatchDashboardView() {
       job.trackingHistory.push({
         status: DeliveryJobStatus.IN_TRANSIT,
         time: new Date().toISOString(),
-        note: `DISPATCH INCIDENT [${typeLabel}]: ${incidentNote}`
+        note: `DISPATCH INCIDENT [${typeLabel}]: ${incidentNote}${liveGps.source === 'gps' && liveGps.coords ? ` · GPS ${liveGps.coords.lat.toFixed(4)}, ${liveGps.coords.lng.toFixed(4)}` : ''}`
       });
       saveDBState(state);
       setDb(state);
@@ -344,70 +410,33 @@ export default function DispatchDashboardView() {
     }
   };
 
-  // Get matching delivery jobs sorted by proximity to rider GPS
-  const riderOrigin = liveGps.coords ||
-    (courier
-      ? bestCoords(
-          { lat: courier.lastLat, lng: courier.lastLng },
-          null,
-          courier.city,
-          courier.state,
-          courier.address
-        )
-      : resolveCityCoords('Lagos'));
-
-  const availableJobs = db.deliveryJobs
-    .filter((j) => j.status === DeliveryJobStatus.PENDING)
-    .map((job) => {
-      const order = db.orders.find((o) => o.id === job.orderId);
-      const dest = bestCoords(
-        { lat: order?.deliveryLat, lng: order?.deliveryLng },
-        { lat: order?.pickupLat, lng: order?.pickupLng },
-        order?.deliveryCity,
-        order?.deliveryState,
-        order?.deliveryAddress
-      );
-      const distanceKm = parseFloat(haversineKm(riderOrigin, dest).toFixed(1));
-      const etaMinutes = estimateEtaMinutes(distanceKm);
-      const smartScore = Math.max(
-        55,
-        Math.round(100 - distanceKm * 3 + (courier?.trustScore || 80) / 10)
-      );
-      return { job, order, dest, distanceKm, etaMinutes, smartScore };
-    })
-    .sort((a, b) => a.distanceKm - b.distanceKm);
-
-  const storeActiveJob = db.deliveryJobs.find(j => j.partnerId === courier?.id && j.status !== DeliveryJobStatus.COMPLETED);
+  const activeDelivery = activeJob
+    ? (db.deliveries || []).find((delivery) => delivery.orderId === activeJob.orderId)
+    : undefined;
   const myCompletedJobs = db.deliveryJobs.filter(j => j.partnerId === courier?.id && j.status === DeliveryJobStatus.COMPLETED);
   const courierEarningsSum = myCompletedJobs.reduce((acc, j) => acc + j.courierEarnings, 0);
+
+  const myDeliveries = courier ? db.deliveries.filter((d) => d.riderId === courier.id) : [];
+  const myOpenDeliveries = myDeliveries.filter(
+    (d) => !isDeliveryTerminal(d.status) && !['FAILED_DELIVERY', 'RETURNED_TO_SELLER', 'CANCELLED'].includes(d.status)
+  );
+  const myOfferedDeliveries = myOpenDeliveries.filter((d) => d.assignmentStatus === 'OFFERED');
+  const myActiveDeliveries = myOpenDeliveries.filter((d) => d.assignmentStatus === 'ACCEPTED');
+  const myHistoryDeliveries = myDeliveries
+    .filter((d) => ['DELIVERED', 'FAILED_DELIVERY', 'RETURNED_TO_SELLER', 'CANCELLED'].includes(d.status))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const myEarnings = courier ? db.riderEarnings.filter((e) => e.riderId === courier.id) : [];
+  const pendingEarnings = myEarnings.filter((e) => e.status === 'PENDING').reduce((sum, e) => sum + e.netAmount, 0);
 
   const activeOrder = activeJob
     ? db.orders.find((o) => o.id === activeJob.orderId)
     : undefined;
-  const activeDest = activeOrder
-    ? bestCoords(
-        { lat: activeOrder.deliveryLat, lng: activeOrder.deliveryLng },
-        null,
-        activeOrder.deliveryCity,
-        activeOrder.deliveryState,
-        activeOrder.deliveryAddress
-      )
+  const activeDest = activeOrder?.deliveryLat != null && activeOrder.deliveryLng != null
+    ? { lat: activeOrder.deliveryLat, lng: activeOrder.deliveryLng }
     : null;
-  const activePickup = activeOrder
-    ? bestCoords(
-        { lat: activeOrder.pickupLat, lng: activeOrder.pickupLng },
-        null,
-        undefined,
-        undefined,
-        undefined
-      )
+  const activePickup = activeOrder?.pickupLat != null && activeOrder.pickupLng != null
+    ? { lat: activeOrder.pickupLat, lng: activeOrder.pickupLng }
     : null;
-  const eta =
-    liveGps.coords && activeDest
-      ? estimateEtaMinutes(haversineKm(liveGps.coords, activeDest), currentSpeed || 30)
-      : activePickup && activeDest
-        ? estimateEtaMinutes(haversineKm(activePickup, activeDest))
-        : 25;
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 font-sans" id="gooddispatch-dashboard">
@@ -505,85 +534,53 @@ export default function DispatchDashboardView() {
                 </div>
               )}
 
-              {/* Navigation Menu Links */}
-              <div className="space-y-1.5 pt-4 border-t border-ink-100 dark:border-ink-800">
-                {!courier && (
-                  <button
-                    onClick={() => setActiveSubTab('onboarding')}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-bold transition-all ${
-                      activeSubTab === 'onboarding' 
-                        ? 'bg-jade-500 text-white shadow-sm' 
-                        : 'text-ink-600 dark:text-ink-400 hover:bg-ink-50 dark:hover:bg-ink-850'
-                    }`}
-                  >
-                    <UserCheck className="w-4 h-4" />
-                    Courier Onboarding
-                  </button>
-                )}
-                {courier && courier.status !== 'APPROVED' && (
-                  <button
-                    onClick={() => setActiveSubTab('onboarding')}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-bold transition-all ${
-                      activeSubTab === 'onboarding' 
-                        ? 'bg-jade-500 text-white shadow-sm' 
-                        : 'text-ink-600 dark:text-ink-400 hover:bg-ink-50 dark:hover:bg-ink-850'
-                    }`}
-                  >
-                    <Eye className="w-4 h-4" />
-                    Review Details
-                  </button>
-                )}
-                {courier && courier.status === 'APPROVED' && (
-                  <>
+              {/* Navigation — horizontal swipe on phones, stacked on desktop */}
+              <div className="flex gap-1.5 overflow-x-auto border-t border-ink-100 pt-4 pb-1 dark:border-ink-800 lg:block lg:space-y-1.5 lg:overflow-visible">
+                {(courier?.status === 'APPROVED'
+                  ? ([
+                      { id: 'overview', label: 'Overview', Icon: Compass },
+                      { id: 'marketplace', label: 'Available', Icon: List },
+                      { id: 'my_deliveries', label: 'My Deliveries', Icon: Truck },
+                      { id: 'active_jobs', label: 'Active Delivery', Icon: Navigation },
+                      { id: 'history', label: 'History', Icon: Clock },
+                      { id: 'earnings', label: 'Earnings', Icon: DollarSign },
+                      { id: 'profile', label: 'Profile', Icon: User },
+                      { id: 'availability', label: 'Availability', Icon: MapPin },
+                    ] as { id: RiderTab; label: string; Icon: React.ElementType }[])
+                  : ([{ id: 'onboarding', label: courier ? 'Application' : 'Rider Onboarding', Icon: UserCheck }] as {
+                      id: RiderTab;
+                      label: string;
+                      Icon: React.ElementType;
+                    }[])
+                ).map(({ id, label, Icon }) => {
+                  const badge =
+                    id === 'my_deliveries' && myOpenDeliveries.length > 0
+                      ? String(myOpenDeliveries.length)
+                      : id === 'active_jobs' && myActiveDeliveries.length > 0
+                        ? '•'
+                        : null;
+                  return (
                     <button
-                      onClick={() => setActiveSubTab('marketplace')}
-                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left text-xs font-bold transition-all ${
-                        activeSubTab === 'marketplace' 
-                          ? 'bg-jade-500 text-white shadow-sm' 
-                          : 'text-ink-600 dark:text-ink-400 hover:bg-ink-50 dark:hover:bg-ink-850'
+                      key={id}
+                      onClick={() => setActiveSubTab(id)}
+                      className={`flex w-auto shrink-0 items-center justify-between gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-left text-xs font-bold transition-all lg:w-full ${
+                        activeSubTab === id
+                          ? 'bg-jade-500 text-white shadow-sm'
+                          : 'text-ink-600 hover:bg-ink-50 dark:text-ink-400 dark:hover:bg-ink-850'
                       }`}
                     >
                       <span className="flex items-center gap-2.5">
-                        <List className="w-4 h-4" />
-                        Delivery Marketplace
+                        <Icon className="h-4 w-4" />
+                        {label}
                       </span>
-                      {availableJobs.length > 0 && (
-                        <span className="bg-jade-500 text-white text-xs font-semibold px-1.5 py-0.5 rounded-full">
-                          {availableJobs.length}
+                      {badge && (
+                        <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-bold">
+                          {badge}
                         </span>
                       )}
                     </button>
-
-                    <button
-                      onClick={() => setActiveSubTab('active_jobs')}
-                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left text-xs font-bold transition-all ${
-                        activeSubTab === 'active_jobs' 
-                          ? 'bg-jade-500 text-white shadow-sm' 
-                          : 'text-ink-600 dark:text-ink-400 hover:bg-ink-50 dark:hover:bg-ink-850'
-                      }`}
-                    >
-                      <span className="flex items-center gap-2.5">
-                        <Navigation className="w-4 h-4" />
-                        Active Job Tracker
-                      </span>
-                      {storeActiveJob && (
-                        <span className="w-2.5 h-2.5 bg-jade-500 rounded-full animate-ping" />
-                      )}
-                    </button>
-
-                    <button
-                      onClick={() => setActiveSubTab('earnings')}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-bold transition-all ${
-                        activeSubTab === 'earnings' 
-                          ? 'bg-jade-500 text-white shadow-sm' 
-                          : 'text-ink-600 dark:text-ink-400 hover:bg-ink-50 dark:hover:bg-ink-850'
-                      }`}
-                    >
-                      <DollarSign className="w-4 h-4" />
-                      Courier Earnings
-                    </button>
-                  </>
-                )}
+                  );
+                })}
               </div>
 
             </div>
@@ -596,30 +593,68 @@ export default function DispatchDashboardView() {
               {/* ONBOARDING SUB-TAB */}
               {activeSubTab === 'onboarding' && (
                 <div className="space-y-6">
-                  {courier ? (
+                  {courier && (courier.status !== 'REJECTED' || !reapply) ? (
                     <div className="space-y-6 text-center py-12">
-                      <div className="w-16 h-16 rounded-full bg-ink-500/10 border border-ink-500/20 flex items-center justify-center mx-auto mb-4 animate-bounce">
-                        <Clock className="w-8 h-8 text-ink-500" />
+                      <div className={`mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full border ${
+                        courier.status === 'APPROVED'
+                          ? 'border-jade-500/30 bg-jade-500/10'
+                          : courier.status === 'SUSPENDED'
+                            ? 'border-gold-500/30 bg-gold-500/10'
+                            : 'border-ink-500/20 bg-ink-500/10'
+                      }`}>
+                        {courier.status === 'APPROVED' ? (
+                          <CheckCircle2 className="h-8 w-8 text-jade-500" />
+                        ) : courier.status === 'SUSPENDED' ? (
+                          <AlertCircle className="h-8 w-8 text-gold-600" />
+                        ) : (
+                          <Clock className="h-8 w-8 text-ink-500" />
+                        )}
                       </div>
-                      <h3 className="text-xl font-semibold text-ink-850 dark:text-white">Application Under Review</h3>
-                      <p className="text-xs text-ink-500 dark:text-ink-400 max-w-md mx-auto leading-relaxed">
-                        Thank you, <span className="font-semibold text-ink-800 dark:text-ink-200">{courier.fullName}</span>! Your courier profile and vehicle registration credentials for vehicle plate <span className="font-mono bg-ink-100 dark:bg-ink-800 px-1.5 py-0.5 rounded font-bold text-ink-850 dark:text-white">{courier.plateNumber}</span> are currently being reviewed by GoodSale Administrators.
+                      <h3 className="text-xl font-semibold text-ink-850 dark:text-white">
+                        {courier.status === 'APPROVED'
+                          ? 'Rider account approved'
+                          : courier.status === 'SUSPENDED'
+                            ? 'Rider account suspended'
+                            : courier.status === 'REJECTED'
+                              ? 'Application rejected'
+                              : 'Application under review'}
+                      </h3>
+                      <p className="mx-auto max-w-md text-xs leading-relaxed text-ink-500 dark:text-ink-400">
+                        {courier.status === 'APPROVED'
+                          ? 'You can receive delivery requests. Use the Availability tab to go online.'
+                          : courier.status === 'SUSPENDED'
+                            ? courier.suspensionReason || 'Contact GoodSale support to resolve this suspension.'
+                            : courier.status === 'REJECTED'
+                              ? courier.rejectionReason || 'Contact support for details, then submit a new application.'
+                              : `Thank you, ${courier.fullName}. Your identity and vehicle documents are being reviewed by GoodSale administrators.`}
                       </p>
-                      
+
                       {/* Driver submitted specs summary */}
-                      <div className="max-w-md mx-auto bg-ink-50 dark:bg-ink-950 p-4 rounded-2xl border border-ink-100 dark:border-ink-800 text-left space-y-2">
-                        <h4 className="text-xs font-bold text-ink-700 dark:text-ink-300 tracking-wider font-mono">Submitted Credentials</h4>
-                        <div className="grid grid-cols-2 gap-3 text-xs text-ink-600 dark:text-ink-400 font-sans">
-                          <div><span className="text-ink-400 font-semibold block">Vehicle Type:</span> {courier.vehicleType}</div>
-                          <div><span className="text-ink-400 font-semibold block">Plate Number:</span> {courier.plateNumber}</div>
-                          <div><span className="text-ink-400 font-semibold block">Vehicle Brand:</span> {courier.brand} {courier.model}</div>
-                          <div><span className="text-ink-400 font-semibold block">NIN ID Number:</span> {courier.nin.slice(0, 4)}*******</div>
+                      <div className="mx-auto max-w-md space-y-2 rounded-2xl border border-ink-100 bg-ink-50 p-4 text-left dark:border-ink-800 dark:bg-ink-950">
+                        <h4 className="font-mono text-xs font-bold tracking-wider text-ink-700 dark:text-ink-300">Submitted credentials</h4>
+                        <div className="grid grid-cols-2 gap-3 font-sans text-xs text-ink-600 dark:text-ink-400">
+                          <div><span className="block font-semibold text-ink-400">Vehicle type:</span> {courier.vehicleType}</div>
+                          <div><span className="block font-semibold text-ink-400">Registration:</span> {courier.plateNumber || 'N/A'}</div>
+                          <div><span className="block font-semibold text-ink-400">Vehicle:</span> {[courier.brand, courier.model].filter(Boolean).join(' ') || '—'}</div>
+                          <div><span className="block font-semibold text-ink-400">NIN:</span> {courier.nin ? `${courier.nin.slice(0, 4)}*******` : 'Uploaded'}</div>
+                          <div><span className="block font-semibold text-ink-400">Service area:</span> {[courier.city, courier.state].filter(Boolean).join(', ') || '—'}</div>
+                          <div><span className="block font-semibold text-ink-400">Documents:</span> {courier.documents?.length ?? 0} uploaded</div>
                         </div>
                       </div>
 
-                      <div className="mx-auto max-w-sm rounded-2xl bg-jade-50/50 p-3 text-xs font-medium text-jade-700 dark:bg-jade-950/20 dark:text-jade-400">
-                        Estimated approval time: less than 24 hours.
-                      </div>
+                      {courier.status === 'PENDING' && (
+                        <div className="mx-auto max-w-sm rounded-2xl bg-jade-50/50 p-3 text-xs font-medium text-jade-700 dark:bg-jade-950/20 dark:text-jade-400">
+                          Estimated approval time: less than 24 hours.
+                        </div>
+                      )}
+                      {courier.status === 'REJECTED' && (
+                        <button
+                          onClick={() => setReapply(true)}
+                          className="rounded-xl bg-jade-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-jade-700"
+                        >
+                          Update and re-apply
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <form onSubmit={handleRegister} className="space-y-6">
@@ -847,14 +882,82 @@ export default function DispatchDashboardView() {
 
                       </div>
 
-                      {/* 3. REQUIRED DOCUMENT UPLOADS (real files → private storage) */}
+                      {/* Emergency contact + service area */}
+                      <div className="space-y-4 border-t border-ink-100 pt-4 dark:border-ink-800">
+                        <h4 className="font-mono text-xs font-bold tracking-wider text-jade-600 dark:text-jade-400">3. Emergency contact & service area</h4>
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                          <div className="space-y-1">
+                            <label className="text-xs font-bold text-ink-500 dark:text-ink-400">Emergency contact name</label>
+                            <input
+                              type="text"
+                              value={emergencyName}
+                              onChange={(e) => setEmergencyName(e.target.value)}
+                              placeholder="e.g. Ada Coker"
+                              className="w-full rounded-xl border border-ink-100 bg-ink-50 px-4 py-3 text-xs font-medium text-ink-850 dark:border-ink-800 dark:bg-ink-950 dark:text-white"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-bold text-ink-500 dark:text-ink-400">Emergency phone</label>
+                            <input
+                              type="tel"
+                              value={emergencyPhone}
+                              onChange={(e) => setEmergencyPhone(e.target.value)}
+                              placeholder="e.g. 0803 000 0000"
+                              className="w-full rounded-xl border border-ink-100 bg-ink-50 px-4 py-3 text-xs font-medium text-ink-850 dark:border-ink-800 dark:bg-ink-950 dark:text-white"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-bold text-ink-500 dark:text-ink-400">Relationship</label>
+                            <input
+                              type="text"
+                              value={emergencyRelation}
+                              onChange={(e) => setEmergencyRelation(e.target.value)}
+                              placeholder="e.g. Sister"
+                              className="w-full rounded-xl border border-ink-100 bg-ink-50 px-4 py-3 text-xs font-medium text-ink-850 dark:border-ink-800 dark:bg-ink-950 dark:text-white"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-xs font-bold text-ink-500 dark:text-ink-400">Additional service states (optional)</label>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {deliveryStates().map((state) => {
+                              const selected = serviceStates.includes(state);
+                              return (
+                                <button
+                                  key={state}
+                                  type="button"
+                                  onClick={() =>
+                                    setServiceStates((current) =>
+                                      current.includes(state)
+                                        ? current.filter((item) => item !== state)
+                                        : [...current, state]
+                                    )
+                                  }
+                                  className={`rounded-full border px-2.5 py-1.5 text-[10px] font-bold ${
+                                    selected
+                                      ? 'border-jade-500 bg-jade-500 text-white'
+                                      : 'border-ink-200 bg-white text-ink-500 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-300'
+                                  }`}
+                                >
+                                  {state.replace(' State', '')}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <p className="mt-1 text-[10px] text-ink-400">
+                            Leave empty to receive requests only in {stateName}. You can change this later in Availability.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* 4. REQUIRED DOCUMENT UPLOADS (real files → private storage) */}
                       <div className="space-y-3 pt-4 border-t border-ink-100 dark:border-ink-800">
-                        <h4 className="text-xs font-bold tracking-wider font-mono text-ink-500">3. Document Uploads</h4>
+                        <h4 className="text-xs font-bold tracking-wider font-mono text-ink-500">4. Document uploads</h4>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                           {([
-                            { key: 'selfie' as const, label: 'Selfie with Vehicle', Icon: Camera, url: selfieUrl },
-                            { key: 'license' as const, label: "Driver's License Photo", Icon: CreditCard, url: licenseUrl },
-                            { key: 'vehicle' as const, label: 'Vehicle Box Photo', Icon: Bike, url: photoUrl },
+                            { key: 'selfie' as const, label: 'Profile photo / selfie', Icon: Camera, url: selfieUrl },
+                            { key: 'license' as const, label: "Driver's licence", Icon: CreditCard, url: licenseUrl },
+                            { key: 'vehicle' as const, label: 'Vehicle photo', Icon: Bike, url: photoUrl },
                           ]).map(({ key, label, Icon, url }) => (
                             <label
                               key={key}
@@ -900,121 +1003,167 @@ export default function DispatchDashboardView() {
                 </div>
               )}
 
-              {/* DELIVERY MARKETPLACE SUB-TAB */}
-              {activeSubTab === 'marketplace' && (
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between">
+              {/* OVERVIEW */}
+              {activeSubTab === 'overview' && (
+                <div className="space-y-5">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <h3 className="text-lg font-bold text-ink-800 dark:text-white">Delivery Job Marketplace</h3>
+                      <h3 className="font-display text-lg font-semibold text-ink-900 dark:text-white">
+                        Welcome back, {courier?.fullName?.split(' ')[0] || 'rider'}
+                      </h3>
                       <p className="text-xs text-ink-500 dark:text-ink-400">
-                        Available delivery jobs in your area. Accept requests matching your vehicle capacity.
+                        {courier?.isAvailable ? 'You are online and visible for requests.' : 'You are offline. Go online to receive requests.'}
                       </p>
                     </div>
-                    
-                    {/* Live reload pulse indicators */}
-                    <div className="flex items-center gap-1 bg-jade-500/10 text-jade-600 dark:text-jade-400 text-xs font-bold px-2.5 py-1 rounded-full">
-                      <span className="w-1.5 h-1.5 bg-jade-500 rounded-full animate-ping" />
-                      Live Feed
-                    </div>
+                    <button
+                      onClick={() => setActiveSubTab('availability')}
+                      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold ${
+                        courier?.isAvailable
+                          ? 'bg-jade-100 text-jade-700 dark:bg-jade-500/15 dark:text-jade-300'
+                          : 'bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-300'
+                      }`}
+                    >
+                      <span className={`h-2 w-2 rounded-full ${courier?.isAvailable ? 'animate-pulse bg-jade-500' : 'bg-ink-400'}`} />
+                      {courier?.isAvailable ? 'Online' : 'Offline'}
+                    </button>
                   </div>
 
-                  {availableJobs.length === 0 ? (
-                    <div className="text-center py-16 bg-ink-50 dark:bg-ink-950/50 border border-ink-100 dark:border-ink-800 rounded-3xl p-8 space-y-4">
-                      <Compass className="w-12 h-12 text-ink-400 mx-auto animate-spin" />
-                      <h4 className="text-sm font-bold text-ink-750 dark:text-ink-200">No open jobs right now</h4>
-                      <p className="text-xs text-ink-500 dark:text-ink-400 max-w-sm mx-auto">
-                        Delivery jobs appear here in real time the moment a buyer in your coverage area checks out an escrow order. Keep your duty status online to receive them.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {availableJobs.map(({ job, order, distanceKm, etaMinutes, smartScore }) => {
-                        const buyer = db.users.find(u => u.id === order?.buyerId);
-                        const seller = db.users.find(u => u.id === order?.sellerId);
-                        
-                        return (
-                          <div 
-                            key={job.id}
-                            className="bg-ink-50 dark:bg-ink-950 rounded-2xl p-5 border border-ink-100 dark:border-ink-800/80 hover:shadow-md transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
-                          >
-                            <div className="space-y-2 flex-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-xs font-bold bg-jade-100 dark:bg-jade-950/40 text-jade-500 dark:text-jade-400 px-2 py-0.5 rounded">
-                                  {job.serviceType}
-                                </span>
-                                <span className="text-xs font-mono text-ink-400">
-                                  Job ID: #JOB-{job.id}
-                                </span>
-                                <span className="text-xs font-mono font-bold text-jade-600 bg-jade-500/10 px-2 py-0.5 rounded">
-                                  {formatDistanceKm(distanceKm)} · ~{etaMinutes} mins
-                                </span>
-                              </div>
+                  <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    {[
+                      { label: 'Open offers', value: String(myOfferedDeliveries.length), hint: 'Respond before expiry' },
+                      { label: 'Active deliveries', value: String(myActiveDeliveries.length), hint: 'Assigned to you' },
+                      { label: 'Completed', value: String(myHistoryDeliveries.filter((d) => d.status === 'DELIVERED').length), hint: 'Lifetime deliveries' },
+                      { label: 'Pending earnings', value: `₦${Math.round(pendingEarnings).toLocaleString()}`, hint: 'Awaiting approval' },
+                    ].map((card) => (
+                      <div key={card.label} className="rounded-2xl border border-ink-150 bg-white p-4 dark:border-ink-800 dark:bg-ink-900">
+                        <span className="block font-mono text-[10px] uppercase tracking-wider text-ink-400">{card.label}</span>
+                        <span className="mt-1 block font-mono text-xl font-bold text-ink-900 dark:text-white">{card.value}</span>
+                        <span className="text-[10px] text-ink-400">{card.hint}</span>
+                      </div>
+                    ))}
+                  </div>
 
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-xs text-ink-600 dark:text-ink-400">
-                                <div>
-                                  <span className="font-bold text-ink-400 block text-xs font-mono">Pickup Point (Seller)</span>
-                                  <span className="font-medium text-ink-800 dark:text-ink-200">
-                                    {seller?.fullName || 'Seller'} — {order?.deliveryCity || 'Lagos'}
-                                  </span>
-                                </div>
-                                <div>
-                                  <span className="font-bold text-ink-400 block text-xs font-mono">Delivery Point (Buyer)</span>
-                                  <span className="font-medium text-ink-800 dark:text-ink-200">
-                                    {order?.deliveryAddress || buyer?.fullName || 'Buyer destination'}
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Smart Match Compatibility Shield */}
-                              <div className="mt-2.5 p-3 bg-jade-500/5 rounded-xl border border-jade-500/10 flex items-center justify-between gap-3 text-xs text-ink-600 dark:text-ink-400">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-8 h-8 rounded-full bg-jade-500/10 flex items-center justify-center font-bold text-xs text-jade-600">
-                                    {smartScore}%
-                                  </div>
-                                  <div>
-                                    <span className="font-bold text-ink-800 dark:text-white block text-xs">Proximity Smart Match</span>
-                                    <span className="text-xs text-ink-400">
-                                      Ranked by live GPS distance to buyer ({formatDistanceKm(distanceKm)} away).
-                                    </span>
-                                  </div>
-                                </div>
-                                <span className="text-xs font-mono text-jade-600 font-bold bg-jade-500/10 px-2 py-0.5 rounded shrink-0">
-                                  NEAR YOU
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Earnings breakdown & Accept CTA */}
-                            <div className="flex items-center justify-between md:justify-end gap-6 border-t md:border-t-0 pt-3 md:pt-0 border-ink-100 dark:border-ink-850">
-                              <div className="text-right">
-                                <span className="text-xs text-ink-400 tracking-wider font-mono">Courier Pay</span>
-                                <p className="text-lg font-bold text-jade-500 font-mono">
-                                  ₦{job.courierEarnings.toLocaleString()}
-                                </p>
-                                <span className="text-xs text-ink-400 block">
-                                  Fee: ₦{job.deliveryFee.toLocaleString()}
-                                </span>
-                              </div>
-                              <button
-                                onClick={() => claimJob(job.id)}
-                                className="px-5 py-2.5 bg-jade-500 hover:bg-jade-600 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer transition-transform active:scale-95"
-                              >
-                                Accept Delivery Job
-                              </button>
-                            </div>
-
-                          </div>
-                        );
-                      })}
+                  {myOfferedDeliveries.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-ink-500">New assignment offers</h4>
+                        <button onClick={() => setActiveSubTab('my_deliveries')} className="text-[11px] font-bold text-jade-700 dark:text-jade-300">View all</button>
+                      </div>
+                      {myOfferedDeliveries.slice(0, 2).map((delivery) => (
+                        <RiderDeliveryCard key={delivery.id} delivery={delivery} rider={courier} compact onChanged={() => setDb(getDBState())} />
+                      ))}
                     </div>
                   )}
 
+                  {myActiveDeliveries.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-ink-500">Active delivery</h4>
+                        <button onClick={() => setActiveSubTab('active_jobs')} className="text-[11px] font-bold text-jade-700 dark:text-jade-300">Open tracker</button>
+                      </div>
+                      {myActiveDeliveries.slice(0, 1).map((delivery) => (
+                        <RiderDeliveryCard key={delivery.id} delivery={delivery} rider={courier} compact onChanged={() => setDb(getDBState())} />
+                      ))}
+                    </div>
+                  )}
+
+                  {myOfferedDeliveries.length === 0 && myActiveDeliveries.length === 0 && (
+                    <div className="rounded-2xl border border-dashed border-ink-200 bg-ink-50/60 p-8 text-center dark:border-ink-700 dark:bg-ink-950/40">
+                      <Truck className="mx-auto h-8 w-8 text-ink-300 dark:text-ink-600" />
+                      <h4 className="mt-2 text-sm font-bold text-ink-800 dark:text-ink-200">No active deliveries</h4>
+                      <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">Check available requests, or go online if you are currently offline.</p>
+                      <div className="mt-3 flex flex-wrap justify-center gap-2">
+                        <button onClick={() => setActiveSubTab('marketplace')} className="rounded-xl bg-jade-600 px-4 py-2 text-xs font-bold text-white hover:bg-jade-700">Browse requests</button>
+                        <button onClick={() => setActiveSubTab('availability')} className="rounded-xl border border-ink-200 px-4 py-2 text-xs font-bold text-ink-600 dark:border-ink-700 dark:text-ink-300">Availability</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
+              )}
+
+              {/* AVAILABLE DELIVERIES */}
+              {activeSubTab === 'marketplace' && (
+                <RiderRequestsPanel
+                  online={Boolean(courier?.isAvailable)}
+                  onAccepted={() => setDb(getDBState())}
+                />
+              )}
+
+              {/* MY DELIVERIES */}
+              {activeSubTab === 'my_deliveries' && (
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="font-display text-lg font-semibold text-ink-900 dark:text-white">My deliveries</h3>
+                    <p className="text-xs text-ink-500 dark:text-ink-400">
+                      Assignment offers and accepted deliveries. Only packages assigned to you appear here.
+                    </p>
+                  </div>
+                  {myOpenDeliveries.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-ink-200 p-8 text-center dark:border-ink-700">
+                      <Truck className="mx-auto h-8 w-8 text-ink-300 dark:text-ink-600" />
+                      <p className="mt-2 text-xs text-ink-500 dark:text-ink-400">No assigned deliveries right now.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {myOpenDeliveries.map((delivery) => (
+                        <RiderDeliveryCard key={delivery.id} delivery={delivery} rider={courier} onChanged={() => setDb(getDBState())} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* DELIVERY HISTORY */}
+              {activeSubTab === 'history' && (
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="font-display text-lg font-semibold text-ink-900 dark:text-white">Delivery history</h3>
+                    <p className="text-xs text-ink-500 dark:text-ink-400">Completed and failed deliveries on your rider account.</p>
+                  </div>
+                  {myHistoryDeliveries.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-ink-200 p-8 text-center dark:border-ink-700">
+                      <Clock className="mx-auto h-8 w-8 text-ink-300 dark:text-ink-600" />
+                      <p className="mt-2 text-xs text-ink-500 dark:text-ink-400">Your completed deliveries will appear here.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {myHistoryDeliveries.map((delivery) => (
+                        <RiderDeliveryCard key={delivery.id} delivery={delivery} rider={courier} compact onChanged={() => setDb(getDBState())} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* PROFILE */}
+              {activeSubTab === 'profile' && courier && <RiderProfilePanel rider={courier} />}
+
+              {/* AVAILABILITY */}
+              {activeSubTab === 'availability' && courier && (
+                <RiderAvailabilityPanel rider={courier} onChanged={() => setDb(getDBState())} />
               )}
 
               {/* ACTIVE JOBS SUB-TAB */}
               {activeSubTab === 'active_jobs' && (
                 <div className="space-y-6">
+                  {myActiveDeliveries.length > 0 && (
+                    <div className="space-y-3">
+                      <div>
+                        <h3 className="font-display text-lg font-semibold text-ink-900 dark:text-white">Active delivery</h3>
+                        <p className="text-xs text-ink-500 dark:text-ink-400">
+                          Follow the steps in order. The buyer’s code is the only way to complete the delivery.
+                        </p>
+                      </div>
+                      {myActiveDeliveries.map((delivery) => (
+                        <RiderDeliveryCard
+                          key={delivery.id}
+                          delivery={delivery}
+                          rider={courier}
+                          onChanged={() => setDb(getDBState())}
+                        />
+                      ))}
+                    </div>
+                  )}
                   {activeJob ? (
                     <div className="space-y-6">
                       
@@ -1047,7 +1196,7 @@ export default function DispatchDashboardView() {
                         {/* LEFT COLUMN: Real Google Map */}
                         <div className="md:col-span-2">
                           <LiveDispatchMap
-                            rider={{ lat: mapLat, lng: mapLng }}
+                            rider={mapLocation}
                             destination={activeDest}
                             pickup={activePickup}
                             speedKmh={currentSpeed}
@@ -1056,7 +1205,9 @@ export default function DispatchDashboardView() {
                                 ? 'Broadcasting live GPS'
                                 : activeJob.status === DeliveryJobStatus.ARRIVED
                                   ? 'Arrived at destination'
-                                  : 'Rider location'
+                                  : mapLocation
+                                    ? 'Last real rider location'
+                                    : 'Waiting for GPS'
                             }
                             geoError={liveGps.error}
                             gpsLocked={liveGps.source === 'gps'}
@@ -1097,7 +1248,9 @@ export default function DispatchDashboardView() {
                                     Live GPS sharing active
                                   </div>
                                   <p className="text-xs text-ink-400">
-                                    Your phone location is streaming to buyer & seller maps. ETA ~{eta} mins.
+                                    {gpsBroadcasting
+                                      ? 'Your phone location is streaming to buyer and seller maps. Road ETA appears when Google Maps can calculate a route.'
+                                      : 'Enable real GPS sharing and stay online to stream your position. Road ETA is unavailable until a reliable route is calculated.'}
                                   </p>
                                   <button
                                     onClick={() => transitionJobStatus(DeliveryJobStatus.ARRIVED)}
@@ -1154,6 +1307,70 @@ export default function DispatchDashboardView() {
                             </div>
                           </div>
 
+                          {activeDelivery && activeDelivery.assignmentStatus === 'ACCEPTED' && (
+                            <div className="bg-white dark:bg-ink-900 p-4 rounded-2xl border border-jade-500/20 space-y-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <div>
+                                  <h4 className="text-xs font-bold tracking-wider font-mono text-ink-500">Delivery Confirmation</h4>
+                                  <p className="text-[10px] text-ink-400 font-mono mt-0.5">{activeDelivery.deliveryNumber}</p>
+                                </div>
+                                <DeliveryStatusBadge status={activeDelivery.status} />
+                              </div>
+
+                              {!isDeliveryTerminal(activeDelivery.status) && (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {nextDeliveryStatuses(activeDelivery, 'RIDER')
+                                    .filter((status) => status !== 'FAILED_DELIVERY')
+                                    .map((status) => (
+                                      <button
+                                        key={status}
+                                        onClick={() => void advanceCanonicalDelivery(status)}
+                                        className="px-2.5 py-1.5 rounded-lg bg-jade-500 hover:bg-jade-600 text-white text-[10px] font-bold cursor-pointer"
+                                      >
+                                        {deliveryStatusLabel(status)}
+                                      </button>
+                                    ))}
+                                </div>
+                              )}
+
+                              {['OUT_FOR_DELIVERY', 'DELIVERY_ATTEMPTED'].includes(activeDelivery.status) && (
+                                <div className="space-y-2 pt-2 border-t border-ink-200 dark:border-ink-800">
+                                  <label className="text-[10px] font-bold tracking-wider font-mono text-ink-500 block">
+                                    Buyer&apos;s one-time confirmation code
+                                  </label>
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={deliveryCode}
+                                    onChange={(e) => setDeliveryCode(e.target.value)}
+                                    placeholder="6-digit code"
+                                    maxLength={8}
+                                    className="w-full text-center tracking-widest font-mono text-sm font-bold px-4 py-2.5 rounded-xl bg-white dark:bg-ink-950 border border-ink-200 dark:border-ink-800 focus:outline-none focus:ring-1 focus:ring-jade-500"
+                                  />
+                                  {deliveryCodeError && <p className="text-[10px] font-bold text-ink-500">{deliveryCodeError}</p>}
+                                  <button
+                                    onClick={() => void handleConfirmDeliveryCode()}
+                                    disabled={deliveryBusy}
+                                    className="w-full py-2.5 bg-jade-600 hover:bg-jade-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl cursor-pointer inline-flex items-center justify-center gap-1.5"
+                                  >
+                                    <CheckCircle2 className="w-4 h-4" />
+                                    {deliveryBusy ? 'Confirming…' : 'Confirm delivery with code'}
+                                  </button>
+                                  <p className="text-[10px] text-ink-400">
+                                    Only the assigned rider or a GoodSale operator can confirm. Escrow stays held until the buyer releases it.
+                                  </p>
+                                </div>
+                              )}
+
+                              {activeDelivery.status === 'DELIVERED' && (
+                                <p className="text-[10px] font-bold text-jade-600 dark:text-jade-400 flex items-center gap-1">
+                                  <CheckCircle2 className="w-3.5 h-3.5" /> Delivery confirmed
+                                  {activeDelivery.confirmedAt ? ` · ${new Date(activeDelivery.confirmedAt).toLocaleString()}` : ''}
+                                </p>
+                              )}
+                            </div>
+                          )}
+
                           {/* GoodDispatch Safety Center Panel */}
                           <div className="bg-ink-500/5 dark:bg-ink-950/10 p-5 rounded-2xl border border-ink-500/20 space-y-4">
                             <div className="flex items-center gap-2">
@@ -1167,7 +1384,9 @@ export default function DispatchDashboardView() {
                             {sosSuccessMessage && (
                               <div className="p-3 bg-jade-600 text-white rounded-xl text-xs font-semibold animate-pulse space-y-1">
                                 <div>{sosSuccessMessage}</div>
-                                <div className="font-mono text-xs opacity-90">GPS Coordinates: {mapLat.toFixed(5)}° N, {mapLng.toFixed(5)}° E</div>
+                                {mapLocation && liveGps.source === 'gps' && (
+                                  <div className="font-mono text-xs opacity-90">Last GPS coordinates: {mapLocation.lat.toFixed(5)}°, {mapLocation.lng.toFixed(5)}°</div>
+                                )}
                               </div>
                             )}
 
@@ -1266,26 +1485,33 @@ export default function DispatchDashboardView() {
                       </div>
 
                     </div>
-                  ) : (
+                  ) : myActiveDeliveries.length === 0 ? (
                     <div className="text-center py-16">
                       <Compass className="w-14 h-14 text-ink-300 mx-auto mb-4" />
-                      <h4 className="text-base font-bold text-ink-800 dark:text-white">No Active Deliveries</h4>
+                      <h4 className="text-base font-bold text-ink-800 dark:text-white">No active deliveries</h4>
                       <p className="text-xs text-ink-500 dark:text-ink-400 max-w-sm mx-auto mt-1">
-                        Go to the Delivery Marketplace tab to claim and accept new package courier requests!
+                        Accept a request from Available Deliveries to start a delivery.
                       </p>
                     </div>
-                  )}
+                  ) : null}
                 </div>
               )}
 
               {/* EARNINGS SUB-TAB */}
-              {activeSubTab === 'earnings' && (
+              {activeSubTab === 'earnings' && courier && (
                 <div className="space-y-6">
-                  
+                  <RiderEarningsPanel rider={courier} />
+
+                  {/* Legacy dispatch job log */}
+                  <div className="border-t border-ink-100 pt-5 dark:border-ink-800">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-ink-500">Legacy dispatch job earnings</h4>
+                    <p className="mb-3 text-[11px] text-ink-400">Older GoodDispatch jobs recorded before rider earnings were introduced.</p>
+                  </div>
+
                   {/* Earnings Overview stats cards */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="bg-ink-50 dark:bg-ink-950 rounded-2xl p-5 border border-ink-100 dark:border-ink-800 space-y-1">
-                      <span className="text-xs font-bold text-ink-400 tracking-wider font-mono">Total Courier Earnings</span>
+                      <span className="text-xs font-bold text-ink-400 tracking-wider font-mono">Legacy dispatch earnings</span>
                       <p className="text-2xl font-bold text-jade-500 font-mono">
                         ₦{courierEarningsSum.toLocaleString()}
                       </p>
@@ -1311,10 +1537,10 @@ export default function DispatchDashboardView() {
 
                   {/* History List of Completed deliveries */}
                   <div className="space-y-4">
-                    <h4 className="text-xs font-bold tracking-wider font-mono text-ink-500">Logistics Earnings Log</h4>
+                    <h4 className="text-xs font-bold tracking-wider font-mono text-ink-500">Legacy job log</h4>
                     {myCompletedJobs.length === 0 ? (
                       <p className="text-xs text-ink-400 italic text-center py-8">
-                        No completed delivery payouts logged on your account yet. Complete your active jobs to credit your wallet instantly.
+                        No legacy dispatch jobs recorded on this account.
                       </p>
                     ) : (
                       <div className="space-y-3">

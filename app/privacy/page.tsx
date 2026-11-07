@@ -1,10 +1,22 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { absoluteUrl } from '@/lib/seo/site';
+
+const description =
+  'How GoodSale collects, uses, and protects your personal data across the marketplace and escrow service.';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy',
-  description:
-    'How GoodSale collects, uses, and protects your personal data across the marketplace and escrow service.',
+  description,
+  alternates: { canonical: '/privacy' },
+  openGraph: {
+    title: 'Privacy Policy | GoodSale',
+    description,
+    url: absoluteUrl('/privacy'),
+    siteName: 'GoodSale',
+    type: 'website',
+  },
+  twitter: { card: 'summary', title: 'Privacy Policy | GoodSale', description },
 };
 
 const SECTIONS: { heading: string; body: string[] }[] = [

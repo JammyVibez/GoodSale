@@ -9,14 +9,17 @@
  * Two skins, one bar: a clean white bar with ink text in light mode, and the
  * deep-jade bar with gold accents in dark mode.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import {
-  Search, ShoppingCart, Bell, Heart, MapPin, X, ChevronDown, CheckCheck,
+  Search, ShoppingCart, Heart, MapPin, X, ChevronDown,
   User as UserIcon,
 } from 'lucide-react';
-import { dbOperations, useDBState } from '../lib/store';
+import { useDBState } from '../lib/store';
 import { SmartAvatar } from './ui/SmartImage';
 import Logo from './LogoIcon';
+import NotificationMenu from './NotificationMenu';
+import { isVerifiedSeller } from '@/lib/verification';
+import { VerifiedMark } from './verification/VerifiedBadge';
 
 interface MarketplaceHeaderProps {
   searchQuery: string;
@@ -42,22 +45,15 @@ export default function MarketplaceHeader({
   onOpenWishlist,
 }: MarketplaceHeaderProps) {
   const db = useDBState();
-  const [showNotifications, setShowNotifications] = useState(false);
-
   const user = db.currentUser;
   const profile = useMemo(
     () => (user ? db.profiles.find((p) => p.userId === user.id) : undefined),
     [db.profiles, user]
   );
-
-  const unread = useMemo(
-    () => db.notifications.filter((n) => n.userId === user?.id && !n.isRead),
-    [db.notifications, user]
-  );
-  const recent = useMemo(
-    () => db.notifications.filter((n) => n.userId === user?.id).slice(0, 8),
-    [db.notifications, user]
-  );
+  const userVerified = isVerifiedSeller({
+    verificationStatus: profile?.verificationStatus,
+    verificationExpiresAt: profile?.verificationExpiresAt,
+  });
 
   const states = useMemo(() => {
     const set = new Set<string>();
@@ -68,11 +64,6 @@ export default function MarketplaceHeader({
     }
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [db.products, db.profiles]);
-
-  const clearAll = () => {
-    if (user) dbOperations.clearNotifications(user.id);
-    setShowNotifications(false);
-  };
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-ink-150 bg-white text-ink-900 shadow-sm transition-colors duration-300 dark:border-jade-800/70 dark:bg-jade-950 dark:text-white dark:shadow-lg dark:shadow-jade-950/20">
@@ -103,74 +94,7 @@ export default function MarketplaceHeader({
           </button>
 
           <div className="flex items-center gap-1">
-            {/* notifications */}
-            <div className="relative">
-              <button
-                type="button"
-                aria-label="Notifications"
-                onClick={() => setShowNotifications((v) => !v)}
-                className="relative grid h-10 w-10 place-items-center rounded-full transition-colors hover:bg-ink-100 dark:hover:bg-white/10"
-              >
-                <Bell className="h-5 w-5" />
-                {unread.length > 0 && (
-                  <span className="absolute right-1.5 top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-jade-600 px-1 text-[9px] font-black leading-none text-white dark:bg-gold-300 dark:text-jade-950">
-                    {unread.length > 9 ? '9+' : unread.length}
-                  </span>
-                )}
-              </button>
-
-              {showNotifications && (
-                <>
-                  <button
-                    type="button"
-                    aria-label="Close notifications"
-                    className="fixed inset-0 z-40 cursor-default"
-                    onClick={() => setShowNotifications(false)}
-                  />
-                  <div className="absolute right-0 z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-ink-150 bg-white text-ink-900 shadow-2xl dark:border-ink-800 dark:bg-ink-900 dark:text-white">
-                    <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3 dark:border-ink-800">
-                      <span className="text-sm font-bold">Notifications</span>
-                      {unread.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={clearAll}
-                          className="inline-flex items-center gap-1 text-[11px] font-bold text-jade-600 hover:text-jade-700 dark:text-jade-400"
-                        >
-                          <CheckCheck className="h-3.5 w-3.5" /> Mark all read
-                        </button>
-                      )}
-                    </div>
-                    <div className="max-h-80 overflow-y-auto">
-                      {recent.length === 0 ? (
-                        <p className="px-4 py-8 text-center text-xs text-ink-400">
-                          {user ? 'No notifications yet.' : 'Sign in to see your notifications.'}
-                        </p>
-                      ) : (
-                        recent.map((n) => (
-                          <button
-                            key={n.id}
-                            type="button"
-                            onClick={() => dbOperations.toggleNotificationRead(n.id)}
-                            className={`flex w-full flex-col gap-0.5 border-b border-ink-50 px-4 py-3 text-left last:border-0 hover:bg-ink-50 dark:border-ink-800/60 dark:hover:bg-ink-800/50 ${
-                              n.isRead ? 'opacity-60' : ''
-                            }`}
-                          >
-                            <span className="flex items-center gap-1.5 text-xs font-bold">
-                              {!n.isRead && <span className="h-1.5 w-1.5 rounded-full bg-jade-500" />}
-                              {n.title}
-                            </span>
-                            <span className="line-clamp-2 text-[11px] leading-snug text-ink-500 dark:text-ink-400">
-                              {n.message}
-                            </span>
-                          </button>
-                        ))
-                      )}
-                    </div>
-
-                  </div>
-                </>
-              )}
-            </div>
+            <NotificationMenu onNavigate={onNavigate} onOpenAuth={onOpenAuth} />
 
             {/* wishlist */}
             <button
@@ -195,12 +119,21 @@ export default function MarketplaceHeader({
               className="ml-0.5 flex items-center gap-1 rounded-full p-0.5 transition-colors hover:bg-ink-100 dark:hover:bg-white/10"
             >
               {user ? (
-                <SmartAvatar
-                  src={profile?.photoUrl}
-                  name={user.fullName}
-                  seed={`header-${user.id}`}
-                  className="h-9 w-9 ring-2 ring-jade-600/25 dark:ring-gold-300/60"
-                />
+                <span className="relative">
+                  <SmartAvatar
+                    src={profile?.photoUrl}
+                    name={user.fullName}
+                    seed={`header-${user.id}`}
+                    className="h-9 w-9 ring-2 ring-jade-600/25 dark:ring-gold-300/60"
+                  />
+                  {userVerified && (
+                    <VerifiedMark
+                      status={profile?.verificationStatus}
+                      expiresAt={profile?.verificationExpiresAt}
+                      className="absolute -bottom-0.5 -right-0.5 ring-2 ring-white dark:ring-jade-950"
+                    />
+                  )}
+                </span>
               ) : (
                 <span className="grid h-9 w-9 place-items-center rounded-full bg-ink-100 text-ink-500 ring-2 ring-ink-200 dark:bg-white/10 dark:text-white dark:ring-white/20">
                   <UserIcon className="h-4 w-4" />

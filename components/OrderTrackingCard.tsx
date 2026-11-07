@@ -3,7 +3,7 @@
 import React from 'react';
 import { Navigation } from 'lucide-react';
 import LiveDispatchMap from './LiveDispatchMap';
-import { bestCoords, estimateEtaMinutes, formatDistanceKm, haversineKm } from '@/lib/geo';
+import { bestCoords, formatDistanceKm, haversineKm } from '@/lib/geo';
 import { DeliveryJobStatus, type DeliveryJob, type Order } from '@/lib/types';
 
 /**
@@ -36,31 +36,26 @@ export default function OrderTrackingCard({
   height = '340px',
   className = '',
 }: OrderTrackingCardProps) {
-  const dest = bestCoords(
-    { lat: order.deliveryLat, lng: order.deliveryLng },
-    null,
-    order.deliveryCity,
-    order.deliveryState,
-    order.deliveryAddress
-  );
-  const pickup = bestCoords({ lat: order.pickupLat, lng: order.pickupLng }, null);
+  const dest = order.deliveryLat != null && order.deliveryLng != null
+    ? { lat: order.deliveryLat, lng: order.deliveryLng }
+    : null;
+  const pickup = order.pickupLat != null && order.pickupLng != null
+    ? { lat: order.pickupLat, lng: order.pickupLng }
+    : null;
   const rider =
     job?.currentLat != null && job?.currentLng != null
       ? { lat: job.currentLat, lng: job.currentLng }
       : null;
 
-  const distanceKm = rider ? haversineKm(rider, dest) : null;
+  const distanceKm = rider && dest ? haversineKm(rider, dest) : null;
   const etaMinutes =
-    distanceKm != null
-      ? estimateEtaMinutes(
-          distanceKm,
-          job?.currentSpeed && job.currentSpeed > 5 ? job.currentSpeed : 30
-        )
+    distanceKm != null && job?.currentSpeed != null && job.currentSpeed > 0
+      ? Math.max(1, Math.round((distanceKm / job.currentSpeed) * 60))
       : null;
 
   const history = [...(job?.trackingHistory ?? [])].reverse();
   const statusLabel = job?.status ? job.status.replace(/_/g, ' ') : 'NOT DISPATCHED';
-  const riderLabel = rider ? 'Rider sharing live GPS' : 'Waiting for rider GPS';
+  const riderLabel = rider ? 'Last reported rider location' : 'Waiting for a real rider GPS update';
 
   return (
     <div
@@ -82,7 +77,7 @@ export default function OrderTrackingCard({
             rider ? 'bg-jade-500/10 text-jade-600 dark:text-jade-400' : 'bg-ink-500/10 text-ink-500'
           }`}
         >
-          <span className={`h-1.5 w-1.5 rounded-full ${rider ? 'animate-pulse bg-jade-500' : 'bg-ink-400'}`} />
+          <span className={`h-1.5 w-1.5 rounded-full bg-ink-400`} />
           {statusLabel}
         </span>
       </div>
@@ -92,7 +87,8 @@ export default function OrderTrackingCard({
         destination={dest}
         pickup={pickup}
         speedKmh={job?.currentSpeed}
-        statusLabel={rider ? 'Live rider location' : 'Awaiting rider GPS'}
+        statusLabel={rider ? 'Last rider location' : 'Awaiting rider GPS'}
+        gpsLocked={false}
         height={height}
       />
 
@@ -106,7 +102,7 @@ export default function OrderTrackingCard({
         <div className="border-l border-ink-100 pl-3 dark:border-ink-800">
           <span className="block text-ink-400">ETA</span>
           <span className="font-semibold text-jade-600 dark:text-jade-400">
-            {etaMinutes != null ? `${etaMinutes} min` : job?.estDeliveryTime || '—'}
+            {etaMinutes != null ? `~${etaMinutes} min at current speed` : 'Unavailable'}
           </span>
         </div>
         <div className="border-l border-ink-100 pl-3 dark:border-ink-800">

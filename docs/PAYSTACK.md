@@ -49,9 +49,18 @@ Test cards (test mode): see [Paystack test payments](https://paystack.com/docs/p
 1. Dashboard → **Settings** → **Preferences** / **Transfers** — enable Transfers and fund your Paystack balance.
 2. Sellers request withdrawal in-app (`/api/wallet/withdraw`).
 3. Admin approves via `/api/admin/withdrawals` → GoodSale:
+   - Resolves the account name with Paystack and rejects a mismatch
    - Creates a **Transfer Recipient** (NUBAN)
-   - Calls **Transfer** for the naira amount
-4. Pass `bankCode` on approve when the bank name is ambiguous, or set `PAYSTACK_DEFAULT_BANK_CODE` (e.g. `058` for GTBank).
+   - Claims the pending request, then calls **Transfer** for the net amount
+4. The payout stays **PROCESSING**. Only a signed `transfer.success` webhook (or an admin `Verify with Paystack` reconciliation) marks it **SUCCESS**. `transfer.failed` / `transfer.reversed` returns the reserved funds with a reversal ledger entry. Never treat transfer initiation as success.
+5. Pass `bankCode` on approve when the bank name is ambiguous, or set `PAYSTACK_DEFAULT_BANK_CODE` (e.g. `058` for GTBank).
+
+## 5b. Wallet funding
+
+1. Authenticated `POST /api/wallet/fund` creates a `wallet_funding_intents` row with a unique `GSW_` reference. No balance changes.
+2. Paystack Inline collects payment.
+3. `POST /api/wallet/fund/verify` and the signed `charge.success` webhook verify the charge with Paystack, then call `credit_wallet_funding`.
+4. The database checks the intent is pending, amount and currency match, and the provider reference is unique. Duplicate verification returns `already_credited` without a second credit.
 
 Common codes: GTBank `058`, Access `044`, Zenith `057`, UBA `033`, First Bank `011`, Kuda `50211`, OPay `999992`.
 

@@ -1,4 +1,21 @@
-import type { GoodSaleDBState, RevenueSettings, PaymentSettings } from '@/lib/types';
+import type {
+  GoodSaleDBState,
+  RevenueSettings,
+  PaymentSettings,
+  ShippingSettings,
+  ShippingDistanceTier,
+  DeliverySettings,
+} from '@/lib/types';
+
+export const DEFAULT_DELIVERY_SETTINGS: DeliverySettings = {
+  autoAssignEnabled: false,
+  offerTimeoutMinutes: 30,
+  maxActiveDeliveries: 3,
+  maxPickupDistanceKm: 25,
+  maxOffersPerDelivery: 5,
+  locationUpdateIntervalSeconds: 15,
+  trackingStaleMinutes: 10,
+};
 
 export const DEFAULT_REVENUE_SETTINGS: RevenueSettings = {
   // Launch default: platform fees are OFF (everything free except delivery).
@@ -20,6 +37,38 @@ export const DEFAULT_REVENUE_SETTINGS: RevenueSettings = {
   adCpcPrice: 150,
   goodSaleProtectFee: 1500,
 };
+
+export const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
+  enabled: true,
+  localBaseFee: 1000,
+  perKmFee: 0,
+  minFee: 500,
+  maxFee: 50000,
+  interstateBaseFee: 3500,
+  interstatePerKmFee: 100,
+  weightSurchargePerKg: 0,
+  oversizeSurcharge: 0,
+  remoteSurcharge: 1500,
+  freeShippingThreshold: 0,
+  handlingFee: 0,
+  platformShippingFee: 0,
+  economyFee: 0,
+  standardFee: 0,
+  expressFee: 2500,
+  manualQuoteAboveKm: 15,
+  manualQuotesEnabled: true,
+  sellerSponsoredShipping: true,
+  platformSponsoredShipping: false,
+  defaultEtaMinDays: 1,
+  defaultEtaMaxDays: 7,
+};
+
+/** Editable launch defaults. Local distance covers the entire fee, not an add-on. */
+export const DEFAULT_SHIPPING_TIERS: ShippingDistanceTier[] = [
+  { id: 1, label: '0–3 km', minKm: 0, maxKm: 3, fee: 1000, enabled: true, priority: 10 },
+  { id: 2, label: '3–7 km', minKm: 3, maxKm: 7, fee: 1500, enabled: true, priority: 20 },
+  { id: 3, label: '7–15 km', minKm: 7, maxKm: 15, fee: 2500, enabled: true, priority: 30 },
+];
 
 export const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
   enabledMethods: ['escrow', 'cod', 'card', 'bank', 'invoice', 'partial'],
@@ -57,7 +106,26 @@ export function createEmptyState(): GoodSaleDBState {
     productBundles: [],
     deliveryPartners: [],
     deliveryJobs: [],
+    deliveries: [],
+    deliveryEvents: [],
+    deliveryAuditLogs: [],
+    deliverySettings: { ...DEFAULT_DELIVERY_SETTINGS },
+    deliveryAssignmentOffers: [],
+    deliveryLiveLocations: [],
+    deliveryFailures: [],
+    deliveryReturns: [],
+    courierShipments: [],
+    riderEarnings: [],
+    riderEarningAuditLogs: [],
     revenueSettings: { ...DEFAULT_REVENUE_SETTINGS },
+    shippingSettings: { ...DEFAULT_SHIPPING_SETTINGS },
+    shippingZones: [],
+    shippingTiers: DEFAULT_SHIPPING_TIERS.map((tier) => ({ ...tier })),
+    shippingRules: [],
+    shippingCouriers: [],
+    sellerShippingSettings: [],
+    shippingManualQuotes: [],
+    shippingAuditLogs: [],
     sponsoredAds: [],
     featuredListings: [],
     announcements: [],

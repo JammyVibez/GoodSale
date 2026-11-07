@@ -1,113 +1,357 @@
 // components/WalletView.tsx
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Wallet as WalletIcon, ShieldCheck, ArrowDownToLine, ArrowUpRight, ArrowDownLeft,
-  Landmark, Clock, CheckCircle2, AlertCircle, Lock, Settings2, PiggyBank,
-  Building2, User as UserIcon, Hash, Info
+  AlertCircle,
+  ArrowDownLeft,
+  ArrowDownToLine,
+  ArrowRight,
+  ArrowUpRight,
+  Banknote,
+  Building2,
+  CheckCircle2,
+  ChevronRight,
+  Clock3,
+  Eye,
+  EyeOff,
+  Hash,
+  Info,
+  Landmark,
+  Lock,
+  Plus,
+  Coins,
+  ReceiptText,
+  Settings2,
+  ShieldCheck,
+  UserRound,
+  Wallet as WalletIcon,
 } from 'lucide-react';
-import { useDBState, dbOperations } from '../lib/store';
+import { useDBState, dbOperations, reloadFromSupabase } from '../lib/store';
+import { toast } from '../lib/feedback';
+import { computeEscrowFee } from '@/lib/payments/helpers';
+import WithdrawReviewDialog from './wallet/WithdrawReviewDialog';
+import AddFundsDialog from './wallet/AddFundsDialog';
 import EmptyState from './ui/EmptyState';
-import Toast from './ui/Toast';
 import SegmentedControl from './ui/SegmentedControl';
 import Button from './ui/Button';
 import Card from './ui/Card';
 import Meter from './ui/Meter';
 
-type WalletMode = 'wallet' | 'direct';
 type TxFilter = 'all' | 'credit' | 'debit';
 
+type WalletStatus = {
+  fundingAvailable: boolean;
+  payoutsAvailable: boolean;
+  provider: { fundingEnabled: boolean; payoutsEnabled: boolean; webhookConfigured: boolean };
+  limits: {
+    funding_min: number;
+    funding_max: number;
+    withdrawal_min: number;
+    withdrawal_max: number;
+    withdrawal_fee: number;
+    daily_withdrawal_limit: number;
+  };
+  funding: Array<{
+    id: number;
+    reference: string;
+    amount: number;
+    status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'ABANDONED';
+    provider_reference?: string;
+    created_at: string;
+  }>;
+};
+
 interface WalletViewProps {
-  onNavigate?: (view: string, payload?: any) => void;
+  onNavigate?: (view: string, payload?: unknown) => void;
   onOpenAuth?: () => void;
 }
 
-const MODE_KEY = 'goodsale_wallet_mode';
+const HIDE_BALANCE_KEY = 'goodsale_hide_wallet_balance';
 const MIN_WITHDRAWAL = 1000;
+const TX_PAGE_SIZE = 10;
+
+const NIGERIAN_BANKS = [
+  'Access Bank',
+  'Citibank Nigeria',
+  'Ecobank Nigeria',
+  'Fidelity Bank',
+  'First Bank of Nigeria',
+  'First City Monument Bank',
+  'Globus Bank',
+  'Guaranty Trust Bank',
+  'Heritage Bank',
+  'Jaiz Bank',
+  'Keystone Bank',
+  'Kuda Microfinance Bank',
+  'Moniepoint Microfinance Bank',
+  'Opay Digital Services',
+  'Palmpay',
+  'Polaris Bank',
+  'Providus Bank',
+  'Stanbic IBTC Bank',
+  'Standard Chartered Bank',
+  'Sterling Bank',
+  'SunTrust Bank',
+  'Taj Bank',
+  'Titan Trust Bank',
+  'Union Bank of Nigeria',
+  'United Bank for Africa',
+  'Unity Bank',
+  'Wema Bank',
+  'Zenith Bank',
+];
+
+const naira = (value: number) =>
+  `₦${Math.round(value).toLocaleString('en-NG')}`;
+
+function dayLabel(value: string): string {
+  const date = new Date(value);
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfYesterday = startOfToday - 86_400_000;
+  const time = date.getTime();
+  if (!Number.isFinite(time)) return 'Earlier';
+  if (time >= startOfToday) return 'Today';
+  if (time >= startOfYesterday) return 'Yesterday';
+  return date.toLocaleDateString('en-NG', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: date.getFullYear() === now.getFullYear() ? undefined : 'numeric',
+  });
+}
+
+function transactionLabel(type: string): string {
+  return type.replace(/_/g, ' ').toLowerCase();
+}
+
+function timeLabel(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
 
 export default function WalletView({ onNavigate, onOpenAuth }: WalletViewProps) {
   const db = useDBState();
   const user = db.currentUser;
 
-  const [mode, setMode] = useState<WalletMode>('wallet');
   const [txFilter, setTxFilter] = useState<TxFilter>('all');
   const [amount, setAmount] = useState('');
   const [bank, setBank] = useState('');
   const [accountName, setAccountName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [toast, setToast] = useState<{ kind: 'success' | 'error' | 'info'; msg: string } | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [hideBalance, setHideBalance] = useState(false);
+  const [showAllTx, setShowAllTx] = useState(false);
+  const [walletStatus, setWalletStatus] = useState<WalletStatus | null>(null);
+  const [addFundsOpen, setAddFundsOpen] = useState(false);
+  const [payingOrderId, setPayingOrderId] = useState<number | null>(null);
 
-  // Wallet settlement preference — "use the wallet" or "settle straight to bank".
+  const payoutRef = useRef<HTMLDivElement>(null);
+  const amountRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
-    const saved = window.localStorage.getItem(MODE_KEY);
-    if (saved === 'wallet' || saved === 'direct') setMode(saved);
+    try {
+      setHideBalance(window.localStorage.getItem(HIDE_BALANCE_KEY) === '1');
+    } catch {
+      /* storage can be unavailable in private browsing */
+    }
   }, []);
 
-  const changeMode = (next: WalletMode) => {
-    setMode(next);
-    window.localStorage.setItem(MODE_KEY, next);
-    setToast({
-      kind: 'info',
-      msg:
-        next === 'wallet'
-          ? 'Wallet mode on: escrow releases settle into your GoodSale wallet.'
-          : 'Bank-direct mode on: escrow releases go straight to your bank account.',
+  const toggleBalance = () => {
+    setHideBalance((value) => {
+      const next = !value;
+      try {
+        window.localStorage.setItem(HIDE_BALANCE_KEY, next ? '1' : '0');
+      } catch {
+        /* non-blocking privacy preference */
+      }
+      return next;
     });
   };
 
+  const refreshWalletStatus = async () => {
+    if (!user) return;
+    try {
+      const res = await fetch('/api/wallet/status');
+      const payload = await res.json();
+      if (payload?.success) setWalletStatus(payload as WalletStatus);
+    } catch {
+      /* the wallet remains usable for ledger viewing when config lookup fails */
+    }
+  };
+
+  useEffect(() => {
+    void refreshWalletStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
   const wallet = useMemo(
-    () => (user ? db.wallets.find((w) => w.userId === user.id) : undefined),
+    () => (user ? db.wallets.find((entry) => entry.userId === user.id) : undefined),
     [db.wallets, user]
   );
 
   const transactions = useMemo(() => {
     if (!wallet) return [];
     return db.walletTransactions
-      .filter((t) => t.walletId === wallet.id)
+      .filter((entry) => entry.walletId === wallet.id)
       .slice()
-      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [db.walletTransactions, wallet]);
 
-  const { escrowAsSeller, escrowAsBuyer, escrowRows } = useMemo(() => {
-    if (!user) return { escrowAsSeller: 0, escrowAsBuyer: 0, escrowRows: [] as Array<{ id: number; title: string; amount: number; role: 'SELLER' | 'BUYER'; number: string }> };
+  const escrow = useMemo(() => {
+    if (!user) {
+      return {
+        asSeller: 0,
+        asBuyer: 0,
+        pendingEarnings: 0,
+        rows: [] as Array<{
+          id: number;
+          title: string;
+          amount: number;
+          role: 'SELLER' | 'BUYER';
+          number: string;
+        }>,
+      };
+    }
     let asSeller = 0;
     let asBuyer = 0;
-    const rows: Array<{ id: number; title: string; amount: number; role: 'SELLER' | 'BUYER'; number: string }> = [];
-    db.escrows.forEach((escrow) => {
-      if (escrow.isReleased || escrow.isRefunded) return;
-      const order = db.orders.find((o) => o.id === escrow.orderId);
+    let pendingEarnings = 0;
+    const rows: Array<{
+      id: number;
+      title: string;
+      amount: number;
+      role: 'SELLER' | 'BUYER';
+      number: string;
+    }> = [];
+    const settings = db.revenueSettings;
+    db.escrows.forEach((entry) => {
+      if (entry.isReleased || entry.isRefunded) return;
+      const order = db.orders.find((item) => item.id === entry.orderId);
       if (!order) return;
       if (order.sellerId === user.id) {
-        asSeller += escrow.heldAmount;
-        rows.push({ id: escrow.id, title: order.productTitle, amount: escrow.heldAmount, role: 'SELLER', number: order.orderNumber });
+        asSeller += entry.heldAmount;
+        pendingEarnings += computeEscrowFee(entry.heldAmount, {
+          pct: settings?.escrowPercentageFee ?? 1.5,
+          min: settings?.escrowMinFee ?? 100,
+          max: settings?.escrowMaxFee ?? 15000,
+          deliveryFee: order.deliveryFee || 0,
+        }).payout;
+        rows.push({
+          id: entry.id,
+          title: order.productTitle,
+          amount: entry.heldAmount,
+          role: 'SELLER',
+          number: order.orderNumber,
+        });
       } else if (order.buyerId === user.id) {
-        asBuyer += escrow.heldAmount;
-        rows.push({ id: escrow.id, title: order.productTitle, amount: escrow.heldAmount, role: 'BUYER', number: order.orderNumber });
+        asBuyer += entry.heldAmount;
+        rows.push({
+          id: entry.id,
+          title: order.productTitle,
+          amount: entry.heldAmount,
+          role: 'BUYER',
+          number: order.orderNumber,
+        });
       }
     });
-    return { escrowAsSeller: asSeller, escrowAsBuyer: asBuyer, escrowRows: rows };
-  }, [db.escrows, db.orders, user]);
+    return { asSeller, asBuyer, pendingEarnings, rows };
+  }, [db.escrows, db.orders, db.revenueSettings, user]);
 
   // Prefill the payout form from saved wallet bank details.
   useEffect(() => {
     if (!wallet) return;
-    setBank((prev) => prev || wallet.bankName || '');
-    setAccountName((prev) => prev || wallet.bankAccountName || '');
-    setAccountNumber((prev) => prev || wallet.bankAccountNumber || '');
+    setBank((previous) => previous || wallet.bankName || '');
+    setAccountName((previous) => previous || wallet.bankAccountName || '');
+    setAccountNumber((previous) => previous || wallet.bankAccountNumber || '');
   }, [wallet]);
 
   const balance = wallet?.balance ?? 0;
-  const pendingPayouts = transactions
-    .filter((t) => t.type === 'DEBIT_WITHDRAWAL' && t.status === 'PENDING')
-    .reduce((sum, t) => sum + t.amount, 0);
+  const minWithdrawal = walletStatus?.limits.withdrawal_min ?? MIN_WITHDRAWAL;
+  const maxWithdrawal = walletStatus?.limits.withdrawal_max ?? 1_000_000;
+  const withdrawalFee = walletStatus?.limits.withdrawal_fee ?? 0;
 
-  const filteredTransactions = transactions.filter((t) => {
+  const myWithdrawals = user
+    ? db.withdrawalRequests.filter((entry) => entry.userId === user.id)
+    : [];
+  const pendingWithdrawalRequests = myWithdrawals.filter(
+    (entry) => entry.status === 'PENDING' || entry.status === 'PROCESSING'
+  );
+  const pendingPayouts = pendingWithdrawalRequests.reduce((sum, entry) => sum + entry.amount, 0);
+
+  const lifetimeReceived = transactions
+    .filter(
+      (entry) =>
+        entry.status === 'COMPLETED' &&
+        entry.amount > 0 &&
+        entry.affectsBalance !== false
+    )
+    .reduce((sum, entry) => sum + entry.amount, 0);
+  const totalEarnings = transactions
+    .filter(
+      (entry) =>
+        entry.status === 'COMPLETED' &&
+        (entry.type === 'CREDIT_SALE' ||
+          entry.type === 'CREDIT_DELIVERY' ||
+          entry.type === 'SELLER_EARNINGS') &&
+        entry.affectsBalance !== false
+    )
+    .reduce((sum, entry) => sum + entry.amount, 0);
+  const lifetimeWithdrawn = myWithdrawals
+    .filter((entry) => entry.status === 'SUCCESS')
+    .reduce((sum, entry) => sum + entry.amount, 0);
+
+  const totalSales = user
+    ? db.orders
+        .filter(
+          (order) =>
+            order.sellerId === user.id &&
+            [
+              'PAID_ESCROW',
+              'SHIPPED',
+              'OUT_FOR_DELIVERY',
+              'DELIVERED_SUCCESS',
+              'DISPUTED',
+              'REFUND_REQUESTED',
+            ].includes(order.status)
+        )
+        .reduce((sum, order) => sum + order.totalAmount, 0)
+    : 0;
+
+  const buyerPendingOrders = user
+    ? db.orders
+        .filter(
+          (order) =>
+            order.buyerId === user.id &&
+            ['PENDING', 'PENDING_BANK_TRANSFER', 'INVOICE_SENT'].includes(order.status)
+        )
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 4)
+    : [];
+
+  const coinsBalance = Number(user?.goodPoints || 0);
+
+  const filteredTransactions = transactions.filter((entry) => {
     if (txFilter === 'all') return true;
-    if (txFilter === 'credit') return t.type.startsWith('CREDIT');
-    return t.type.startsWith('DEBIT');
+    if (txFilter === 'credit') return entry.amount > 0;
+    return entry.amount < 0;
   });
+
+  const visibleTransactions = showAllTx
+    ? filteredTransactions
+    : filteredTransactions.slice(0, TX_PAGE_SIZE);
+
+  const groupedTransactions = visibleTransactions.reduce<
+    Array<{ label: string; items: typeof transactions }>
+  >((groups, entry) => {
+    const label = dayLabel(entry.createdAt);
+    const current = groups[groups.length - 1];
+    if (current && current.label === label) current.items.push(entry);
+    else groups.push({ label, items: [entry] });
+    return groups;
+  }, []);
 
   const parsedAmount = Number(amount);
   const amountError =
@@ -115,25 +359,74 @@ export default function WalletView({ onNavigate, onOpenAuth }: WalletViewProps) 
       ? null
       : !Number.isFinite(parsedAmount) || parsedAmount <= 0
         ? 'Enter a valid amount.'
-        : parsedAmount < MIN_WITHDRAWAL
-          ? `Minimum withdrawal is ₦${MIN_WITHDRAWAL.toLocaleString()}.`
-          : parsedAmount > balance
-            ? 'Amount exceeds your available balance.'
-            : null;
+        : parsedAmount < minWithdrawal
+          ? `Minimum withdrawal is ${naira(minWithdrawal)}.`
+          : parsedAmount > maxWithdrawal
+            ? `Maximum withdrawal is ${naira(maxWithdrawal)}.`
+            : parsedAmount > balance
+              ? 'Amount exceeds your available balance.'
+              : null;
+
+  const accountNumberValid = /^\d{10}$/.test(accountNumber.trim());
+  const bankDetailsComplete =
+    bank.trim().length > 1 && accountName.trim().length > 1 && accountNumberValid;
 
   const canSubmit =
     !!user &&
     !submitting &&
     !amountError &&
-    parsedAmount >= MIN_WITHDRAWAL &&
+    Number.isFinite(parsedAmount) &&
+    parsedAmount >= minWithdrawal &&
+    parsedAmount <= maxWithdrawal &&
     parsedAmount <= balance &&
-    bank.trim().length > 1 &&
-    accountName.trim().length > 1 &&
-    /^\d{10}$/.test(accountNumber.trim());
+    bankDetailsComplete;
 
-  const handleWithdraw = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const quickAmounts = useMemo(() => {
+    const values = [
+      { label: '25%', value: Math.floor(balance * 0.25) },
+      { label: '50%', value: Math.floor(balance * 0.5) },
+      { label: 'Max', value: Math.floor(Math.min(balance, maxWithdrawal)) },
+    ];
+    return values.filter((option) => option.value >= minWithdrawal);
+  }, [balance, maxWithdrawal, minWithdrawal]);
+
+  const focusPayoutForm = () => {
+    const target = payoutRef.current;
+    if (!target) return;
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    target.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
+    window.setTimeout(() => amountRef.current?.focus(), reduced ? 0 : 320);
+  };
+
+  const handleWithdraw = (event: React.FormEvent) => {
+    event.preventDefault();
     if (!user || !canSubmit) return;
+    if (!walletStatus?.payoutsAvailable) {
+      toast.error(
+        'Bank payouts are unavailable until Paystack is configured for this deployment.',
+        'Payouts unavailable'
+      );
+      return;
+    }
+    setReviewOpen(true);
+  };
+
+  const handlePayOrder = async (orderId: number) => {
+    setPayingOrderId(orderId);
+    try {
+      const result = await dbOperations.payOrderWithWallet(orderId);
+      if (result.success) {
+        toast.success('Order paid from your wallet and protected by escrow.', 'Payment secured');
+      } else {
+        toast.error(result.message || 'Could not pay for this order.', 'Wallet payment failed');
+      }
+    } finally {
+      setPayingOrderId(null);
+    }
+  };
+
+  const submitWithdrawal = async () => {
+    if (!user || !canSubmit || !walletStatus?.payoutsAvailable) return;
     setSubmitting(true);
     try {
       const result = await dbOperations.withdrawFromWallet(user.id, parsedAmount, {
@@ -142,13 +435,14 @@ export default function WalletView({ onNavigate, onOpenAuth }: WalletViewProps) 
         number: accountNumber.trim(),
       });
       if (result.success) {
-        setToast({
-          kind: 'success',
-          msg: `Payout of ₦${parsedAmount.toLocaleString()} requested — funds leave escrow to your bank.`,
-        });
+        setReviewOpen(false);
+        toast.success(
+          `${naira(parsedAmount)} is reserved for ${bank.trim()} ••••${accountNumber.slice(-4)}. It stays pending until admin review and Paystack confirmation.`,
+          'Payout requested'
+        );
         setAmount('');
       } else {
-        setToast({ kind: 'error', msg: result.message || 'Withdrawal could not be completed.' });
+        toast.error(result.message || 'Withdrawal could not be completed.', 'Payout failed');
       }
     } finally {
       setSubmitting(false);
@@ -157,12 +451,12 @@ export default function WalletView({ onNavigate, onOpenAuth }: WalletViewProps) 
 
   if (!user) {
     return (
-      <div className="bg-ink-50 dark:bg-ink-950 min-h-screen flex items-center justify-center px-4">
+      <div className="flex min-h-screen items-center justify-center bg-ink-50 px-4 dark:bg-ink-950">
         <EmptyState
           state="empty-chat"
           icon={<WalletIcon />}
           title="Sign in to open your wallet"
-          description="Your balance, escrow and payouts live behind your GoodSale account."
+          description="Your balance, escrow protection and payouts live behind your GoodSale account."
           action={
             <Button onClick={() => onOpenAuth?.()} className="tracking-wide">
               Sign in
@@ -173,264 +467,581 @@ export default function WalletView({ onNavigate, onOpenAuth }: WalletViewProps) 
     );
   }
 
-  const utilisation = escrowAsSeller + escrowAsBuyer > 0 ? (escrowAsSeller / (escrowAsSeller + escrowAsBuyer)) * 100 : 0;
+  const escrowTotal = escrow.asSeller + escrow.asBuyer;
+  const escrowShare = escrowTotal > 0 ? (escrow.asSeller / escrowTotal) * 100 : 0;
+  const maskedValue = '₦••••••';
 
   return (
-    <div className="bg-ink-50 dark:bg-ink-950 min-h-screen pb-16 transition-colors duration-300">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-6">
-
-        {/* Header */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+    <div className="min-h-screen bg-ink-50 pb-16 transition-colors duration-300 dark:bg-ink-950">
+      <div className="mx-auto max-w-6xl space-y-6 px-4 pt-6 sm:px-6 lg:px-8">
+        {/* Page header */}
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h1 className="font-display font-bold text-3xl tracking-tight text-ink-900 dark:text-white animate-title-collapse">
-              Wallet
+            <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.22em] text-jade-700 dark:text-jade-300">
+              <WalletIcon className="h-3.5 w-3.5" />
+              Money
+            </p>
+            <h1 className="mt-1.5 animate-title-collapse font-display text-3xl font-bold tracking-tight text-ink-900 dark:text-white sm:text-[2.1rem]">
+              Wallet &amp; payouts
             </h1>
-            <p className="text-sm text-ink-500 mt-1.5">
-              Your GoodSale balance, escrow exposure and instant bank payouts.
+            <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-ink-500 dark:text-ink-400">
+              Your available balance, protected escrow and bank withdrawals — all in one ledger.
             </p>
           </div>
-          <div className="w-full lg:w-auto lg:min-w-[340px]">
-            <SegmentedControl
-              aria-label="Settlement mode"
-              value={mode}
-              onChange={(v) => changeMode(v as WalletMode)}
-              options={[
-                { value: 'wallet', label: 'Use wallet', icon: <WalletIcon className="w-3.5 h-3.5" /> },
-                { value: 'direct', label: 'Bank direct', icon: <Landmark className="w-3.5 h-3.5" /> },
-              ]}
-            />
-            <p className="mt-2 text-xs text-ink-500 text-center lg:text-right">
-              {mode === 'wallet'
-                ? 'Escrow releases accumulate in your wallet, then you withdraw.'
-                : 'Escrow releases settle straight to your saved bank account.'}
+
+          <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
+            <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide ${walletStatus?.fundingAvailable ? 'border-jade-500/25 bg-jade-500/10 text-jade-700 dark:text-jade-300' : 'border-ink-200 bg-ink-100 text-ink-500 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-400'}`}>
+              <ArrowDownToLine className="h-3 w-3" />
+              Funding {walletStatus?.fundingAvailable ? 'available' : 'unavailable'}
+            </span>
+            <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide ${walletStatus?.payoutsAvailable ? 'border-jade-500/25 bg-jade-500/10 text-jade-700 dark:text-jade-300' : 'border-ink-200 bg-ink-100 text-ink-500 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-400'}`}>
+              <Landmark className="h-3 w-3" />
+              Payouts {walletStatus?.payoutsAvailable ? 'available' : 'unavailable'}
+            </span>
+            <p className="w-full text-[11px] leading-relaxed text-ink-500 dark:text-ink-400 lg:text-right">
+              Released escrow settles to this wallet. Bank payouts require Paystack confirmation.
             </p>
           </div>
         </div>
 
-        {/* Summary */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="relative overflow-hidden rounded-3xl aurora-bg bg-ink-950 border border-jade-500/20 p-6 text-white shadow-lg">
-            <div className="flex items-center justify-between">
-              <span className="text-xs tracking-widest font-mono font-bold text-jade-400">
-                Available balance
-              </span>
-              <PiggyBank className="w-5 h-5 text-jade-400" />
+        {/* Balance + escrow snapshot */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+          <div className="relative overflow-hidden rounded-3xl border border-jade-500/20 bg-ink-950 p-6 text-white shadow-xl shadow-jade-950/15 dark:border-jade-400/25 lg:col-span-2">
+            <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+              <div className="absolute -right-16 -top-20 h-64 w-64 rounded-full bg-jade-500/25 blur-3xl" />
+              <div className="absolute -bottom-24 left-0 h-56 w-56 rounded-full bg-gold-400/10 blur-3xl" />
+              <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-jade-400/60 to-transparent" />
             </div>
-            <p className="mt-4 font-mono font-bold text-3xl">₦{balance.toLocaleString()}</p>
-            <p className="mt-2 text-xs text-ink-300">
-              {mode === 'wallet' ? 'Ready to withdraw any time' : 'Bank-direct settlement is active'}
-            </p>
+
+            <div className="relative">
+              <div className="flex items-center justify-between gap-3">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-jade-200">
+                  <WalletIcon className="h-3.5 w-3.5" />
+                  Available balance
+                </span>
+                <button
+                  type="button"
+                  onClick={toggleBalance}
+                  aria-label={hideBalance ? 'Show balance' : 'Hide balance'}
+                  className="grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-white/5 text-jade-100 transition-colors hover:bg-white/15 focus-ring"
+                >
+                  {hideBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+
+              <p className="mt-4 font-mono text-[2.15rem] font-bold leading-none tracking-tight sm:text-[2.6rem]">
+                {hideBalance ? maskedValue : naira(balance)}
+              </p>
+              <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-jade-100/65">
+                <span className="inline-flex items-center gap-1">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  Protected by GoodSale Escrow
+                </span>
+                <span aria-hidden="true" className="text-jade-200/30">•</span>
+                <span>
+                  {pendingPayouts > 0
+                    ? `${hideBalance ? 'Payout' : naira(pendingPayouts)} pending payout`
+                    : 'No payouts pending'}
+                </span>
+              </p>
+
+              <div className="mt-6 flex flex-wrap gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setAddFundsOpen(true)}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-gold-300 px-4 text-xs font-bold text-jade-950 shadow-lg shadow-black/10 transition-all press-scale hover:bg-gold-200 focus-ring"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add funds
+                </button>
+                <button
+                  type="button"
+                  onClick={focusPayoutForm}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-white px-4 text-xs font-bold text-ink-950 shadow-lg shadow-black/10 transition-all press-scale hover:bg-jade-50 focus-ring"
+                >
+                  <ArrowDownToLine className="h-4 w-4" />
+                  Withdraw funds
+                </button>
+                {onNavigate && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('revenue')}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 text-xs font-bold text-white transition-colors hover:bg-white/10 focus-ring"
+                  >
+                    Revenue hub
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
-          <Card className="p-6">
+          <Card className="flex flex-col p-5">
             <div className="flex items-center justify-between">
-              <span className="text-xs tracking-widest font-mono font-bold text-ink-500">
+              <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-ink-500 dark:text-ink-400">
                 Held in escrow
               </span>
-              <Lock className="w-5 h-5 text-jade-600 dark:text-jade-400" />
+              <span className="grid h-8 w-8 place-items-center rounded-xl bg-jade-500/10 text-jade-600 dark:text-jade-300">
+                <Lock className="h-4 w-4" />
+              </span>
             </div>
-            <p className="mt-4 font-mono font-bold text-3xl text-ink-900 dark:text-white">
-              ₦{(escrowAsSeller + escrowAsBuyer).toLocaleString()}
+            <p className="mt-3 font-mono text-2xl font-bold text-ink-900 dark:text-white">
+              {hideBalance ? maskedValue : naira(escrowTotal)}
             </p>
-            <div className="mt-3 space-y-1.5 text-xs text-ink-500">
-              <p className="flex justify-between gap-3">
-                <span>Awaiting your buyer&apos;s PIN</span>
+            <div className="mt-4 flex-1 space-y-2 text-[11px]">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-ink-500 dark:text-ink-400">Incoming as seller</span>
                 <span className="font-mono font-bold text-ink-800 dark:text-ink-200">
-                  ₦{escrowAsSeller.toLocaleString()}
+                  {hideBalance ? '••••' : naira(escrow.asSeller)}
                 </span>
-              </p>
-              <p className="flex justify-between gap-3">
-                <span>You paid, awaiting delivery</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-ink-500 dark:text-ink-400">Protected as buyer</span>
                 <span className="font-mono font-bold text-ink-800 dark:text-ink-200">
-                  ₦{escrowAsBuyer.toLocaleString()}
+                  {hideBalance ? '••••' : naira(escrow.asBuyer)}
                 </span>
-              </p>
+              </div>
             </div>
-            {escrowAsSeller + escrowAsBuyer > 0 && (
-              <Meter className="mt-4" value={utilisation} tone="jade" />
-            )}
+            {escrowTotal > 0 && <Meter className="mt-4" value={escrowShare} tone="jade" />}
           </Card>
 
-          <Card className="p-6">
+          <Card className="flex flex-col p-5">
             <div className="flex items-center justify-between">
-              <span className="text-xs tracking-widest font-mono font-bold text-ink-500">
+              <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-ink-500 dark:text-ink-400">
                 Payouts in progress
               </span>
-              <Clock className="w-5 h-5 text-ink-500" />
+              <span className="grid h-8 w-8 place-items-center rounded-xl bg-gold-400/15 text-gold-700 dark:text-gold-300">
+                <Clock3 className="h-4 w-4" />
+              </span>
             </div>
-            <p className="mt-4 font-mono font-bold text-3xl text-ink-900 dark:text-white">
-              ₦{pendingPayouts.toLocaleString()}
+            <p className="mt-3 font-mono text-2xl font-bold text-ink-900 dark:text-white">
+              {hideBalance ? maskedValue : naira(pendingPayouts)}
             </p>
-            <p className="mt-2 text-xs text-ink-500">
-              {pendingPayouts > 0 ? 'Confirming with your bank' : 'Nothing pending'}
+            <p className="mt-2 flex-1 text-[11px] leading-relaxed text-ink-500 dark:text-ink-400">
+              {pendingPayouts > 0
+                ? `${pendingWithdrawalRequests.length} request${pendingWithdrawalRequests.length === 1 ? '' : 's'} awaiting bank confirmation.`
+                : 'Nothing pending. Approved payouts show here until Paystack confirms.'}
+            </p>
+            <p className="mt-4 inline-flex items-center gap-1.5 text-[10px] font-bold text-ink-400 dark:text-ink-500">
+              <ShieldCheck className="h-3 w-3" />
+              Released only after delivery
             </p>
           </Card>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          {/* Withdraw */}
-          <Card className="lg:col-span-2 p-6">
-            <div className="flex items-center gap-2 mb-1">
-              <ArrowDownToLine className="w-5 h-5 text-jade-600 dark:text-jade-400" />
-              <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white">
-                Withdraw to bank
-              </h2>
-            </div>
-            <p className="text-sm text-ink-500 mb-5">
-              Instant payout requests, minimum ₦{MIN_WITHDRAWAL.toLocaleString()}.
-            </p>
-
-            <form onSubmit={handleWithdraw} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold tracking-wider text-ink-500 mb-1.5">
-                  Amount (₦)
-                </label>
-                <input
-                  inputMode="numeric"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ''))}
-                  placeholder="0"
-                  className="w-full rounded-2xl border border-ink-200 dark:border-ink-800 bg-white dark:bg-ink-950 px-4 py-3 font-mono font-bold text-ink-900 dark:text-white focus-ring"
-                />
-                {amountError && (
-                  <p className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-bold text-ink-500">
-                    <AlertCircle className="w-3.5 h-3.5" /> {amountError}
-                  </p>
-                )}
-                <div className="mt-2 flex gap-2">
-                  {[25, 50, 100].map((pct) => (
-                    <button
-                      key={pct}
-                      type="button"
-                      onClick={() => setAmount(String(Math.floor((balance * pct) / 100)))}
-                      className="flex-1 rounded-xl bg-ink-100 dark:bg-ink-800 px-2 py-1.5 text-xs font-bold text-ink-600 dark:text-ink-300 hover:bg-ink-150 dark:hover:bg-ink-750 transition-colors press-scale focus-ring cursor-pointer"
-                    >
-                      {pct}%
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold tracking-wider text-ink-500 mb-1.5">
-                  Bank
-                </label>
-                <div className="relative">
-                  <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400" />
-                  <input
-                    value={bank}
-                    onChange={(e) => setBank(e.target.value)}
-                    placeholder="e.g. GTBank"
-                    className="w-full rounded-2xl border border-ink-200 dark:border-ink-800 bg-white dark:bg-ink-950 pl-10 pr-4 py-3 text-sm font-semibold text-ink-900 dark:text-white focus-ring"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold tracking-wider text-ink-500 mb-1.5">
-                  Account name
-                </label>
-                <div className="relative">
-                  <UserIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400" />
-                  <input
-                    value={accountName}
-                    onChange={(e) => setAccountName(e.target.value)}
-                    placeholder="As it appears at the bank"
-                    className="w-full rounded-2xl border border-ink-200 dark:border-ink-800 bg-white dark:bg-ink-950 pl-10 pr-4 py-3 text-sm font-semibold text-ink-900 dark:text-white focus-ring"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold tracking-wider text-ink-500 mb-1.5">
-                  Account number
-                </label>
-                <div className="relative">
-                  <Hash className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400" />
-                  <input
-                    inputMode="numeric"
-                    value={accountNumber}
-                    onChange={(e) => setAccountNumber(e.target.value.replace(/[^\d]/g, '').slice(0, 10))}
-                    placeholder="10 digits"
-                    className="w-full rounded-2xl border border-ink-200 dark:border-ink-800 bg-white dark:bg-ink-950 pl-10 pr-4 py-3 font-mono font-bold text-ink-900 dark:text-white focus-ring"
-                  />
-                </div>
-              </div>
-
-              <Button type="submit" loading={submitting} disabled={!canSubmit} className="w-full">
-                {submitting ? 'Requesting payout…' : `Withdraw ₦${(Number(amount) || 0).toLocaleString()}`}
-              </Button>
-
-              <p className="flex items-start gap-2 text-xs text-ink-500 leading-relaxed">
-                <ShieldCheck className="w-3.5 h-3.5 mt-0.5 shrink-0 text-jade-600 dark:text-jade-400" />
-                Payouts are only made from money already released from escrow — funds still held by a
-                buyer&apos;s PIN stay untouchable.
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {[
+            { label: 'Pending earnings', value: escrow.pendingEarnings, hint: 'Released after buyer confirmation' },
+            { label: 'Total earnings', value: totalEarnings, hint: 'Net of marketplace fees' },
+            { label: 'Total sales', value: totalSales, hint: 'Paid seller orders' },
+            { label: 'Withdrawn', value: lifetimeWithdrawn, hint: 'Provider-confirmed payouts' },
+          ].map((item) => (
+            <Card key={item.label} className="p-4">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-ink-500 dark:text-ink-400">
+                {item.label}
               </p>
-            </form>
-          </Card>
+              <p className="mt-1.5 font-mono text-xl font-bold text-ink-900 dark:text-white">
+                {hideBalance ? maskedValue : naira(item.value)}
+              </p>
+              <p className="mt-1 text-[10px] leading-relaxed text-ink-400 dark:text-ink-500">{item.hint}</p>
+            </Card>
+          ))}
+        </div>
 
-          {/* Escrow + transactions */}
-          <div className="lg:col-span-3 space-y-6">
-            <Card className="p-6">
-              <div className="flex items-center justify-between gap-4 mb-4">
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="w-5 h-5 text-jade-600 dark:text-jade-400" />
-                  <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white">
-                    Escrow breakdown
+        {buyerPendingOrders.length > 0 && (
+          <Card className="overflow-hidden">
+            <div className="flex items-center justify-between gap-3 border-b border-ink-100 p-5 dark:border-ink-800">
+              <div>
+                <h2 className="font-display text-base font-bold text-ink-900 dark:text-white">Pay an order with your wallet</h2>
+                <p className="mt-0.5 text-[11px] text-ink-500 dark:text-ink-400">
+                  Eligible pending orders. The server debits your available balance and locks the payment in escrow.
+                </p>
+              </div>
+              <span className="rounded-full bg-gold-400/15 px-2.5 py-1 text-[10px] font-bold text-gold-700 dark:text-gold-300">
+                {buyerPendingOrders.length} awaiting payment
+              </span>
+            </div>
+            <ul className="divide-y divide-ink-100 dark:divide-ink-800">
+              {buyerPendingOrders.map((order) => {
+                const canAfford = balance >= order.totalAmount;
+                return (
+                  <li key={order.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-ink-900 dark:text-white">{order.productTitle}</p>
+                      <p className="mt-0.5 font-mono text-[11px] text-ink-500 dark:text-ink-400">
+                        {order.orderNumber} · {naira(order.totalAmount)}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      className="w-full shrink-0 sm:w-auto"
+                      disabled={!canAfford || payingOrderId === order.id}
+                      onClick={() => void handlePayOrder(order.id)}
+                    >
+                      {payingOrderId === order.id ? 'Paying…' : canAfford ? 'Pay with wallet' : 'Insufficient balance'}
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
+        )}
+
+        {(walletStatus?.funding || []).some((entry) => entry.status !== 'SUCCESS') && (
+          <Card className="overflow-hidden">
+            <div className="border-b border-ink-100 p-4 dark:border-ink-800">
+              <h2 className="font-display text-sm font-bold text-ink-900 dark:text-white">Funding attempts</h2>
+              <p className="mt-0.5 text-[11px] text-ink-500 dark:text-ink-400">
+                Pending and failed Paystack attempts are not added to your balance.
+              </p>
+            </div>
+            <ul className="divide-y divide-ink-100 dark:divide-ink-800">
+              {(walletStatus?.funding || [])
+                .filter((entry) => entry.status !== 'SUCCESS')
+                .slice(0, 5)
+                .map((entry) => (
+                  <li key={entry.id} className="flex items-center justify-between gap-3 p-3.5">
+                    <div className="min-w-0">
+                      <p className="font-mono text-xs font-bold text-ink-900 dark:text-white">{naira(entry.amount)}</p>
+                      <p className="truncate font-mono text-[10px] text-ink-400">{entry.reference}</p>
+                    </div>
+                    <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${entry.status === 'PENDING' ? 'bg-gold-400/15 text-gold-700 dark:text-gold-300' : 'bg-rose-500/10 text-rose-600 dark:text-rose-300'}`}>
+                      {entry.status.toLowerCase()}
+                    </span>
+                  </li>
+                ))}
+            </ul>
+          </Card>
+        )}
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+          {/* Withdraw */}
+          <div ref={payoutRef} className="lg:col-span-2">
+            <Card className="overflow-hidden">
+              <div className="flex items-start gap-3 border-b border-ink-100 p-5 dark:border-ink-800">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-jade-500/10 text-jade-700 dark:text-jade-300">
+                  <Banknote className="h-5 w-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h2 className="font-display text-lg font-bold tracking-tight text-ink-900 dark:text-white">
+                    Withdraw to bank
                   </h2>
+                  <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">
+                    Minimum {naira(minWithdrawal)} · fee {naira(withdrawalFee)} · reviewed before payout
+                  </p>
                 </div>
-                <span className="font-mono text-xs font-bold text-ink-500">
-                  {escrowRows.length} active
+                {wallet?.bankName && wallet?.bankAccountName && wallet?.bankAccountNumber && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-jade-500/10 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-jade-700 dark:text-jade-300">
+                    <CheckCircle2 className="h-3 w-3" />
+                    Saved
+                  </span>
+                )}
+              </div>
+
+              <form onSubmit={handleWithdraw} className="space-y-4 p-5">
+                <div>
+                  <label
+                    htmlFor="withdraw-amount"
+                    className="mb-1.5 block text-xs font-bold tracking-wide text-ink-600 dark:text-ink-300"
+                  >
+                    Amount
+                  </label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 font-mono text-base font-bold text-ink-400">
+                      ₦
+                    </span>
+                    <input
+                      ref={amountRef}
+                      id="withdraw-amount"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      value={amount}
+                      onChange={(event) => setAmount(event.target.value.replace(/[^\d]/g, ''))}
+                      placeholder="0"
+                      aria-invalid={!!amountError}
+                      aria-describedby="withdraw-amount-help"
+                      className="h-12 w-full rounded-2xl border border-ink-200 bg-white pl-8 pr-16 font-mono text-lg font-bold text-ink-900 transition-colors focus-ring dark:border-ink-800 dark:bg-ink-950 dark:text-white"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setAmount(String(Math.floor(Math.min(balance, maxWithdrawal))))}
+                      disabled={balance < minWithdrawal}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg bg-jade-500/10 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-jade-700 transition-colors hover:bg-jade-500/20 disabled:cursor-not-allowed disabled:opacity-40 dark:text-jade-300"
+                    >
+                      Max
+                    </button>
+                  </div>
+
+                  <div
+                    id="withdraw-amount-help"
+                    className="mt-1.5 flex items-start justify-between gap-3 text-[11px]"
+                  >
+                    <span className="text-ink-500 dark:text-ink-400">
+                      Available {hideBalance ? '••••' : naira(balance)}
+                    </span>
+                    {amountError ? (
+                      <span className="inline-flex items-center gap-1 font-semibold text-rose-600 dark:text-rose-400">
+                        <AlertCircle className="h-3 w-3 shrink-0" />
+                        {amountError}
+                      </span>
+                    ) : (
+                      <span className="text-ink-400 dark:text-ink-500">
+                        {parsedAmount > 0 && Number.isFinite(parsedAmount)
+                          ? naira(parsedAmount)
+                          : `Min ${naira(minWithdrawal)}`}
+                      </span>
+                    )}
+                  </div>
+
+                  {quickAmounts.length > 0 && (
+                  <div className="mt-2.5 grid grid-cols-3 gap-2">
+                    {quickAmounts.map((option) => (
+                      <button
+                        key={option.label}
+                        type="button"
+                        onClick={() => setAmount(String(option.value))}
+                        className={`rounded-xl border px-2 py-1.5 text-[11px] font-bold transition-all press-scale focus-ring ${
+                          amount === String(option.value)
+                            ? 'border-jade-500 bg-jade-500/10 text-jade-700 dark:border-jade-400 dark:text-jade-300'
+                            : 'border-ink-200 bg-white text-ink-600 hover:border-jade-400 dark:border-ink-800 dark:bg-ink-950 dark:text-ink-300'
+                        }`}
+                      >
+                        {option.label}
+                        <span className="ml-1 font-mono text-[9px] font-semibold opacity-60">
+                          {option.value >= 1000 ? `${Math.round(option.value / 1000)}k` : option.value}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  )}
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="withdraw-bank"
+                    className="mb-1.5 block text-xs font-bold tracking-wide text-ink-600 dark:text-ink-300"
+                  >
+                    Bank
+                  </label>
+                  <div className="relative">
+                    <Building2 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+                    <input
+                      id="withdraw-bank"
+                      list="goodsale-banks"
+                      value={bank}
+                      onChange={(event) => setBank(event.target.value)}
+                      placeholder="Start typing your bank"
+                      className="h-11 w-full rounded-2xl border border-ink-200 bg-white pl-10 pr-4 text-sm font-semibold text-ink-900 transition-colors focus-ring dark:border-ink-800 dark:bg-ink-950 dark:text-white"
+                    />
+                    <datalist id="goodsale-banks">
+                      {NIGERIAN_BANKS.map((name) => (
+                        <option key={name} value={name} />
+                      ))}
+                    </datalist>
+                  </div>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="withdraw-account-name"
+                    className="mb-1.5 block text-xs font-bold tracking-wide text-ink-600 dark:text-ink-300"
+                  >
+                    Account name
+                  </label>
+                  <div className="relative">
+                    <UserRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+                    <input
+                      id="withdraw-account-name"
+                      value={accountName}
+                      onChange={(event) => setAccountName(event.target.value)}
+                      placeholder="Exactly as it appears at your bank"
+                      className="h-11 w-full rounded-2xl border border-ink-200 bg-white pl-10 pr-4 text-sm font-semibold text-ink-900 transition-colors focus-ring dark:border-ink-800 dark:bg-ink-950 dark:text-white"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-1.5 flex items-center justify-between gap-3">
+                    <label
+                      htmlFor="withdraw-account-number"
+                      className="block text-xs font-bold tracking-wide text-ink-600 dark:text-ink-300"
+                    >
+                      Account number
+                    </label>
+                    <span className="font-mono text-[10px] font-semibold text-ink-400 dark:text-ink-500">
+                      {accountNumber.length}/10
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <Hash className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+                    <input
+                      id="withdraw-account-number"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      value={accountNumber}
+                      onChange={(event) =>
+                        setAccountNumber(event.target.value.replace(/[^\d]/g, '').slice(0, 10))
+                      }
+                      placeholder="10-digit NUBAN"
+                      aria-invalid={accountNumber.length > 0 && !accountNumberValid}
+                      className="h-11 w-full rounded-2xl border border-ink-200 bg-white pl-10 pr-4 font-mono text-sm font-bold tracking-[0.12em] text-ink-900 transition-colors focus-ring dark:border-ink-800 dark:bg-ink-950 dark:text-white"
+                    />
+                  </div>
+                  {accountNumber.length > 0 && !accountNumberValid && (
+                    <p className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+                      <AlertCircle className="h-3 w-3" />
+                      Enter the full 10-digit account number.
+                    </p>
+                  )}
+                </div>
+
+                {withdrawalFee > 0 && (
+                  <div className="space-y-1 rounded-xl border border-ink-150 bg-ink-50/60 px-3.5 py-3 text-[11px] dark:border-ink-800 dark:bg-ink-950/40">
+                    <div className="flex justify-between gap-3 text-ink-500 dark:text-ink-400">
+                      <span>Withdrawal fee</span>
+                      <span className="font-mono font-bold text-ink-800 dark:text-ink-200">{naira(withdrawalFee)}</span>
+                    </div>
+                    <div className="flex justify-between gap-3 font-bold text-ink-900 dark:text-white">
+                      <span>You receive</span>
+                      <span className="font-mono">{naira(Math.max(0, parsedAmount - withdrawalFee))}</span>
+                    </div>
+                  </div>
+                )}
+
+                {walletStatus?.payoutsAvailable === false && (
+                  <div className="flex items-start gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-800 dark:text-amber-200">
+                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    Bank payouts are unavailable until Paystack is configured. You can still view and use your wallet balance.
+                  </div>
+                )}
+
+                <Button
+                  type="submit"
+                  disabled={!canSubmit || submitting || walletStatus?.payoutsAvailable === false}
+                  className="w-full"
+                  size="lg"
+                >
+                  {walletStatus?.payoutsAvailable === false
+                    ? 'Payouts unavailable'
+                    : canSubmit
+                      ? `Review ${naira(parsedAmount)} payout`
+                      : 'Withdraw to bank'}
+                </Button>
+
+                <p className="flex items-start gap-2 text-[11px] leading-relaxed text-ink-500 dark:text-ink-400">
+                  <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-jade-600 dark:text-jade-400" />
+                  These bank details are saved to your wallet for next time. Payouts only use money
+                  already released from escrow.
+                </p>
+              </form>
+            </Card>
+          </div>
+
+          {/* Escrow + ledger */}
+          <div className="space-y-6 lg:col-span-3">
+            <Card className="overflow-hidden">
+              <div className="flex items-center justify-between gap-4 border-b border-ink-100 p-5 dark:border-ink-800">
+                <div className="flex items-center gap-2.5">
+                  <span className="grid h-9 w-9 place-items-center rounded-xl bg-jade-500/10 text-jade-700 dark:text-jade-300">
+                    <ShieldCheck className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <h2 className="font-display text-base font-bold tracking-tight text-ink-900 dark:text-white">
+                      Escrow breakdown
+                    </h2>
+                    <p className="text-[11px] text-ink-500 dark:text-ink-400">
+                      Money waiting on delivery confirmation
+                    </p>
+                  </div>
+                </div>
+                <span className="rounded-full border border-ink-200 px-2.5 py-1 font-mono text-[10px] font-bold text-ink-500 dark:border-ink-700 dark:text-ink-400">
+                  {escrow.rows.length} active
                 </span>
               </div>
 
-              {escrowRows.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-ink-300 dark:border-ink-700 px-4 py-8 text-center">
-                  <p className="text-sm font-bold text-ink-700 dark:text-ink-200">No money in escrow</p>
-                  <p className="text-xs text-ink-500 mt-1">
+              {escrow.rows.length === 0 ? (
+                <div className="px-5 py-8 text-center">
+                  <span className="mx-auto grid h-11 w-11 place-items-center rounded-2xl bg-ink-100 text-ink-400 dark:bg-white/5 dark:text-ink-500">
+                    <Lock className="h-5 w-5" />
+                  </span>
+                  <p className="mt-3 text-sm font-bold text-ink-800 dark:text-ink-100">
+                    No money in escrow
+                  </p>
+                  <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">
                     Nothing is being held for or from you right now.
                   </p>
                 </div>
               ) : (
-                <div className="divide-y divide-ink-100 dark:divide-ink-800 list-stagger">
-                  {escrowRows.map((row) => (
-                    <div key={row.id} className="flex items-center justify-between gap-4 py-3">
+                <ul className="max-h-72 divide-y divide-ink-100 overflow-y-auto dark:divide-ink-800">
+                  {escrow.rows.map((row) => (
+                    <li key={row.id} className="flex items-center justify-between gap-4 px-5 py-3.5">
                       <div className="min-w-0">
-                        <p className="text-sm font-bold text-ink-900 dark:text-white truncate">{row.title}</p>
-                        <p className="font-mono text-xs text-ink-500">
-                          {row.number} · {row.role === 'SELLER' ? 'releases on buyer PIN' : 'held for delivery'}
+                        <p className="truncate text-sm font-bold text-ink-900 dark:text-white">
+                          {row.title}
+                        </p>
+                        <p className="mt-0.5 font-mono text-[11px] text-ink-500 dark:text-ink-400">
+                          {row.number} ·{' '}
+                          {row.role === 'SELLER' ? 'releases on buyer PIN' : 'held for delivery'}
                         </p>
                       </div>
-                      <div className="text-right shrink-0">
-                        <p className="font-mono font-bold text-ink-900 dark:text-white">
-                          ₦{row.amount.toLocaleString()}
+                      <div className="shrink-0 text-right">
+                        <p className="font-mono text-sm font-bold text-ink-900 dark:text-white">
+                          {hideBalance ? '₦••••' : naira(row.amount)}
                         </p>
-                        <span className="inline-flex items-center gap-1 text-xs font-bold text-ink-500">
-                          <Lock className="w-3 h-3" /> {row.role === 'SELLER' ? 'Incoming' : 'Protected'}
+                        <span
+                          className={`mt-0.5 inline-flex items-center gap-1 text-[10px] font-bold ${
+                            row.role === 'SELLER'
+                              ? 'text-jade-700 dark:text-jade-300'
+                              : 'text-ink-500 dark:text-ink-400'
+                          }`}
+                        >
+                          {row.role === 'SELLER' ? (
+                            <ArrowDownLeft className="h-3 w-3" />
+                          ) : (
+                            <Lock className="h-3 w-3" />
+                          )}
+                          {row.role === 'SELLER' ? 'Incoming' : 'Protected'}
                         </span>
                       </div>
-                    </div>
+                    </li>
                   ))}
-                </div>
+                </ul>
               )}
             </Card>
 
-            <Card className="p-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-                <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white">
-                  Transactions
-                </h2>
-                <SegmentedControl
-                  aria-label="Transaction filter"
-                  className="sm:w-72"
-                  value={txFilter}
-                  onChange={(v) => setTxFilter(v as TxFilter)}
-                  options={[
-                    { value: 'all', label: 'All' },
-                    { value: 'credit', label: 'Credits' },
-                    { value: 'debit', label: 'Debits' },
-                  ]}
-                />
+            <Card className="overflow-hidden">
+              <div className="border-b border-ink-100 p-5 dark:border-ink-800">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <span className="grid h-9 w-9 place-items-center rounded-xl bg-ink-100 text-ink-600 dark:bg-white/5 dark:text-ink-300">
+                      <ReceiptText className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <h2 className="font-display text-base font-bold tracking-tight text-ink-900 dark:text-white">
+                        Transactions
+                      </h2>
+                      <p className="text-[11px] text-ink-500 dark:text-ink-400">
+                        {hideBalance
+                          ? '•••• received · •••• withdrawn'
+                          : `${naira(lifetimeReceived)} received · ${naira(lifetimeWithdrawn)} withdrawn`}
+                      </p>
+                    </div>
+                  </div>
+                  <SegmentedControl
+                    aria-label="Transaction filter"
+                    className="sm:w-64"
+                    value={txFilter}
+                    onChange={(value) => {
+                      setTxFilter(value as TxFilter);
+                      setShowAllTx(false);
+                    }}
+                    options={[
+                      { value: 'all', label: 'All' },
+                      { value: 'credit', label: 'In' },
+                      { value: 'debit', label: 'Out' },
+                    ]}
+                  />
+                </div>
               </div>
 
               {filteredTransactions.length === 0 ? (
@@ -438,100 +1049,260 @@ export default function WalletView({ onNavigate, onOpenAuth }: WalletViewProps) 
                   state="empty-cart"
                   size="sm"
                   icon={<WalletIcon />}
-                  title="No transactions yet"
-                  description="Escrow releases, fees and payouts will appear here."
+                  title={txFilter === 'all' ? 'No transactions yet' : 'No matching transactions'}
+                  description={
+                    txFilter === 'all'
+                      ? 'Escrow releases, fees and payouts will appear here.'
+                      : 'Try another filter to see more of your wallet activity.'
+                  }
                 />
               ) : (
-                <div className="divide-y divide-ink-100 dark:divide-ink-800">
-                  {filteredTransactions.map((tx) => {
-                    const isCredit = tx.type.startsWith('CREDIT');
-                    return (
-                      <div key={tx.id} className="flex items-center gap-4 py-3.5">
-                        <span
-                          className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
-                            isCredit ? 'bg-jade-500/10 text-jade-600 dark:text-jade-400' : 'bg-ink-100 dark:bg-ink-800 text-ink-600 dark:text-ink-300'
-                          }`}
-                        >
-                          {isCredit ? <ArrowDownLeft className="w-5 h-5" /> : <ArrowUpRight className="w-5 h-5" />}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-bold text-ink-900 dark:text-white truncate">
-                            {tx.description}
-                          </p>
-                          <p className="font-mono text-xs text-ink-500">
-                            {tx.type.replace(/_/g, ' ').toLowerCase()} ·{' '}
-                            {tx.createdAt ? new Date(tx.createdAt).toLocaleDateString() : ''}
-                          </p>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p
-                            className={`font-mono font-bold ${
-                              isCredit ? 'text-jade-600 dark:text-jade-400' : 'text-ink-900 dark:text-white'
-                            }`}
-                          >
-                            {isCredit ? '+' : '−'}₦{tx.amount.toLocaleString()}
-                          </p>
-                          <span className="inline-flex items-center gap-1 text-xs font-bold text-ink-500">
-                            {tx.status === 'COMPLETED' ? (
-                              <CheckCircle2 className="w-3 h-3" />
-                            ) : tx.status === 'PENDING' ? (
-                              <Clock className="w-3 h-3" />
-                            ) : (
-                              <AlertCircle className="w-3 h-3" />
-                            )}
-                            {tx.status.toLowerCase()}
+                <>
+                  <div>
+                    {groupedTransactions.map((group) => (
+                      <section key={group.label} aria-label={group.label}>
+                        <div className="sticky top-0 z-10 flex items-center justify-between border-y border-ink-100 bg-ink-50/90 px-5 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-ink-400 backdrop-blur first:border-t-0 dark:border-ink-800 dark:bg-ink-950/70 dark:text-ink-500">
+                          <span>{group.label}</span>
+                          <span className="font-mono text-[9px] tracking-normal">
+                            {group.items.length}
                           </span>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                        <ul className="divide-y divide-ink-100 dark:divide-ink-800/70">
+                          {group.items.map((entry) => {
+                            const isCredit = entry.amount > 0;
+                            return (
+                              <li
+                                key={entry.id}
+                                className="flex items-center gap-3.5 px-5 py-3.5 transition-colors hover:bg-ink-50/70 dark:hover:bg-ink-800/30"
+                              >
+                                <span
+                                  className={`grid h-10 w-10 shrink-0 place-items-center rounded-2xl ${
+                                    isCredit
+                                      ? 'bg-jade-500/10 text-jade-700 dark:text-jade-300'
+                                      : 'bg-ink-100 text-ink-600 dark:bg-white/5 dark:text-ink-300'
+                                  }`}
+                                >
+                                  {isCredit ? (
+                                    <ArrowDownLeft className="h-4 w-4" />
+                                  ) : (
+                                    <ArrowUpRight className="h-4 w-4" />
+                                  )}
+                                </span>
+
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-bold text-ink-900 dark:text-white">
+                                    {entry.description}
+                                  </p>
+                                  <p className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wide text-ink-500 dark:text-ink-400">
+                                    <span className="truncate">{transactionLabel(entry.type)}</span>
+                                    <span aria-hidden="true">·</span>
+                                    {timeLabel(entry.createdAt) && (
+                                      <span className="shrink-0">{timeLabel(entry.createdAt)}</span>
+                                    )}
+                                  </p>
+                                  {(entry.reference || entry.providerReference) && (
+                                    <p className="mt-0.5 truncate font-mono text-[9px] text-ink-400 dark:text-ink-500">
+                                      {entry.providerReference || entry.reference}
+                                    </p>
+                                  )}
+                                </div>
+
+                                <div className="shrink-0 text-right">
+                                  <p
+                                    className={`font-mono text-sm font-bold ${
+                                      isCredit
+                                        ? 'text-jade-700 dark:text-jade-300'
+                                        : 'text-ink-900 dark:text-white'
+                                    }`}
+                                  >
+                                    {isCredit ? '+' : '−'}
+                                    {naira(entry.amount)}
+                                  </p>
+                                  <span
+                                    className={`mt-1 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
+                                      entry.status === 'COMPLETED'
+                                        ? 'bg-jade-500/10 text-jade-700 dark:text-jade-300'
+                                        : entry.status === 'PENDING' || entry.status === 'PROCESSING'
+                                          ? 'bg-gold-400/15 text-gold-700 dark:text-gold-300'
+                                          : 'bg-rose-500/10 text-rose-600 dark:text-rose-300'
+                                    }`}
+                                  >
+                                    {entry.status === 'COMPLETED' ? (
+                                      <CheckCircle2 className="h-2.5 w-2.5" />
+                                    ) : entry.status === 'PENDING' || entry.status === 'PROCESSING' ? (
+                                      <Clock3 className="h-2.5 w-2.5" />
+                                    ) : (
+                                      <AlertCircle className="h-2.5 w-2.5" />
+                                    )}
+                                    {entry.status.toLowerCase()}
+                                  </span>
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </section>
+                    ))}
+                  </div>
+
+                  {filteredTransactions.length > TX_PAGE_SIZE && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllTx((value) => !value)}
+                      className="flex w-full items-center justify-center gap-1.5 border-t border-ink-100 px-5 py-3 text-xs font-bold text-jade-700 transition-colors hover:bg-jade-500/5 dark:border-ink-800 dark:text-jade-300"
+                    >
+                      {showAllTx ? (
+                        'Show fewer transactions'
+                      ) : (
+                        <>
+                          Show all {filteredTransactions.length} transactions
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </>
+                      )}
+                    </button>
+                  )}
+                </>
               )}
             </Card>
 
-            <Card variant="muted" className="p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              <span className="w-10 h-10 rounded-2xl bg-white dark:bg-ink-900 flex items-center justify-center text-ink-500 shrink-0">
-                <Settings2 className="w-5 h-5" />
-              </span>
-              <div className="flex-1">
-                <p className="text-sm font-bold text-ink-900 dark:text-white">
-                  Prefer not to use the wallet?
-                </p>
-                <p className="text-xs text-ink-500 mt-1 leading-relaxed">
-                  Switch to <strong>Bank direct</strong> and every escrow release is settled to your
-                  bank account instead of stacking up in the wallet. You can switch back any time.
-                </p>
+            {myWithdrawals.length > 0 && (
+              <Card className="overflow-hidden">
+                <div className="border-b border-ink-100 p-5 dark:border-ink-800">
+                  <h2 className="font-display text-base font-bold text-ink-900 dark:text-white">Payout history</h2>
+                  <p className="mt-0.5 text-[11px] text-ink-500 dark:text-ink-400">
+                    Pending and processing payouts are not successful until Paystack confirms them.
+                  </p>
+                </div>
+                <ul className="divide-y divide-ink-100 dark:divide-ink-800">
+                  {myWithdrawals
+                    .slice()
+                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                    .slice(0, 8)
+                    .map((entry) => (
+                      <li key={entry.id} className="flex items-center justify-between gap-3 p-4">
+                        <div className="min-w-0">
+                          <p className="font-mono text-xs font-bold text-ink-900 dark:text-white">{entry.requestNumber}</p>
+                          <p className="mt-0.5 truncate text-[10px] text-ink-500 dark:text-ink-400">
+                            {entry.bankName} ••••{entry.accountNumber.slice(-4)} · {new Date(entry.createdAt).toLocaleDateString('en-NG')}
+                          </p>
+                          {entry.providerReference && <p className="truncate font-mono text-[9px] text-ink-400">{entry.providerReference}</p>}
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="font-mono text-sm font-bold text-ink-900 dark:text-white">{naira(entry.amount)}</p>
+                          <span className={`mt-0.5 inline-flex rounded-full px-2 py-0.5 text-[9px] font-bold ${
+                            entry.status === 'SUCCESS'
+                              ? 'bg-jade-500/10 text-jade-700 dark:text-jade-300'
+                              : entry.status === 'FAILED' || entry.status === 'REJECTED'
+                                ? 'bg-rose-500/10 text-rose-600 dark:text-rose-300'
+                                : 'bg-gold-400/15 text-gold-700 dark:text-gold-300'
+                          }`}>
+                            {entry.status.toLowerCase()}
+                          </span>
+                        </div>
+                      </li>
+                    ))}
+                </ul>
+              </Card>
+            )}
+
+            <Card className="overflow-hidden">
+              <div className="border-b border-ink-100 p-5 dark:border-ink-800">
+                <div className="flex items-center gap-2.5">
+                  <span className="grid h-9 w-9 place-items-center rounded-xl bg-ink-100 text-ink-600 dark:bg-white/5 dark:text-ink-300">
+                    <Settings2 className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <h2 className="font-display text-base font-bold text-ink-900 dark:text-white">Wallet settings</h2>
+                    <p className="text-[11px] text-ink-500 dark:text-ink-400">Privacy, payout readiness and saved bank account.</p>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Button
-                  size="sm"
-                  variant={mode === 'direct' ? 'secondary' : 'primary'}
-                  onClick={() => changeMode(mode === 'direct' ? 'wallet' : 'direct')}
-                >
-                  {mode === 'direct' ? 'Reset to wallet' : 'Go bank-direct'}
-                </Button>
-                {onNavigate && (
-                  <Button size="sm" variant="ghost" onClick={() => onNavigate('revenue')}>
-                    Revenue hub
-                  </Button>
-                )}
+              <div className="divide-y divide-ink-100 dark:divide-ink-800">
+                <div className="flex items-center justify-between gap-3 p-4">
+                  <div>
+                    <p className="text-xs font-bold text-ink-900 dark:text-white">Hide my balance</p>
+                    <p className="mt-0.5 text-[11px] text-ink-500 dark:text-ink-400">Masks amounts on this device. Saved as a privacy preference.</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={hideBalance}
+                    onClick={toggleBalance}
+                    className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${hideBalance ? 'bg-jade-500' : 'bg-ink-300 dark:bg-ink-700'}`}
+                  >
+                    <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${hideBalance ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between gap-3 p-4">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-ink-900 dark:text-white">Saved bank account</p>
+                    <p className="mt-0.5 truncate text-[11px] text-ink-500 dark:text-ink-400">
+                      {wallet?.bankName && wallet?.bankAccountNumber
+                        ? `${wallet.bankName} ••••${wallet.bankAccountNumber.slice(-4)}`
+                        : 'No bank account saved yet'}
+                    </p>
+                  </div>
+                  <Button size="sm" variant="ghost" onClick={focusPayoutForm}>Manage</Button>
+                </div>
+                <div className="p-4">
+                  <p className="flex items-start gap-2 text-[11px] leading-relaxed text-ink-500 dark:text-ink-400">
+                    <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    GoodSale never asks for your bank PIN or password. Payouts are only marked successful after Paystack confirms them.
+                  </p>
+                </div>
               </div>
             </Card>
 
-            <p className="flex items-start gap-2 text-xs text-ink-500 leading-relaxed px-1">
-              <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-              Wallet mode is a settlement preference on this device. Escrow itself always protects the
-              buyer until the delivery PIN is confirmed.
+            <Card variant="muted" className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-gold-400/15 text-gold-700 dark:text-gold-300">
+                <Coins className="h-5 w-5" />
+              </span>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-ink-900 dark:text-white">GoodSale Coins</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-ink-500 dark:text-ink-400">
+                  {coinsBalance.toLocaleString('en-NG')} promotional coins. Coins are rewards only — they are not cash, cannot be withdrawn, and are never mixed with your wallet balance.
+                </p>
+              </div>
+              {onNavigate && (
+                <Button size="sm" variant="ghost" onClick={() => onNavigate('rewards')}>
+                  View rewards
+                </Button>
+              )}
+            </Card>
+
+            <p className="flex items-start gap-2 px-1 text-[11px] leading-relaxed text-ink-500 dark:text-ink-400">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              Escrow protects the buyer until the delivery PIN is confirmed. Wallet balances are stored in GoodSale&apos;s ledger; funding and payouts are settled by Paystack under its licensed payment structure.
             </p>
           </div>
         </div>
       </div>
 
-      {toast && (
-        <div className="fixed bottom-20 md:bottom-6 right-5 z-50 pointer-events-none">
-          <Toast kind={toast.kind}>{toast.msg}</Toast>
-        </div>
-      )}
+      <WithdrawReviewDialog
+        open={reviewOpen}
+        onClose={() => setReviewOpen(false)}
+        onConfirm={() => void submitWithdrawal()}
+        submitting={submitting}
+        amount={parsedAmount}
+        availableBalance={balance}
+        fee={withdrawalFee}
+        bank={bank.trim()}
+        accountName={accountName.trim()}
+        accountNumber={accountNumber.trim()}
+      />
+
+      <AddFundsDialog
+        open={addFundsOpen}
+        onClose={() => setAddFundsOpen(false)}
+        onFunded={async () => {
+          await reloadFromSupabase();
+          await refreshWalletStatus();
+        }}
+        email={user.email || ''}
+        min={walletStatus?.limits.funding_min ?? 100}
+        max={walletStatus?.limits.funding_max ?? 500000}
+        enabled={walletStatus?.fundingAvailable === true}
+      />
     </div>
   );
 }

@@ -89,15 +89,15 @@ export default function AnnouncementModal() {
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[70] flex items-end justify-center sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-label={item.title || 'Announcement'}
     >
       <div className="absolute inset-0 bg-ink-950/70 backdrop-blur-sm" onClick={dismiss} />
 
-      <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-jade-500/25 bg-white shadow-2xl dark:bg-ink-900 animate-slide-in">
-        <div className="relative bg-jade-500 px-5 py-4 text-white">
+      <div className="relative flex max-h-[calc(100dvh-0.5rem)] w-full max-w-md flex-col overflow-hidden rounded-t-3xl border border-jade-500/25 bg-white pb-safe-bottom shadow-2xl dark:bg-ink-900 sm:max-h-[85dvh] sm:rounded-3xl animate-slide-in">
+        <div className="relative shrink-0 bg-jade-500 px-5 py-4 text-white">
           <button
             type="button"
             onClick={dismiss}
@@ -112,7 +112,7 @@ export default function AnnouncementModal() {
           <h2 className="mt-2 pr-8 font-sans text-lg font-semibold leading-snug">{item.title}</h2>
         </div>
 
-        <div className="max-h-[60vh] overflow-y-auto px-5 py-4">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">
           {item.imageUrl && !imgFailed && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -127,7 +127,7 @@ export default function AnnouncementModal() {
           </p>
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-t border-ink-100 px-5 py-4 dark:border-ink-800">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-ink-100 px-5 py-4 dark:border-ink-800">
           <span className="text-[10px] font-mono tracking-widest text-ink-400">
             From the GoodSale team
           </span>

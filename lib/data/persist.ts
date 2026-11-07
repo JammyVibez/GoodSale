@@ -475,6 +475,169 @@ export async function upsertPaymentSettings(client: SupabaseClient, settings: Re
   }
 }
 
+// ---------------------------------------------------------------------------
+// Shipping engine
+// ---------------------------------------------------------------------------
+
+export function shippingSettingsToRow(input: Record<string, unknown>): Record<string, unknown> {
+  return {
+    id: 1,
+    enabled: input.enabled,
+    local_base_fee: input.localBaseFee,
+    per_km_fee: input.perKmFee,
+    min_fee: input.minFee,
+    max_fee: input.maxFee,
+    interstate_base_fee: input.interstateBaseFee,
+    interstate_per_km_fee: input.interstatePerKmFee,
+    weight_surcharge_per_kg: input.weightSurchargePerKg,
+    oversize_surcharge: input.oversizeSurcharge,
+    remote_surcharge: input.remoteSurcharge,
+    free_shipping_threshold: input.freeShippingThreshold,
+    handling_fee: input.handlingFee,
+    platform_shipping_fee: input.platformShippingFee,
+    economy_fee: input.economyFee,
+    standard_fee: input.standardFee,
+    express_fee: input.expressFee,
+    manual_quote_above_km: input.manualQuoteAboveKm,
+    manual_quotes_enabled: input.manualQuotesEnabled,
+    seller_sponsored_shipping: input.sellerSponsoredShipping,
+    platform_sponsored_shipping: input.platformSponsoredShipping,
+    default_eta_min_days: input.defaultEtaMinDays,
+    default_eta_max_days: input.defaultEtaMaxDays,
+  };
+}
+
+export async function upsertShippingSettings(client: SupabaseClient, settings: Record<string, unknown>) {
+  const { error } = await client
+    .from('shipping_settings')
+    .upsert(shippingSettingsToRow(settings), { onConflict: 'id' });
+  if (error) throw error;
+}
+
+export async function insertShippingZone(
+  client: SupabaseClient,
+  zone: Record<string, unknown>
+): Promise<number | undefined> {
+  const { data, error } = await client.from('shipping_zones').insert(zone).select('id').single();
+  if (error) throw error;
+  return (data as { id?: number } | null)?.id;
+}
+
+export async function updateShippingZone(client: SupabaseClient, id: number, patch: Record<string, unknown>) {
+  const { error } = await client.from('shipping_zones').update(patch).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteShippingZone(client: SupabaseClient, id: number) {
+  const { error } = await client.from('shipping_zones').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function insertShippingTier(
+  client: SupabaseClient,
+  tier: Record<string, unknown>
+): Promise<number | undefined> {
+  const { data, error } = await client.from('shipping_distance_tiers').insert(tier).select('id').single();
+  if (error) throw error;
+  return (data as { id?: number } | null)?.id;
+}
+
+export async function updateShippingTier(client: SupabaseClient, id: number, patch: Record<string, unknown>) {
+  const { error } = await client.from('shipping_distance_tiers').update(patch).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteShippingTier(client: SupabaseClient, id: number) {
+  const { error } = await client.from('shipping_distance_tiers').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function insertShippingRule(
+  client: SupabaseClient,
+  rule: Record<string, unknown>
+): Promise<number | undefined> {
+  const { data, error } = await client.from('shipping_rules').insert(rule).select('id').single();
+  if (error) throw error;
+  return (data as { id?: number } | null)?.id;
+}
+
+export async function updateShippingRule(client: SupabaseClient, id: number, patch: Record<string, unknown>) {
+  const { error } = await client.from('shipping_rules').update(patch).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteShippingRule(client: SupabaseClient, id: number) {
+  const { error } = await client.from('shipping_rules').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function insertShippingCourier(
+  client: SupabaseClient,
+  courier: Record<string, unknown>
+): Promise<number | undefined> {
+  const { data, error } = await client.from('shipping_couriers').insert(courier).select('id').single();
+  if (error) throw error;
+  return (data as { id?: number } | null)?.id;
+}
+
+export async function updateShippingCourier(client: SupabaseClient, id: number, patch: Record<string, unknown>) {
+  const { error } = await client.from('shipping_couriers').update(patch).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteShippingCourier(client: SupabaseClient, id: number) {
+  const { error } = await client.from('shipping_couriers').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function insertManualQuote(
+  client: SupabaseClient,
+  quote: Record<string, unknown>
+): Promise<number | undefined> {
+  const { data, error } = await client.from('shipping_manual_quotes').insert(quote).select('id').single();
+  if (error) throw error;
+  return (data as { id?: number } | null)?.id;
+}
+
+export async function updateManualQuote(client: SupabaseClient, id: number, patch: Record<string, unknown>) {
+  const { error } = await client.from('shipping_manual_quotes').update(patch).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteManualQuote(client: SupabaseClient, id: number) {
+  const { error } = await client.from('shipping_manual_quotes').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function upsertSellerShippingSettings(client: SupabaseClient, settings: Record<string, unknown>) {
+  const { error } = await client
+    .from('seller_shipping_settings')
+    .upsert(settings, { onConflict: 'seller_id' });
+  if (error) throw error;
+}
+
+export async function insertShippingAuditLog(
+  client: SupabaseClient,
+  log: {
+    userId?: number;
+    userName: string;
+    action: string;
+    entityType: string;
+    entityId: number;
+    details: string;
+  }
+) {
+  const { error } = await client.from('shipping_audit_logs').insert({
+    user_id: log.userId ?? null,
+    user_name: log.userName,
+    action: log.action,
+    entity_type: log.entityType,
+    entity_id: log.entityId,
+    details: log.details,
+  });
+  if (error) throw error;
+}
+
 export async function insertNotification(
   client: SupabaseClient,
   n: { userId: number; title: string; message: string; type: string }

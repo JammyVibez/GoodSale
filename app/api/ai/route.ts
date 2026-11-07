@@ -425,9 +425,9 @@ Provide a safety report JSON with:
       const getHeuristicMetricsAnalysis = (v: number, eh: number, pc: number) => {
         return {
           salesVelocity: v > 500 ? "High Velocity" : "Moderate Velocity",
-          growthTip: "We highly recommend allocating ₦5,000 to Sponsored CPC Ads or purchasing a Featured Placement to elevate search ranking by 2.5x and increase buyer inquiry rates by 45%.",
+          growthTip: "Put your most-viewed listings into a promotion and keep stock levels current — visible, in-stock items convert best with buyers in your city.",
           priceAdjustment: "Your active computing and traditional wear catalogs are priced competitively. Consider including standard '6 Months Store Warranty' labels to attract high-budget buyers looking for security.",
-          organicBoostChance: "Subscribe to the Verified+ premium membership plan or corporate business storefront. It adds a prestigious gold trust badge overlay and triggers a 40% organic rank surge in the catalog index."
+          organicBoostChance: "Complete GoodSale verification to add the verified badge to your storefront and listings. It tells buyers that your identity and business documents were checked."
         };
       };
 

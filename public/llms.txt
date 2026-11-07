@@ -1,0 +1,34 @@
+# GoodSale
+
+> GoodSale is a Nigerian online marketplace where buyers shop from verified sellers using escrow-protected payments. Funds are held until the buyer confirms delivery. Product pages, category pages and seller storefronts are public; accounts, orders, messages, checkout, wallets and admin tools are private.
+
+## Public sections
+
+- [Home](https://goodsale.ng/): product discovery, categories and seller storefronts.
+- [Categories](https://goodsale.ng/categories): every live category with current listing counts.
+- [Sellers](https://goodsale.ng/sellers): seller and registered-business storefronts, locations and verification badges.
+- [Promotions](https://goodsale.ng/promotions): featured listings promoted by sellers.
+- [Trust & Safety](https://goodsale.ng/trust-safety): escrow, verification, reviews, delivery and dispute process.
+- [Privacy Policy](https://goodsale.ng/privacy)
+- [Terms of Service](https://goodsale.ng/terms)
+
+## Page patterns
+
+- Product: `https://goodsale.ng/products/{product-id}` — title, description, price in NGN, availability, condition, images, seller, delivery and real buyer reviews.
+- Category: `https://goodsale.ng/categories/{category-slug}` — category name, live listings and sellers.
+- Seller: `https://goodsale.ng/sellers/{seller-id}` — store name, description, location, verification status and listings.
+- Search: `https://goodsale.ng/search?q={query}` — search results are not indexed.
+
+## Content and data policy
+
+- Product details, prices, stock, seller verification and reviews come from the live GoodSale database.
+- Reviews and ratings are only published from real buyer feedback after completed orders. GoodSale does not generate fake reviews, ratings, prices or availability.
+- Availability is marked InStock or OutOfStock based on the seller's live quantity and stock status.
+- Public product, category and seller pages are server-rendered so they can be read without executing JavaScript.
+- Private account data, messages, checkout, orders, identity documents and admin pages are not public and are excluded by robots.txt.
+
+## Sitemap and crawling
+
+- XML sitemap: https://goodsale.ng/sitemap.xml
+- Robots policy: https://goodsale.ng/robots.txt
+- Search engines and AI answer crawlers (Googlebot, Bingbot, GPTBot, OAI-SearchBot, ClaudeBot, PerplexityBot) may crawl all public pages listed above.

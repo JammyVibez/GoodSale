@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  ArrowLeft, Shield, ShieldCheck, MapPin, CheckCircle, MessageSquare,
+  ArrowLeft, Shield, ShieldCheck, MapPin, MessageSquare,
   ShoppingCart, Star, Zap, Clock, Award, Tag, Send,
   Bell, BellOff, Check, ThumbsUp, CornerDownRight, X,
   Share2, Sparkles, Play, Truck, RotateCcw, ChevronRight, Flame
@@ -15,6 +15,8 @@ import { SmartAvatar, SmartImage } from './ui/SmartImage';
 import { toast } from '@/lib/feedback';
 import { trackProductMetric } from '@/lib/productMetrics';
 import { computeSellerTrust } from '@/lib/trust';
+import VerifiedBadge, { VerifiedMark } from '@/components/verification/VerifiedBadge';
+import { isVerifiedSeller } from '@/lib/verification';
 import AdSlot from './AdSlot';
 
 interface ProductDetailViewProps {
@@ -178,7 +180,10 @@ export default function ProductDetailView({
   const seller = product ? db.users.find(u => u.id === product.sellerId) : null;
   const sellerProfile = product ? db.profiles.find(p => p.userId === product.sellerId) : null;
   const business = (product && product.businessId) ? db.businesses.find(b => b.id === product.businessId) : null;
-  const isSellerVerified = seller ? (seller.role === UserRole.VERIFIED_SELLER || seller.role === UserRole.VERIFIED_BUSINESS) : false;
+  const isSellerVerified = isVerifiedSeller({
+    verificationStatus: sellerProfile?.verificationStatus,
+    verificationExpiresAt: sellerProfile?.verificationExpiresAt,
+  });
   const sellerTrust = product ? computeSellerTrust(db, product.sellerId) : null;
 
   // Auction metadata
@@ -501,10 +506,15 @@ export default function ProductDetailView({
               </div>
 
               {isSellerVerified && (
-                <span className="pointer-events-none absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-jade-700/95 px-3 py-1.5 text-[11px] font-bold text-white shadow-lg backdrop-blur-sm">
-                  <CheckCircle className="h-3.5 w-3.5" />
-                  Verified Seller
-                </span>
+                <div className="absolute left-3 top-3 z-10">
+                  <VerifiedBadge
+                    sellerId={product.sellerId}
+                    status={sellerProfile?.verificationStatus}
+                    expiresAt={sellerProfile?.verificationExpiresAt}
+                    fallbackName={seller?.fullName}
+                    variant="storefront"
+                  />
+                </div>
               )}
 
               <span className="pointer-events-none absolute right-3 top-3 rounded-lg bg-ink-950/60 px-2.5 py-1 text-[11px] font-bold text-white backdrop-blur-sm">
@@ -746,7 +756,12 @@ export default function ProductDetailView({
                   <span className="truncate font-bold text-sm text-ink-900 dark:text-white">
                     {seller?.fullName || 'GoodSale Seller'}
                   </span>
-                  {isSellerVerified && <CheckCircle className="h-4 w-4 shrink-0 text-jade-600" />}
+                  {isSellerVerified && (
+                    <VerifiedMark
+                      status={sellerProfile?.verificationStatus}
+                      expiresAt={sellerProfile?.verificationExpiresAt}
+                    />
+                  )}
                 </div>
                 <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-ink-500 dark:text-ink-400">
                   <MapPin className="h-3 w-3 shrink-0" />
@@ -1451,8 +1466,8 @@ export default function ProductDetailView({
 
       {/* Report listing */}
       {showReport && (
-        <div className="fixed inset-0 z-[120] grid place-items-center bg-ink-950/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-3xl border border-ink-200 bg-white p-5 shadow-2xl dark:border-ink-800 dark:bg-ink-900">
+        <div className="fixed inset-0 z-[120] flex items-end justify-center bg-ink-950/50 backdrop-blur-sm sm:items-center sm:p-4">
+          <div className="max-h-[calc(100dvh-1rem)] w-full max-w-md overflow-y-auto rounded-t-3xl border border-ink-200 bg-white p-5 pb-safe-bottom shadow-2xl dark:border-ink-800 dark:bg-ink-900 sm:rounded-3xl">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="font-display text-lg font-bold text-ink-900 dark:text-white">Report this listing</h3>

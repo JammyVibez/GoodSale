@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
+import { enforceSessionScope } from '@/lib/auth/session';
 import { createEmptyState } from '@/lib/data/empty-state';
 import {
   loadMarketplaceState,
@@ -42,14 +43,51 @@ import {
   upsertServiceArea,
   updateServiceAreaFlags,
   deleteServiceAreaById,
+  upsertShippingSettings,
+  insertShippingZone,
+  updateShippingZone,
+  deleteShippingZone,
+  insertShippingTier,
+  updateShippingTier,
+  deleteShippingTier,
+  insertShippingRule,
+  updateShippingRule,
+  deleteShippingRule,
+  insertShippingCourier,
+  updateShippingCourier,
+  deleteShippingCourier,
+  insertManualQuote,
+  updateManualQuote,
+  deleteManualQuote,
+  upsertSellerShippingSettings,
+  insertShippingAuditLog,
   insertVerificationApplication,
   updateVerificationReview,
   updateDeliveryPartnerReview,
 } from '@/lib/data/persist';
 import { resolveCityCoords, bestCoords } from '@/lib/geo';
+import { makeOrderNumber } from '@/lib/ids';
 import { notificationAllowed } from '@/lib/notificationPrefs';
 import { computePlatformFee } from '@/lib/fees';
-import type { GoodSaleDBState, User, Product, Order, Message } from '@/lib/types';
+import type {
+  GoodSaleDBState,
+  User,
+  Product,
+  Order,
+  Message,
+  ShippingSettings,
+  ShippingZone,
+  ShippingDistanceTier,
+  ShippingRule,
+  ShippingCourier,
+  ShippingManualQuote,
+  ShippingDeliveryMethod,
+  ShippingBreakdown,
+  DeliveryStatus,
+  AvailableDelivery,
+  DeliveryTrackingView,
+  DeliveryAnalytics,
+} from '@/lib/types';
 import {
   UserRole,
   Profile,
@@ -170,8 +208,10 @@ export async function bootstrapStore(): Promise<void> {
   if (bootstrapped) return;
   if (bootstrapPromise) return bootstrapPromise;
   bootstrapPromise = (async () => {
-    await reloadFromSupabase();
     const client = createClient();
+    // “Keep me signed in” unchecked → a new browser session starts signed out.
+    if (client) await enforceSessionScope(client);
+    await reloadFromSupabase();
     if (client && !realtimeUnsub) {
       let reloadTimer: ReturnType<typeof setTimeout> | null = null;
       realtimeUnsub = subscribeMarketplaceRealtime(client, {
@@ -203,6 +243,25 @@ export async function bootstrapStore(): Promise<void> {
 
 export function isLiveBackendConfigured(): boolean {
   return isSupabaseConfigured();
+}
+
+/** Thin POST wrapper for the delivery APIs — they enforce all server rules. */
+async function postDeliveryApi(path: string, body: Record<string, unknown>) {
+  try {
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const payload = await res.json().catch(() => null);
+    if (!res.ok || !payload?.success) {
+      return { error: (payload?.error as string) || 'Delivery update failed. Please retry.' };
+    }
+    await reloadFromSupabase();
+    return { success: true as const, data: payload.data ?? payload };
+  } catch {
+    return { error: 'Could not reach the delivery service. Please retry.' };
+  }
 }
 
 export const dbOperations = {
@@ -623,7 +682,22 @@ export const dbOperations = {
     hasGoodSaleProtect: boolean = false,
     bankReceipt?: string,
     invoiceTerms?: string,
-    deliveryCoords?: { lat: number; lng: number }
+    deliveryCoords?: { lat: number; lng: number },
+    quantity: number = 1,
+    shipping?: {
+      fee: number;
+      breakdown?: ShippingBreakdown;
+      quoteId?: string;
+      ruleId?: number;
+      zoneId?: number;
+      etaMin?: number;
+      etaMax?: number;
+    },
+    deliveryContact?: {
+      phone?: string;
+      instructions?: string;
+      checkoutGroupId?: string;
+    }
   ) {
     const state = getDBState();
     if (!state.currentUser) return null;
@@ -641,29 +715,26 @@ export const dbOperations = {
       return null;
     }
 
-    const orderNumber = `GS-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
+    const orderNumber = makeOrderNumber();
     const deliveryPin = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digit release pin
 
-    let deliveryFee = 5000;
-    if (deliveryMethod === 'GOODSALE_PARTNER') {
-      if (serviceType === 'EXPRESS') deliveryFee = 10000;
-      else if (serviceType === 'ECONOMY') deliveryFee = 3500;
-      else deliveryFee = 6000; // Standard
-    } else if (deliveryMethod === 'THIRD_PARTY_COURIER') {
-      deliveryFee = 12000;
-    } else if (product.pickupAvailable && deliveryMethod === 'PICKUP') {
-      deliveryFee = 0;
-    }
+    // Delivery price is supplied by the server-authoritative shipping quote. Never
+    // fall back to a hardcoded checkout fee.
+    const deliveryFee = Math.max(0, Math.round(Number(shipping?.fee) || 0));
+
+    // Cart quantity is bounded by the seller's remaining stock at order time.
+    const qty = Math.max(1, Math.min(Math.floor(quantity) || 1, product.quantity));
+    const itemsSubtotal = product.price * qty;
 
     // Per-item platform fee — admin-controlled, OFF by default at launch.
-    const taxAmount = computePlatformFee(state.revenueSettings, product.price).amount;
+    const taxAmount = computePlatformFee(state.revenueSettings, itemsSubtotal).amount;
     const protectFee = hasGoodSaleProtect ? (state.revenueSettings?.goodSaleProtectFee || 1500) : 0;
 
     let pointsDiscount = 0;
     let pointsUsed = 0;
     if (usePoints && state.currentUser.goodPoints > 50) {
       // 1 GoodPoint = 10 Naira
-      pointsUsed = Math.min(state.currentUser.goodPoints, Math.floor(product.price / 10));
+      pointsUsed = Math.min(state.currentUser.goodPoints, Math.floor(itemsSubtotal / 10));
       pointsDiscount = pointsUsed * 10;
       state.currentUser.goodPoints -= pointsUsed;
       const dbUser = state.users.find(u => u.id === state.currentUser!.id);
@@ -678,7 +749,7 @@ export const dbOperations = {
       });
     }
 
-    const totalAmount = product.price + deliveryFee + taxAmount + protectFee - pointsDiscount;
+    const totalAmount = itemsSubtotal + deliveryFee + taxAmount + protectFee - pointsDiscount;
 
     // Determine initial order status based on payment channel chosen
     // Card/escrow start PENDING — Paystack verify/webhook marks PAID_ESCROW
@@ -728,6 +799,9 @@ export const dbOperations = {
       deliveryAddress,
       deliveryCity,
       deliveryState,
+      deliveryPhone: deliveryContact?.phone,
+      deliveryInstructions: deliveryContact?.instructions,
+      checkoutGroupId: deliveryContact?.checkoutGroupId,
       deliveryLat: deliveryCoords?.lat ?? resolveCityCoords(deliveryCity, deliveryState, deliveryAddress).lat,
       deliveryLng: deliveryCoords?.lng ?? resolveCityCoords(deliveryCity, deliveryState, deliveryAddress).lng,
       pickupLat: undefined,
@@ -748,7 +822,13 @@ export const dbOperations = {
       balanceRemaining,
       isBalanceSettled,
       bankTransferReceipt: bankReceipt,
-      invoiceTerms
+      invoiceTerms,
+      shippingBreakdown: shipping?.breakdown,
+      shippingRuleId: shipping?.ruleId ?? shipping?.breakdown?.ruleId,
+      shippingZoneId: shipping?.zoneId ?? shipping?.breakdown?.zoneId,
+      shippingQuoteId: shipping?.quoteId,
+      estimatedDeliveryMinDays: shipping?.etaMin ?? shipping?.breakdown?.etaMinDays,
+      estimatedDeliveryMaxDays: shipping?.etaMax ?? shipping?.breakdown?.etaMaxDays,
     };
 
     // Infer seller pickup from seller profile when available
@@ -836,7 +916,7 @@ export const dbOperations = {
     }
 
     // Reduce product quantity and derive the new availability status.
-    product.quantity -= 1;
+    product.quantity -= qty;
     if (product.quantity <= 0) {
       product.quantity = 0;
       product.stockStatus = 'SOLD';
@@ -953,7 +1033,7 @@ export const dbOperations = {
       try {
         const saved = await insertOrderWithEscrow(client, newOrder, totalAmount);
         const oi = state.orders.findIndex((o) => o.id === newOrder.id);
-        if (oi >= 0) state.orders[oi] = { ...newOrder, id: saved.id };
+        if (oi >= 0) state.orders[oi] = { ...newOrder, ...saved, id: saved.id };
         const ei = state.escrows.findIndex((e) => e.orderId === newOrder.id);
         if (ei >= 0) state.escrows[ei].orderId = saved.id;
         if (deliveryMethod === 'GOODSALE_PARTNER') {
@@ -973,12 +1053,43 @@ export const dbOperations = {
         }
         saveDBState(state);
         void reloadFromSupabase();
-        return { ...newOrder, id: saved.id };
+        return { ...newOrder, ...saved, id: saved.id };
       } catch (err) {
         console.error('Failed to persist order:', err);
       }
     }
     return newOrder;
+  },
+
+  /**
+   * Server re-prices newly created unpaid orders from the stored quote, so a
+   * browser cannot alter shipping fees before payment. Safe to retry.
+   */
+  async applyVerifiedShipping(quoteId: string, orderIds: number[]) {
+    let lastError = 'Could not verify delivery fees. Please retry.';
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const res = await fetch('/api/shipping/apply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ quoteId, orderIds }),
+        });
+        const payload = await res.json().catch(() => null);
+        if (!res.ok || !payload?.success) {
+          lastError = payload?.error || lastError;
+        } else {
+          await reloadFromSupabase();
+          return {
+            success: true as const,
+            orders: (payload.orders || []) as { orderId: number; totalAmount: number; deliveryFee: number }[],
+          };
+        }
+      } catch {
+        lastError = 'Could not reach the shipping verifier. Please retry.';
+      }
+      if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 450));
+    }
+    return { error: lastError };
   },
 
   // Escrow delivery flow
@@ -1059,6 +1170,278 @@ export const dbOperations = {
     }
   },
 
+
+  // ---- Phase 1 delivery & tracking ----
+  /** Validated lifecycle transition (seller readiness, rider steps, admin). */
+  async advanceDelivery(
+    deliveryId: number,
+    status: DeliveryStatus,
+    options?: { note?: string; failureReason?: string }
+  ) {
+    return postDeliveryApi('/api/deliveries/status', {
+      deliveryId,
+      status,
+      note: options?.note,
+      failureReason: options?.failureReason,
+    });
+  },
+
+  /** Seller confirms availability / marks preparing / ready for pickup. */
+  async sellerDeliveryAction(
+    deliveryId: number,
+    action: 'CONFIRM_AVAILABILITY' | 'PREPARING' | 'READY_FOR_PICKUP'
+  ) {
+    return postDeliveryApi('/api/deliveries/seller-action', { deliveryId, action });
+  },
+
+  async assignDeliveryRider(deliveryId: number, riderId: number) {
+    return postDeliveryApi('/api/deliveries/assign', { deliveryId, riderId });
+  },
+
+  async setDeliveryCourier(
+    deliveryId: number,
+    courier: { courierName: string; trackingNumber?: string; estimatedDeliveryDate?: string }
+  ) {
+    return postDeliveryApi('/api/deliveries/assign', {
+      deliveryId,
+      courierName: courier.courierName,
+      trackingNumber: courier.trackingNumber,
+      estimatedDeliveryDate: courier.estimatedDeliveryDate,
+    });
+  },
+
+  async autoAssignDelivery(deliveryId: number) {
+    return postDeliveryApi('/api/deliveries/assign', { deliveryId, auto: true });
+  },
+
+  async updateDeliverySettings(settings: Record<string, unknown>) {
+    return postDeliveryApi('/api/admin/delivery-settings', settings);
+  },
+
+  async fetchDeliveryTracking(deliveryId: number): Promise<{ data?: DeliveryTrackingView; error?: string }> {
+    try {
+      const res = await fetch(`/api/deliveries/tracking?deliveryId=${deliveryId}`, { cache: 'no-store' });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok || !payload?.success) {
+        return { error: (payload?.error as string) || 'Could not load live tracking' };
+      }
+      return { data: payload.data as DeliveryTrackingView };
+    } catch {
+      return { error: 'Could not reach the tracking service. Please retry.' };
+    }
+  },
+
+  async riderSetLocationSharing(sharing: boolean, permission: 'GRANTED' | 'DENIED' | 'UNKNOWN') {
+    return postDeliveryApi('/api/rider/location', { action: 'SHARING', sharing, permission });
+  },
+
+  async riderUpdateLocation(input: {
+    deliveryId: number;
+    lat: number;
+    lng: number;
+    accuracyM?: number;
+    speedKmh?: number;
+    headingDegrees?: number;
+  }): Promise<{ success?: boolean; error?: string; data?: Record<string, unknown> }> {
+    // Deliberately does not reload the whole marketplace on every GPS tick.
+    try {
+      const res = await fetch('/api/rider/location', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'UPDATE', ...input }),
+      });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok || !payload?.success) {
+        return { error: (payload?.error as string) || 'Could not update location' };
+      }
+      return { success: true, data: payload.data };
+    } catch {
+      return { error: 'Could not reach the location service. Please retry.' };
+    }
+  },
+
+  async reportDeliveryFailure(deliveryId: number, reasonCode: string, note: string) {
+    return postDeliveryApi('/api/deliveries/failure', {
+      action: 'REPORT',
+      deliveryId,
+      reasonCode,
+      note,
+    });
+  },
+
+  async resolveDeliveryFailure(
+    failureId: number,
+    resolution: 'REASSIGN' | 'RESCHEDULE' | 'RETURN' | 'CANCEL' | 'REFUND_REQUESTED' | 'RESOLVE',
+    note = '',
+    rescheduleDate?: string
+  ) {
+    return postDeliveryApi('/api/deliveries/failure', {
+      action: 'RESOLVE',
+      failureId,
+      resolution,
+      note,
+      rescheduleDate,
+    });
+  },
+
+  async updateDeliveryReturn(returnId: number, status: 'INITIATED' | 'IN_TRANSIT' | 'RECEIVED' | 'CANCELLED', note = '') {
+    return postDeliveryApi('/api/deliveries/failure', {
+      action: 'RETURN_UPDATE',
+      returnId,
+      status,
+      note,
+    });
+  },
+
+  async adminCourierRequest(body: Record<string, unknown>) {
+    return postDeliveryApi('/api/admin/couriers', body);
+  },
+
+  async fetchDeliveryAnalytics(from?: string, to?: string): Promise<{ data?: DeliveryAnalytics; error?: string }> {
+    try {
+      const query = new URLSearchParams();
+      if (from) query.set('from', from);
+      if (to) query.set('to', to);
+      const res = await fetch(`/api/admin/delivery-analytics?${query.toString()}`, { cache: 'no-store' });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok || !payload?.success) {
+        return { error: (payload?.error as string) || 'Could not load delivery analytics' };
+      }
+      return { data: payload.data as DeliveryAnalytics };
+    } catch {
+      return { error: 'Could not reach the analytics service. Please retry.' };
+    }
+  },
+
+  async setDeliveryInstructions(deliveryId: number, instructions: string) {
+    return postDeliveryApi('/api/deliveries/instructions', { deliveryId, instructions });
+  },
+
+  /** Buyer-only reveal of the one-time delivery confirmation code. */
+  async revealDeliveryCode(deliveryId: number) {
+    return postDeliveryApi('/api/deliveries/confirmation-code', { deliveryId });
+  },
+
+  /** Rider / operator submits the buyer's one-time code. Never releases escrow. */
+  async confirmDeliveryWithCode(deliveryId: number, code: string) {
+    return postDeliveryApi('/api/deliveries/confirm', { deliveryId, code });
+  },
+
+  // ---- Phase 2 rider management ----
+  async riderApply(data: Record<string, unknown>) {
+    return postDeliveryApi('/api/rider/register', data);
+  },
+
+  async riderAvailability(input: {
+    online: boolean;
+    lat?: number;
+    lng?: number;
+    state?: string;
+    city?: string;
+    serviceStates?: string[];
+  }) {
+    return postDeliveryApi('/api/rider/availability', input);
+  },
+
+  async riderRequests(): Promise<{ data?: AvailableDelivery[]; error?: string }> {
+    try {
+      const res = await fetch('/api/rider/requests', { cache: 'no-store' });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok || !payload?.success) {
+        return { error: (payload?.error as string) || 'Could not load delivery requests' };
+      }
+      return { data: (payload.data || []) as AvailableDelivery[] };
+    } catch {
+      return { error: 'Could not reach the delivery service. Please retry.' };
+    }
+  },
+
+  async riderAcceptDelivery(deliveryId: number) {
+    return postDeliveryApi('/api/rider/accept', { deliveryId });
+  },
+
+  async riderRejectDelivery(deliveryId: number, reason?: string) {
+    return postDeliveryApi('/api/rider/reject', { deliveryId, reason });
+  },
+
+  async riderMarkArrival(deliveryId: number, stage: 'PICKUP' | 'DESTINATION') {
+    return postDeliveryApi('/api/rider/arrival', { deliveryId, stage });
+  },
+
+  async riderRecordFailedAttempt(deliveryId: number, reason: string) {
+    return postDeliveryApi('/api/rider/failed-attempt', { deliveryId, reason });
+  },
+
+  async riderContactSeller(deliveryId: number): Promise<{ data?: { full_name: string; phone: string }; error?: string }> {
+    try {
+      const res = await fetch('/api/rider/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deliveryId }),
+      });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok || !payload?.success) {
+        return { error: (payload?.error as string) || 'Could not load seller contact' };
+      }
+      return { data: payload.data };
+    } catch {
+      return { error: 'Could not reach the delivery service. Please retry.' };
+    }
+  },
+
+  async adminReviewRider(riderId: number, status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUSPENDED', reason?: string) {
+    return postDeliveryApi('/api/admin/riders', { action: 'REVIEW', riderId, status, reason });
+  },
+
+  async expireRiderAssignments() {
+    return postDeliveryApi('/api/admin/riders', { action: 'EXPIRE' });
+  },
+
+  async adminSetRiderCommission(riderId: number, percentage: number | null) {
+    return postDeliveryApi('/api/admin/riders', { action: 'COMMISSION', riderId, percentage });
+  },
+
+  async adminSetRiderServiceAreas(
+    riderId: number,
+    states: string[],
+    state?: string,
+    city?: string
+  ) {
+    return postDeliveryApi('/api/admin/riders', {
+      action: 'SERVICE_AREAS',
+      riderId,
+      states,
+      state,
+      city,
+    });
+  },
+
+  async adminSetRiderEarningStatus(
+    earningId: number,
+    status: 'PENDING' | 'APPROVED' | 'PAID' | 'VOID',
+    payoutReference = '',
+    notes = ''
+  ) {
+    return postDeliveryApi('/api/admin/riders', {
+      action: 'EARNING_STATUS',
+      earningId,
+      status,
+      payoutReference,
+      notes,
+    });
+  },
+
+  async adminAdjustRiderEarning(earningId: number, delta: number, reason: string) {
+    return postDeliveryApi('/api/admin/riders', { action: 'ADJUST_EARNING', earningId, delta, reason });
+  },
+
+  async cancelDelivery(deliveryId: number, reason: string) {
+    return postDeliveryApi('/api/deliveries/cancel', { deliveryId, reason, action: 'CANCEL' });
+  },
+
+  async initiateDeliveryReturn(deliveryId: number, reason: string) {
+    return postDeliveryApi('/api/deliveries/cancel', { deliveryId, reason, action: 'RETURN' });
+  },
 
   async openDispute(orderId: number, reason: string) {
     try {
@@ -2221,9 +2604,11 @@ export const dbOperations = {
     const winnerUser = state.users.find((u) => u.id === winnerId);
 
     // Create a pending order for the winner to pay
-    const orderNumber = `GS-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
+    const orderNumber = makeOrderNumber();
     const deliveryPin = Math.floor(100000 + Math.random() * 900000).toString();
-    const deliveryFee = 5000; // standard delivery
+    // Auction orders have no delivery address yet; use the admin-configured
+    // local base as a transparent placeholder until a destination is confirmed.
+    const deliveryFee = Math.max(0, Number(state.shippingSettings?.localBaseFee) || 0);
     const taxAmount = computePlatformFee(state.revenueSettings, winningBid.amount).amount;
     const totalAmount = winningBid.amount + deliveryFee + taxAmount;
 
@@ -2311,6 +2696,26 @@ export const dbOperations = {
     } catch (err) {
       console.error('completeDeliveryJobWithPin failed:', err);
       return { success: false, message: 'Could not reach delivery service.' };
+    }
+  },
+
+  /** Server-authoritative wallet checkout into escrow for a pending buyer order. */
+  async payOrderWithWallet(orderId: number) {
+    try {
+      const res = await fetch('/api/wallet/pay-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId }),
+      });
+      const payload = await res.json();
+      if (!res.ok || !payload.success) {
+        return { success: false, message: payload.error || 'Could not pay with wallet' };
+      }
+      await reloadFromSupabase();
+      return { success: true, data: payload.data };
+    } catch (err) {
+      console.error('payOrderWithWallet failed:', err);
+      return { success: false, message: 'Could not reach wallet service' };
     }
   },
 
@@ -2416,9 +2821,11 @@ export const dbOperations = {
       const activeAmount = message.offerDetails.counterAmount || message.offerDetails.amount;
       const product = state.products.find(p => p.id === message.offerDetails!.productId);
       if (product) {
-        const orderNumber = `GS-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
+        const orderNumber = makeOrderNumber();
         const deliveryPin = Math.floor(100000 + Math.random() * 900000).toString();
-        const deliveryFee = 5000; // standard delivery
+        // Negotiated orders default to the admin-configured local base; the
+        // checkout quote remains authoritative once a destination is provided.
+        const deliveryFee = Math.max(0, Number(state.shippingSettings?.localBaseFee) || 0);
         const taxAmount = computePlatformFee(state.revenueSettings, activeAmount).amount;
         const totalAmount = activeAmount + deliveryFee + taxAmount;
 
@@ -2554,9 +2961,12 @@ export const dbOperations = {
       lastLat: partnerData.lastLat ?? seedLoc.lat,
       lastLng: partnerData.lastLng ?? seedLoc.lng,
       lastLocationAt: new Date().toISOString(),
+      locationPermission: 'UNKNOWN',
+      locationSharing: false,
       nin: partnerData.nin,
       selfieUrl: partnerData.selfieUrl || '',
       licenseUrl: partnerData.licenseUrl,
+      serviceStates: Array.isArray(partnerData.serviceStates) ? partnerData.serviceStates : [],
       // Keep every uploaded file in one reviewable list for the admin.
       documents: [
         ...(Array.isArray(partnerData.documents) ? partnerData.documents : []),
@@ -2619,6 +3029,15 @@ export const dbOperations = {
   },
 
   async approveDeliveryPartner(partnerId: number) {
+    // Phase 2 review RPC handles role, audit, notification and suspension state.
+    const reviewed = await postDeliveryApi('/api/admin/riders', {
+      action: 'REVIEW',
+      riderId: partnerId,
+      status: 'APPROVED',
+    });
+    if (!reviewed.error) {
+      return getDBState().deliveryPartners.find((p) => p.id === partnerId) || null;
+    }
     const state = getDBState();
     const partner = state.deliveryPartners.find(p => p.id === partnerId);
     if (!partner) return null;
@@ -2842,7 +3261,7 @@ export const dbOperations = {
     return job;
   },
 
-  updateDeliveryJobStatus(jobId: number, status: DeliveryJobStatus, currentLoc?: { lat: number; lng: number; speed: number }) {
+  updateDeliveryJobStatus(jobId: number, status: DeliveryJobStatus, currentLoc?: { lat: number; lng: number; speed?: number }) {
     const state = getDBState();
     const job = state.deliveryJobs.find(j => j.id === jobId);
     if (!job) return null;
@@ -2851,7 +3270,8 @@ export const dbOperations = {
     if (currentLoc) {
       job.currentLat = currentLoc.lat;
       job.currentLng = currentLoc.lng;
-      job.currentSpeed = currentLoc.speed;
+      if (currentLoc.speed != null) job.currentSpeed = currentLoc.speed;
+      else delete job.currentSpeed;
     }
 
     let note = '';
@@ -2859,7 +3279,7 @@ export const dbOperations = {
       note = 'Package picked up from seller location.';
     } else if (status === DeliveryJobStatus.IN_TRANSIT) {
       note = currentLoc
-        ? `Package in transit. Live GPS ${currentLoc.lat.toFixed(5)}, ${currentLoc.lng.toFixed(5)} @ ${Math.round(currentLoc.speed)} km/h.`
+        ? `Package in transit. Live GPS ${currentLoc.lat.toFixed(5)}, ${currentLoc.lng.toFixed(5)}${currentLoc.speed != null ? ` @ ${Math.round(currentLoc.speed)} km/h` : ''}.`
         : 'Package is currently in transit to destination.';
     } else if (status === DeliveryJobStatus.ARRIVED) {
       note = 'Dispatch rider arrived at buyer destination.';
@@ -3378,27 +3798,12 @@ export const dbOperations = {
     return { success: true };
   },
 
-  depositToWallet(userId: number, amount: number) {
-    const state = getDBState();
-    let wallet = state.wallets.find(w => w.userId === userId);
-    if (!wallet) {
-      wallet = { id: state.wallets.length + 1, userId, balance: 0 };
-      state.wallets.push(wallet);
-    }
-    wallet.balance += amount;
-
-    state.walletTransactions.push({
-      id: state.walletTransactions.length + 1,
-      walletId: wallet.id,
-      amount,
-      type: 'CREDIT_SALE',
-      description: `Funded wallet via online payment gateway`,
-      status: 'COMPLETED',
-      createdAt: new Date().toISOString(),
-    });
-
-    saveDBState(state);
-    return wallet;
+  /** Wallet funding is server-only and requires verified Paystack payment. */
+  depositToWallet() {
+    return {
+      error:
+        'Wallet funding must be completed through Paystack checkout and server verification. Local credits are disabled.',
+    };
   },
 
   addAuditLog(userId: number, action: string, entityType: string, entityId: number, details: string) {
@@ -3761,6 +4166,13 @@ export const dbOperations = {
   },
 
   async adminRejectDeliveryPartner(partnerId: number, reason?: string) {
+    const reviewed = await postDeliveryApi('/api/admin/riders', {
+      action: 'REVIEW',
+      riderId: partnerId,
+      status: 'REJECTED',
+      reason,
+    });
+    if (!reviewed.error) return { success: true };
     const state = dbOperations.requireAdmin();
     const partner = state.deliveryPartners.find((p) => p.id === partnerId);
     if (!partner) return { error: 'Partner not found' };
@@ -3989,6 +4401,526 @@ export const dbOperations = {
     if (client) {
       await deleteServiceAreaById(client, id);
       await reloadFromSupabase();
+    }
+    return { success: true };
+  },
+
+  // -------------------------------------------------------------------------
+  // Shipping & delivery administration
+  // -------------------------------------------------------------------------
+  async recordShippingAudit(action: string, entityType: string, entityId: number, details: string) {
+    const state = getDBState();
+    const log = {
+      id: Math.max(0, ...state.shippingAuditLogs.map((entry) => entry.id)) + 1,
+      userId: state.currentUser?.id,
+      userName: state.currentUser?.fullName || state.currentUser?.username || 'Administrator',
+      action,
+      entityType,
+      entityId,
+      details,
+      createdAt: new Date().toISOString(),
+    };
+    state.shippingAuditLogs.unshift(log);
+    saveDBState(state);
+    const client = createClient();
+    if (client) {
+      try {
+        await insertShippingAuditLog(client, {
+          userId: log.userId,
+          userName: log.userName,
+          action,
+          entityType,
+          entityId,
+          details,
+        });
+      } catch (err) {
+        console.error('Failed to persist shipping audit log:', err);
+      }
+    }
+    return log;
+  },
+
+  async adminUpdateShippingSettings(settings: ShippingSettings) {
+    const state = dbOperations.requireAdmin();
+    const next: ShippingSettings = { ...state.shippingSettings, ...settings };
+    const numericFields: (keyof ShippingSettings)[] = [
+      'localBaseFee', 'perKmFee', 'minFee', 'maxFee', 'interstateBaseFee',
+      'interstatePerKmFee', 'weightSurchargePerKg', 'oversizeSurcharge',
+      'remoteSurcharge', 'freeShippingThreshold', 'handlingFee',
+      'platformShippingFee', 'economyFee', 'standardFee', 'expressFee',
+      'manualQuoteAboveKm', 'defaultEtaMinDays', 'defaultEtaMaxDays',
+    ];
+    for (const key of numericFields) {
+      const value = Number(next[key]);
+      if (!Number.isFinite(value) || value < 0) return { error: `${String(key)} must be a positive number.` };
+      (next as unknown as Record<string, number>)[String(key)] = value;
+    }
+    if (next.minFee > next.maxFee) return { error: 'Minimum delivery charge cannot exceed the maximum.' };
+    if (next.defaultEtaMaxDays < next.defaultEtaMinDays) return { error: 'Maximum ETA cannot be shorter than the minimum ETA.' };
+
+    state.shippingSettings = next;
+    await dbOperations.recordShippingAudit('ADMIN_UPDATE_SHIPPING_SETTINGS', 'SHIPPING_SETTINGS', 1, `Local base ₦${next.localBaseFee}, interstate ₦${next.interstateBaseFee}, max ₦${next.maxFee}`);
+    saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      try {
+        await upsertShippingSettings(client, next as unknown as Record<string, unknown>);
+        await reloadFromSupabase();
+      } catch (err) {
+        console.error('Failed to save shipping settings:', err);
+        return { error: 'Saved locally but could not reach the server. Try again.' };
+      }
+    }
+    return { success: true };
+  },
+
+  async adminUpsertShippingZone(zone: Omit<ShippingZone, 'id' | 'createdAt'> & { id?: number }) {
+    const state = dbOperations.requireAdmin();
+    const name = zone.name.trim();
+    const zoneState = zone.state.trim();
+    const city = (zone.city || '').trim();
+    if (!name || !zoneState) return { error: 'Zone name and state are required.' };
+    if (zone.surcharge < 0) return { error: 'Zone surcharge cannot be negative.' };
+    const clash = state.shippingZones.find(
+      (z) => z.id !== zone.id && z.name.toLowerCase() === name.toLowerCase() && z.state.toLowerCase() === zoneState.toLowerCase() && (z.city || '').toLowerCase() === city.toLowerCase()
+    );
+    if (clash) return { error: `${name} already exists for this route.` };
+
+    const existing = zone.id ? state.shippingZones.find((z) => z.id === zone.id) : undefined;
+    const row = {
+      name,
+      state: zoneState,
+      city,
+      kind: zone.kind,
+      surcharge: Number(zone.surcharge) || 0,
+      enabled: zone.enabled,
+      priority: Number(zone.priority) || 0,
+      notes: zone.notes || null,
+    };
+    let resolvedId = zone.id;
+
+    const client = createClient();
+    if (client) {
+      try {
+        if (existing) await updateShippingZone(client, existing.id, row);
+        else resolvedId = await insertShippingZone(client, row);
+      } catch (err) {
+        console.error('Failed to save shipping zone:', err);
+        return { error: 'Could not save the zone. Check the route and try again.' };
+      }
+    }
+
+    const now = new Date().toISOString();
+    if (existing) {
+      Object.assign(existing, row, { notes: row.notes || undefined });
+    } else if (resolvedId) {
+      state.shippingZones.push({
+        id: resolvedId,
+        name,
+        state: zoneState,
+        city,
+        kind: zone.kind,
+        surcharge: row.surcharge,
+        enabled: zone.enabled,
+        priority: row.priority,
+        notes: zone.notes,
+        createdAt: now,
+      });
+    }
+    await dbOperations.recordShippingAudit(existing ? 'ADMIN_UPDATE_SHIPPING_ZONE' : 'ADMIN_CREATE_SHIPPING_ZONE', 'SHIPPING_ZONE', resolvedId || 0, `${name} · ${city ? `${city}, ` : ''}${zoneState} (₦${row.surcharge})`);
+    saveDBState(state);
+    if (client) await reloadFromSupabase();
+    return { success: true, id: resolvedId };
+  },
+
+  async adminDeleteShippingZone(id: number) {
+    const state = dbOperations.requireAdmin();
+    const zone = state.shippingZones.find((z) => z.id === id);
+    if (!zone) return { error: 'Zone not found.' };
+    state.shippingZones = state.shippingZones.filter((z) => z.id !== id);
+    const affectedRules = state.shippingRules.filter((rule) => rule.zoneId === id);
+    state.shippingRules = state.shippingRules.map((rule) => rule.zoneId === id ? { ...rule, zoneId: undefined, scope: 'GLOBAL' as const, enabled: false } : rule);
+    await dbOperations.recordShippingAudit('ADMIN_DELETE_SHIPPING_ZONE', 'SHIPPING_ZONE', id, `${zone.name} · ${zone.state}`);
+    saveDBState(state);
+    const client = createClient();
+    if (client) {
+      try {
+        for (const rule of affectedRules) {
+          await updateShippingRule(client, rule.id, { scope: 'GLOBAL', zone_id: null, enabled: false });
+        }
+        await deleteShippingZone(client, id);
+        await reloadFromSupabase();
+      } catch (err) {
+        console.error('Failed to delete shipping zone:', err);
+        return { error: 'Could not delete the zone. Try again.' };
+      }
+    }
+    return { success: true };
+  },
+
+  async adminUpsertShippingTier(tier: Omit<ShippingDistanceTier, 'id'> & { id?: number }) {
+    const state = dbOperations.requireAdmin();
+    const label = tier.label.trim();
+    if (!label) return { error: 'Tier label is required.' };
+    if (!Number.isFinite(tier.minKm) || tier.minKm < 0) return { error: 'Minimum distance must be zero or more.' };
+    if (tier.maxKm != null && tier.maxKm <= tier.minKm) return { error: 'Maximum distance must be greater than the minimum.' };
+    if (!Number.isFinite(tier.fee) || tier.fee < 0) return { error: 'Tier fee must be zero or more.' };
+    if (tier.enabled) {
+      const overlap = state.shippingTiers.find((existingTier) =>
+        existingTier.id !== tier.id &&
+        existingTier.enabled &&
+        tier.minKm < (existingTier.maxKm ?? Number.POSITIVE_INFINITY) &&
+        (tier.maxKm ?? Number.POSITIVE_INFINITY) > existingTier.minKm
+      );
+      if (overlap) return { error: `This range overlaps the "${overlap.label}" tier. Adjust the range or disable the other tier.` };
+    }
+
+    const existing = tier.id ? state.shippingTiers.find((t) => t.id === tier.id) : undefined;
+    const row = {
+      label,
+      min_km: Number(tier.minKm),
+      max_km: tier.maxKm == null ? null : Number(tier.maxKm),
+      fee: Number(tier.fee),
+      enabled: tier.enabled,
+      priority: Number(tier.priority) || 0,
+    };
+    let resolvedId = tier.id;
+    const client = createClient();
+    if (client) {
+      try {
+        if (existing) await updateShippingTier(client, existing.id, row);
+        else resolvedId = await insertShippingTier(client, row);
+      } catch (err) {
+        console.error('Failed to save shipping tier:', err);
+        return { error: 'Could not save the distance tier. Try again.' };
+      }
+    }
+
+    if (existing) {
+      Object.assign(existing, { label, minKm: row.min_km, maxKm: row.max_km ?? undefined, fee: row.fee, enabled: tier.enabled, priority: row.priority });
+    } else if (resolvedId) {
+      state.shippingTiers.push({ id: resolvedId, label, minKm: row.min_km, maxKm: row.max_km ?? undefined, fee: row.fee, enabled: tier.enabled, priority: row.priority });
+    }
+    await dbOperations.recordShippingAudit(existing ? 'ADMIN_UPDATE_SHIPPING_TIER' : 'ADMIN_CREATE_SHIPPING_TIER', 'SHIPPING_TIER', resolvedId || 0, `${label} → ₦${row.fee}`);
+    saveDBState(state);
+    if (client) await reloadFromSupabase();
+    return { success: true, id: resolvedId };
+  },
+
+  async adminDeleteShippingTier(id: number) {
+    const state = dbOperations.requireAdmin();
+    const tier = state.shippingTiers.find((t) => t.id === id);
+    if (!tier) return { error: 'Distance tier not found.' };
+    state.shippingTiers = state.shippingTiers.filter((t) => t.id !== id);
+    await dbOperations.recordShippingAudit('ADMIN_DELETE_SHIPPING_TIER', 'SHIPPING_TIER', id, tier.label);
+    saveDBState(state);
+    const client = createClient();
+    if (client) {
+      try {
+        await deleteShippingTier(client, id);
+        await reloadFromSupabase();
+      } catch (err) {
+        console.error('Failed to delete shipping tier:', err);
+        return { error: 'Could not delete the distance tier. Try again.' };
+      }
+    }
+    return { success: true };
+  },
+
+  async adminUpsertShippingRule(rule: Omit<ShippingRule, 'id' | 'createdAt'> & { id?: number }) {
+    const state = dbOperations.requireAdmin();
+    const name = rule.name.trim();
+    if (!name) return { error: 'Rule name is required.' };
+    if (rule.scope === 'ZONE' && !rule.zoneId) return { error: 'Select a delivery zone for a zone rule.' };
+    if (rule.scope === 'STATE' && !rule.state?.trim()) return { error: 'A state is required for a state rule.' };
+    if (rule.scope === 'CITY' && (!rule.city?.trim() || !rule.state?.trim())) return { error: 'State and city are required for a city rule.' };
+    if (rule.minFee != null && rule.maxFee != null && rule.maxFee < rule.minFee) return { error: 'Rule minimum fee cannot exceed its maximum.' };
+    for (const key of ['baseFee', 'perKmFee', 'minFee', 'maxFee', 'weightPerKg', 'oversizeSurcharge', 'remoteSurcharge', 'freeShippingThreshold', 'handlingFee', 'platformFee'] as const) {
+      const value = rule[key];
+      if (value != null && (!Number.isFinite(Number(value)) || Number(value) < 0)) return { error: `${key} must be zero or more.` };
+    }
+
+    const existing = rule.id ? state.shippingRules.find((r) => r.id === rule.id) : undefined;
+    const row = {
+      name,
+      enabled: rule.enabled,
+      priority: Number(rule.priority) || 0,
+      scope: rule.scope,
+      zone_id: rule.zoneId ?? null,
+      state: rule.state?.trim() || '',
+      city: rule.city?.trim() || '',
+      origin_state: rule.originState?.trim() || '',
+      origin_city: rule.originCity?.trim() || '',
+      delivery_method: rule.deliveryMethod,
+      service_type: rule.serviceType,
+      base_fee: rule.baseFee ?? null,
+      per_km_fee: rule.perKmFee ?? null,
+      min_fee: rule.minFee ?? null,
+      max_fee: rule.maxFee ?? null,
+      weight_per_kg: rule.weightPerKg ?? null,
+      oversize_surcharge: rule.oversizeSurcharge ?? null,
+      remote_surcharge: rule.remoteSurcharge ?? null,
+      free_shipping_threshold: rule.freeShippingThreshold ?? null,
+      handling_fee: rule.handlingFee ?? null,
+      platform_fee: rule.platformFee ?? null,
+      seller_sponsored: rule.sellerSponsored,
+      platform_sponsored: rule.platformSponsored,
+      eta_min_days: rule.etaMinDays ?? null,
+      eta_max_days: rule.etaMaxDays ?? null,
+      manual_quote: rule.manualQuote,
+      notes: rule.notes || null,
+    };
+    let resolvedId = rule.id;
+    const client = createClient();
+    if (client) {
+      try {
+        if (existing) await updateShippingRule(client, existing.id, row);
+        else resolvedId = await insertShippingRule(client, row);
+      } catch (err) {
+        console.error('Failed to save shipping rule:', err);
+        return { error: 'Could not save the pricing rule. Check for a duplicate name or invalid field.' };
+      }
+    }
+
+    if (existing) {
+      Object.assign(existing, rule, { name, id: existing.id });
+    } else if (resolvedId) {
+      state.shippingRules.push({ ...rule, id: resolvedId, name, createdAt: new Date().toISOString() });
+    }
+    await dbOperations.recordShippingAudit(existing ? 'ADMIN_UPDATE_SHIPPING_RULE' : 'ADMIN_CREATE_SHIPPING_RULE', 'SHIPPING_RULE', resolvedId || 0, `${name} · priority ${row.priority} · ${rule.scope}`);
+    saveDBState(state);
+    if (client) await reloadFromSupabase();
+    return { success: true, id: resolvedId };
+  },
+
+  async adminToggleShippingRule(id: number, enabled: boolean) {
+    const state = dbOperations.requireAdmin();
+    const rule = state.shippingRules.find((r) => r.id === id);
+    if (!rule) return { error: 'Rule not found.' };
+    rule.enabled = enabled;
+    await dbOperations.recordShippingAudit('ADMIN_TOGGLE_SHIPPING_RULE', 'SHIPPING_RULE', id, `${rule.name} ${enabled ? 'enabled' : 'disabled'}`);
+    saveDBState(state);
+    withClient(async (client) => {
+      await updateShippingRule(client, id, { enabled });
+      await reloadFromSupabase();
+    });
+    return { success: true };
+  },
+
+  async adminDeleteShippingRule(id: number) {
+    const state = dbOperations.requireAdmin();
+    const rule = state.shippingRules.find((r) => r.id === id);
+    if (!rule) return { error: 'Rule not found.' };
+    state.shippingRules = state.shippingRules.filter((r) => r.id !== id);
+    await dbOperations.recordShippingAudit('ADMIN_DELETE_SHIPPING_RULE', 'SHIPPING_RULE', id, rule.name);
+    saveDBState(state);
+    const client = createClient();
+    if (client) {
+      try {
+        await deleteShippingRule(client, id);
+        await reloadFromSupabase();
+      } catch (err) {
+        console.error('Failed to delete shipping rule:', err);
+        return { error: 'Could not delete the rule. Try again.' };
+      }
+    }
+    return { success: true };
+  },
+
+  async adminUpsertShippingCourier(courier: Omit<ShippingCourier, 'id' | 'createdAt'> & { id?: number }) {
+    const state = dbOperations.requireAdmin();
+    const name = courier.name.trim();
+    const code = courier.code.trim().toUpperCase();
+    if (!name || !code) return { error: 'Courier name and code are required.' };
+    if (courier.baseFee < 0 || courier.perKmFee < 0) return { error: 'Courier fees cannot be negative.' };
+    if (courier.expressMultiplier < 1) return { error: 'Express multiplier must be at least 1.' };
+    if (state.shippingCouriers.some((c) => c.id !== courier.id && c.code.toUpperCase() === code)) return { error: 'Courier code already exists.' };
+
+    const existing = courier.id ? state.shippingCouriers.find((c) => c.id === courier.id) : undefined;
+    const row = {
+      name,
+      code,
+      mode: courier.mode,
+      enabled: courier.enabled,
+      base_fee: Number(courier.baseFee) || 0,
+      per_km_fee: Number(courier.perKmFee) || 0,
+      express_multiplier: Number(courier.expressMultiplier) || 1,
+      api_provider: courier.apiProvider || null,
+      notes: courier.notes || null,
+    };
+    let resolvedId = courier.id;
+    const client = createClient();
+    if (client) {
+      try {
+        if (existing) await updateShippingCourier(client, existing.id, row);
+        else resolvedId = await insertShippingCourier(client, row);
+      } catch (err) {
+        console.error('Failed to save courier:', err);
+        return { error: 'Could not save the courier. Check the code and try again.' };
+      }
+    }
+    if (existing) Object.assign(existing, courier, { name, code });
+    else if (resolvedId) state.shippingCouriers.push({ ...courier, id: resolvedId, name, code, createdAt: new Date().toISOString() });
+    await dbOperations.recordShippingAudit(existing ? 'ADMIN_UPDATE_COURIER' : 'ADMIN_CREATE_COURIER', 'SHIPPING_COURIER', resolvedId || 0, `${name} (${code})`);
+    saveDBState(state);
+    if (client) await reloadFromSupabase();
+    return { success: true, id: resolvedId };
+  },
+
+  async adminDeleteShippingCourier(id: number) {
+    const state = dbOperations.requireAdmin();
+    const courier = state.shippingCouriers.find((c) => c.id === id);
+    if (!courier) return { error: 'Courier not found.' };
+    state.shippingCouriers = state.shippingCouriers.filter((c) => c.id !== id);
+    await dbOperations.recordShippingAudit('ADMIN_DELETE_COURIER', 'SHIPPING_COURIER', id, courier.name);
+    saveDBState(state);
+    const client = createClient();
+    if (client) {
+      try {
+        await deleteShippingCourier(client, id);
+        await reloadFromSupabase();
+      } catch (err) {
+        console.error('Failed to delete courier:', err);
+        return { error: 'Could not delete the courier. Try again.' };
+      }
+    }
+    return { success: true };
+  },
+
+  async adminUpsertManualShippingQuote(quote: Omit<ShippingManualQuote, 'id' | 'createdAt'> & { id?: number }) {
+    const state = dbOperations.requireAdmin();
+    if (!quote.sellerId) return { error: 'Select a seller.' };
+    if (!quote.state?.trim()) return { error: 'Destination state is required.' };
+    if (!Number.isFinite(quote.amount) || quote.amount < 0) return { error: 'Quote amount must be zero or more.' };
+    if (quote.etaMaxDays < quote.etaMinDays) return { error: 'Maximum ETA cannot be shorter than the minimum ETA.' };
+    if (!state.users.some((u) => u.id === quote.sellerId)) return { error: 'Seller not found.' };
+    const existing = quote.id ? state.shippingManualQuotes.find((q) => q.id === quote.id) : undefined;
+    const row = {
+      seller_id: quote.sellerId,
+      state: quote.state.trim(),
+      city: quote.city?.trim() || '',
+      amount: Number(quote.amount),
+      eta_min_days: Number(quote.etaMinDays) || 0,
+      eta_max_days: Number(quote.etaMaxDays) || 0,
+      notes: quote.notes || null,
+      active: quote.active,
+      expires_at: quote.expiresAt || null,
+    };
+    let resolvedId = quote.id;
+    const client = createClient();
+    if (client) {
+      try {
+        if (existing) await updateManualQuote(client, existing.id, row);
+        else resolvedId = await insertManualQuote(client, row);
+      } catch (err) {
+        console.error('Failed to save manual quote:', err);
+        return { error: 'Could not save the manual quotation. Try again.' };
+      }
+    }
+    if (existing) Object.assign(existing, quote);
+    else if (resolvedId) state.shippingManualQuotes.push({ ...quote, id: resolvedId, createdAt: new Date().toISOString() });
+    await dbOperations.recordShippingAudit(existing ? 'ADMIN_UPDATE_MANUAL_QUOTE' : 'ADMIN_CREATE_MANUAL_QUOTE', 'SHIPPING_MANUAL_QUOTE', resolvedId || 0, `Seller #${quote.sellerId} → ${quote.city || quote.state} ₦${quote.amount}`);
+    saveDBState(state);
+    if (client) await reloadFromSupabase();
+    return { success: true, id: resolvedId };
+  },
+
+  async adminDeleteManualShippingQuote(id: number) {
+    const state = dbOperations.requireAdmin();
+    const quote = state.shippingManualQuotes.find((q) => q.id === id);
+    if (!quote) return { error: 'Manual quotation not found.' };
+    state.shippingManualQuotes = state.shippingManualQuotes.filter((q) => q.id !== id);
+    await dbOperations.recordShippingAudit('ADMIN_DELETE_MANUAL_QUOTE', 'SHIPPING_MANUAL_QUOTE', id, `Seller #${quote.sellerId}`);
+    saveDBState(state);
+    const client = createClient();
+    if (client) {
+      try {
+        await deleteManualQuote(client, id);
+        await reloadFromSupabase();
+      } catch (err) {
+        console.error('Failed to delete manual quote:', err);
+        return { error: 'Could not delete the quotation. Try again.' };
+      }
+    }
+    return { success: true };
+  },
+
+  /** Seller-owned pickup and delivery capability settings. */
+  async updateSellerShippingSettings(input: {
+    pickupAddress: string;
+    pickupCity: string;
+    pickupState: string;
+    pickupLat?: number;
+    pickupLng?: number;
+    handlingDays: number;
+    localEnabled: boolean;
+    interstateEnabled: boolean;
+    pickupEnabled: boolean;
+    freeShippingThreshold?: number;
+    defaultWeightKg: number;
+  }) {
+    const state = getDBState();
+    const user = state.currentUser;
+    if (!user) return { error: 'Sign in to update delivery settings.' };
+    if (!input.pickupAddress.trim() || !input.pickupCity.trim() || !input.pickupState.trim()) {
+      return { error: 'Pickup address, city and state are required.' };
+    }
+    if (!Number.isFinite(input.handlingDays) || input.handlingDays < 0 || input.handlingDays > 60) {
+      return { error: 'Handling time must be between 0 and 60 days.' };
+    }
+    if (!Number.isFinite(input.defaultWeightKg) || input.defaultWeightKg <= 0) {
+      return { error: 'Default package weight must be greater than zero.' };
+    }
+    if (input.freeShippingThreshold != null && input.freeShippingThreshold < 0) {
+      return { error: 'Free-shipping threshold cannot be negative.' };
+    }
+    const latOk = input.pickupLat == null || (Number.isFinite(input.pickupLat) && Math.abs(input.pickupLat) <= 90);
+    const lngOk = input.pickupLng == null || (Number.isFinite(input.pickupLng) && Math.abs(input.pickupLng) <= 180);
+    if (!latOk || !lngOk) return { error: 'Pickup coordinates are invalid.' };
+
+    const next = {
+      sellerId: user.id,
+      pickupAddress: input.pickupAddress.trim(),
+      pickupCity: input.pickupCity.trim(),
+      pickupState: input.pickupState.trim(),
+      pickupLat: input.pickupLat,
+      pickupLng: input.pickupLng,
+      handlingDays: Number(input.handlingDays),
+      localEnabled: input.localEnabled,
+      interstateEnabled: input.interstateEnabled,
+      pickupEnabled: input.pickupEnabled,
+      freeShippingThreshold: input.freeShippingThreshold,
+      defaultWeightKg: Number(input.defaultWeightKg),
+      updatedAt: new Date().toISOString(),
+    };
+    const index = state.sellerShippingSettings.findIndex((setting) => setting.sellerId === user.id);
+    if (index >= 0) state.sellerShippingSettings[index] = next;
+    else state.sellerShippingSettings.push(next);
+    saveDBState(state);
+
+    const client = createClient();
+    if (client) {
+      try {
+        await upsertSellerShippingSettings(client, {
+          seller_id: next.sellerId,
+          pickup_address: next.pickupAddress,
+          pickup_city: next.pickupCity,
+          pickup_state: next.pickupState,
+          pickup_lat: next.pickupLat ?? null,
+          pickup_lng: next.pickupLng ?? null,
+          handling_days: next.handlingDays,
+          local_enabled: next.localEnabled,
+          interstate_enabled: next.interstateEnabled,
+          pickup_enabled: next.pickupEnabled,
+          free_shipping_threshold: next.freeShippingThreshold ?? null,
+          default_weight_kg: next.defaultWeightKg,
+        });
+        await reloadFromSupabase();
+      } catch (err) {
+        console.error('Failed to save seller shipping settings:', err);
+        return { error: 'Saved locally but could not reach the server. Try again.' };
+      }
     }
     return { success: true };
   },

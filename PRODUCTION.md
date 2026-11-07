@@ -34,6 +34,8 @@
    - Webhook URL: `https://YOUR_DOMAIN/api/payments/webhook`
    - Set `PAYSTACK_WEBHOOK_SECRET` (or reuse secret key)
    - Enable **Transfers** + fund balance for seller payouts
+   - Apply `supabase/migrations/025_wallet_ledger.sql`. Wallet funding, wallet checkout, seller earnings, payout state, refunds-to-wallet and the admin finance ledger depend on it. Without Paystack keys the UI stays usable for viewing/history but funding and payouts are explicitly unavailable.
+   - **Regulatory note:** wallet balances are marketplace ledger entries settled through Paystack. Do not launch stored-value/wallet functionality until GoodSale's payment partner and Nigerian regulatory counsel confirm the structure. GoodSale must not hold customer funds in its own bank account without an authorised arrangement.
 
 3. **App URL**
    - `NEXT_PUBLIC_APP_URL=https://YOUR_DOMAIN`
@@ -42,9 +44,24 @@
 4. **Google Maps** (SafeMeet + live GoodDispatch)
    - `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` with Maps JavaScript, Embed, Geocoding APIs
 
-5. **Optional**
+5. **Delivery logistics (Phase 3, all optional)**
+   - `GOOGLE_MAPS_SERVER_API_KEY` (or reuse `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`) with **Distance Matrix API** enabled — real road distance/ETA. Without it the app returns a clearly-labelled straight-line estimate and never invents a route.
+   - `COURIER_API_BASE_URL`, `COURIER_API_KEY`, `COURIER_PROVIDER_CODE` — generic server-side courier adapter. Only works when the provider's REST contract matches the documented shipment/tracking shape.
+   - `COURIER_CREATE_PATH` (default `/shipments`), `COURIER_TRACKING_PATH` (default `/tracking/{trackingNumber}`), `COURIER_WEBHOOK_SECRET` — adapter paths and HMAC webhook secret. Without a secret the webhook endpoint returns 503; without credentials the admin UI keeps the manual courier fallback.
+   - `DELIVERY_CRON_SECRET` — bearer/`x-cron-secret` secret for `POST /api/internal/delivery-jobs`. Schedule that endpoint every few minutes to expire offers, reassign riders and process the notification outbox. Returns 503 when unset.
+   - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` — optional SMS delivery notifications. Email uses the existing `RESEND_API_KEY` + `EMAIL_FROM`. Unconfigured channels stay pending; in-app notifications always work.
+
+6. **Premium checkout + shipment tracking (Phase 4)**
+   - Apply `supabase/migrations/022_premium_tracking.sql` (included in `npm run migrate`). It adds saved buyer addresses, checkout groups, date-based order numbers, unique `GSD-` shipment IDs and the public tracking lookup RPC.
+   - Apply `supabase/migrations/023_onboarding.sql` (included in `npm run migrate`). It adds buyer onboarding state (purpose, location, notification choices), seller store details and the resume/backfill rules used by `/onboarding` and `/seller/onboarding`. Without it those screens cannot save progress.
+   - Apply `supabase/migrations/024_seller_verification.sql` (included in `npm run migrate`). It adds the server-authoritative seller verification lifecycle, the private `verification_documents` records, the `verification_events` audit trail, `profiles.verification_status` (the public badge source) and the `seller_save_verification` / `admin_verification_action` / `seller_public_verification` RPCs. **Confirm the `government-ids` bucket is private** (Storage → `government-ids` → Public: off) and that `SUPABASE_SERVICE_ROLE_KEY` is set server-side only — uploads and signed review links depend on it. Without this migration the seller Verification Center and the admin queue return a clear “migration 024 required” error instead of faking a badge.
+   - `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` is required for the interactive tracking map and markers. Without it the map falls back to an embed preview; live coordinates are still shown only from real rider updates.
+   - `GOOGLE_MAPS_SERVER_API_KEY` enables real road distance and provider ETA. Without it distances remain explicitly labelled straight-line estimates.
+   - Public tracking is `/track`; the authenticated participant view exposes addresses, rider identity and live GPS only after the buyer/seller/rider/admin authorization check. No map key is needed for the timeline, but map drawing needs the key above.
+
+7. **Optional**
    - `GEMINI_API_KEY` — AI listing / search tips
-   - `RESEND_API_KEY` + `EMAIL_FROM` — dispute / payout emails
+   - `RESEND_API_KEY` + `EMAIL_FROM` — dispute / payout and delivery emails
    - `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` — distributed rate limits
    - `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` — error capture when SDK wired
 
@@ -66,6 +83,8 @@ See **`.env.example`** for the complete variable list.
 | Courier PIN complete-delivery-job API | Done |
 | Disputes open/resolve + optional email | Done |
 | Seller withdrawals + admin Paystack Transfer | Done |
+| Append-only wallet ledger, Paystack funding, wallet checkout, payout webhook lifecycle, refunds-to-wallet, admin finance controls | Done (migration 025) |
+| Append-only wallet ledger, Paystack funding, wallet checkout, payout webhook lifecycle, refunds-to-wallet, admin finance controls | Done (migration 025) |
 | Admin force escrow API | Done |
 | Orders UPDATE locked (RPC-only status changes) | Done (migration 005) |
 | `credit_wallet` / `mark_order_paid` service_role only | Done (migration 005) |

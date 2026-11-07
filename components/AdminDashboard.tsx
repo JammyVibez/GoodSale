@@ -3,11 +3,11 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  ShieldAlert, ShieldCheck, FileCheck, CheckCircle2, XCircle, Scale, DollarSign,
+  ShieldAlert, ShieldCheck, CheckCircle2, Scale, DollarSign,
   Wallet, ClipboardList, Settings, Award, Sparkles, Percent, Activity, Shield,
   CreditCard, Truck, FileText, Coins, Users, Package, Search, Ban, RotateCcw,
   ExternalLink, AlertTriangle, Flag, MapPin, Plus, Trash2, ChevronDown, ChevronUp,
-  Building2, Image as ImageIcon, MapPinned, Pencil, Film,
+  Image as ImageIcon, MapPinned, Pencil, Film,
 } from 'lucide-react';
 import {
   dbOperations, UserRole, VerificationStatus, OrderStatus, useDBState, ReportStatus,
@@ -20,6 +20,11 @@ import AnnouncementStudio from './AnnouncementStudio';
 import SeedManager from './SeedManager';
 import AdminProductEditor from './AdminProductEditor';
 import AdminTrustSafetyPanel from './AdminTrustSafetyPanel';
+import AdminVerificationPanel from './admin/AdminVerificationPanel';
+import AdminShippingPanel from './AdminShippingPanel';
+import AdminDeliveryPanel from './AdminDeliveryPanel';
+import AdminRiderPanel from './AdminRiderPanel';
+import AdminFinancePanel from './admin/AdminFinancePanel';
 import { SmartImage } from './ui/SmartImage';
 
 type Tab =
@@ -28,10 +33,14 @@ type Tab =
   | 'users'
   | 'products'
   | 'orders_escrow'
+  | 'finance'
   | 'disputes'
   | 'dispatch'
+  | 'riders'
+  | 'deliveries'
   | 'reports'
   | 'coverage'
+  | 'shipping'
   | 'seeded'
   | 'settings';
 
@@ -71,15 +80,11 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const [verFilter, setVerFilter] = useState<'ALL' | VerificationStatus>('ALL');
-  const [verNotes, setVerNotes] = useState<Record<number, string>>({});
-  const [verTargetRole, setVerTargetRole] = useState<Record<number, UserRole>>({});
   const [userSearch, setUserSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
   const [openProduct, setOpenProduct] = useState<number | null>(null);
 
-  // Document review (verification applications & rider files)
-  const [expandedVer, setExpandedVer] = useState<number | null>(null);
+  // Rider document review
   const [expandedPartner, setExpandedPartner] = useState<number | null>(null);
   const [partnerReasons, setPartnerReasons] = useState<Record<number, string>>({});
 
@@ -166,9 +171,6 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
     .filter((e) => !e.isReleased && !e.isRefunded)
     .reduce((acc, e) => acc + e.heldAmount, 0);
 
-  const filteredVerifications = (db.verifications || []).filter(
-    (v) => verFilter === 'ALL' || v.status === verFilter
-  );
   const filteredUsers = (db.users || []).filter((u) => {
     const q = userSearch.trim().toLowerCase();
     if (!q) return true;
@@ -229,10 +231,14 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
     { id: 'users', label: 'Users' },
     { id: 'products', label: 'Products' },
     { id: 'orders_escrow', label: 'Orders / Escrow' },
+    { id: 'finance', label: 'Finance & Wallet' },
     { id: 'disputes', label: 'Disputes', count: openDisputes.length },
-    { id: 'dispatch', label: 'Dispatch', count: pendingPartners.length },
+    { id: 'riders', label: 'Rider Management', count: pendingPartners.length },
+    { id: 'dispatch', label: 'Partner Applications' },
+    { id: 'deliveries', label: 'Delivery Management' },
     { id: 'reports', label: 'Reports', count: openReports.length },
     { id: 'coverage', label: 'Coverage' },
+    { id: 'shipping', label: 'Shipping & Delivery' },
     { id: 'seeded', label: 'Seed data' },
     { id: 'settings', label: 'Settings' },
   ];
@@ -310,162 +316,8 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
         {/* Trust, safety, support and moderation */}
         {activeTab === 'trust' && <AdminTrustSafetyPanel />}
 
-        {/* Verifications */}
-        {activeTab === 'verifications' && (
-          <div className={`${card} overflow-hidden`}>
-            <div className="p-4 border-b border-ink-200 dark:border-ink-800 flex flex-wrap items-center justify-between gap-3">
-              <span className="font-sans font-bold text-sm text-ink-900 dark:text-white flex items-center gap-2">
-                <FileCheck className="w-4 h-4 text-jade-500" /> Identity Verifications
-              </span>
-              <div className="flex gap-1">
-                {(['ALL', VerificationStatus.PENDING, VerificationStatus.APPROVED, VerificationStatus.REJECTED] as const).map((f) => (
-                  <button key={f} onClick={() => setVerFilter(f)} className={`px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer ${verFilter === f ? 'bg-jade-500 text-white' : 'bg-ink-100 dark:bg-ink-800 text-ink-500'}`}>
-                    {f}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {filteredVerifications.length === 0 ? (
-              <div className="p-12 text-center text-xs text-ink-400">No verifications in this filter.</div>
-            ) : (
-              <div className="divide-y divide-ink-100 dark:divide-ink-800">
-                {filteredVerifications.map((v) => {
-                  const applicant = (db.users || []).find((u) => u.id === v.userId);
-                  const notes = verNotes[v.id] ?? '';
-                  const target = verTargetRole[v.id] ?? (
-                    applicant?.role === UserRole.BUSINESS || applicant?.role === UserRole.VERIFIED_BUSINESS
-                      ? UserRole.VERIFIED_BUSINESS
-                      : UserRole.VERIFIED_SELLER
-                  );
-                  return (
-                    <div key={v.id} className="p-4 flex flex-col lg:flex-row gap-4 justify-between text-xs">
-                      <div className="space-y-1.5 min-w-0">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="font-bold text-sm text-ink-950 dark:text-white">{v.fullName}</span>
-                          <span className="px-1.5 py-0.5 bg-ink-100 dark:bg-ink-800 text-ink-500 rounded text-xs font-bold">@{applicant?.username || 'user'}</span>
-                          <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${statusBadge(v.status)}`}>{v.status}</span>
-                        </div>
-                        <p className="text-ink-400 font-mono">#{v.id} · {v.documentType} ({v.documentNumber})</p>
-
-                        {v.applicationKind && (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-jade-500/10 px-1.5 py-0.5 text-xs font-bold text-jade-600 dark:text-jade-400">
-                            {v.applicationKind === 'BUSINESS' ? <Building2 className="w-3 h-3" /> : <FileCheck className="w-3 h-3" />}
-                            {v.applicationKind} application
-                          </span>
-                        )}
-
-                        <button
-                          onClick={() => setExpandedVer(expandedVer === v.id ? null : v.id)}
-                          className="flex items-center gap-1 text-xs font-bold text-jade-500 hover:underline cursor-pointer"
-                        >
-                          {expandedVer === v.id ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                          {expandedVer === v.id ? 'Hide full file' : 'View full file & documents'}
-                        </button>
-
-                        {expandedVer === v.id && (
-                          <div className="mt-2 space-y-3 rounded-xl border border-ink-200 bg-ink-50/60 p-3 dark:border-ink-800 dark:bg-ink-950/40">
-                            <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                              {[
-                                ['Applicant', applicant?.fullName || `User ${v.userId}`],
-                                ['Email', applicant?.email || '—'],
-                                ['Phone', applicant?.phoneNumber || '—'],
-                                ['Current role', applicant?.role || '—'],
-                                ['Legal name', v.fullName],
-                                ['Document', `${v.documentType} · ${v.documentNumber}`],
-                                ...(v.businessName ? [['Business name', v.businessName]] : []),
-                                ...(v.businessAddress ? [['Business address', v.businessAddress]] : []),
-                                ['Submitted', new Date(v.createdAt).toLocaleString()],
-                                ...(v.reviewedAt
-                                  ? [['Reviewed', `${new Date(v.reviewedAt).toLocaleString()} by admin #${v.reviewedBy ?? '—'}`]]
-                                  : []),
-                              ].map(([label, value]) => (
-                                <div key={label} className="min-w-0">
-                                  <dt className="text-xs font-bold text-ink-400">{label}</dt>
-                                  <dd className="truncate text-xs text-ink-800 dark:text-ink-200">{String(value)}</dd>
-                                </div>
-                              ))}
-                            </dl>
-
-                            {/* Every uploaded file, previewable before approval */}
-                            <div className="space-y-2">
-                              <p className="text-xs font-bold text-ink-500">Uploaded documents</p>
-                              {(() => {
-                                const docs = [
-                                  ...(v.documentImageUrl ? [{ label: `${v.documentType} document`, url: v.documentImageUrl }] : []),
-                                  ...(v.selfieImageUrl ? [{ label: 'Selfie / passport photo', url: v.selfieImageUrl }] : []),
-                                  ...(v.proofOfAddressUrl ? [{ label: 'Proof of address', url: v.proofOfAddressUrl }] : []),
-                                  ...(v.documents || []),
-                                ];
-                                return docs.length === 0 ? (
-                                  <p className="text-xs text-ink-400">No files were uploaded with this application.</p>
-                                ) : (
-                                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                                    {docs.map((doc, i) => (
-                                      <a
-                                        key={`${doc.label}-${i}`}
-                                        href={doc.url || undefined}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="group overflow-hidden rounded-lg border border-ink-200 bg-white dark:border-ink-800 dark:bg-ink-900"
-                                      >
-                                        {doc.url ? (
-                                          // eslint-disable-next-line @next/next/no-img-element
-                                          <img src={doc.url} alt={doc.label} className="h-24 w-full object-cover transition-transform group-hover:scale-105" />
-                                        ) : (
-                                          <div className="grid h-24 place-items-center bg-ink-100 text-ink-400 dark:bg-ink-800">
-                                            <ImageIcon className="w-5 h-5" />
-                                          </div>
-                                        )}
-                                        <span className="block truncate px-2 py-1.5 text-xs font-semibold text-ink-600 dark:text-ink-300">
-                                          {doc.label}
-                                        </span>
-                                      </a>
-                                    ))}
-                                  </div>
-                                );
-                              })()}
-                            </div>
-
-                            {v.adminNotes && <p className="text-xs italic text-ink-500">Prev. notes: {v.adminNotes}</p>}
-                            {v.rejectionReason && (
-                              <p className="text-xs italic text-ink-500">Rejection reason: {v.rejectionReason}</p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      {v.status === VerificationStatus.PENDING && (
-                        <div className="flex flex-col gap-2 min-w-[220px]">
-                          <select value={target} onChange={(e) => setVerTargetRole((s) => ({ ...s, [v.id]: e.target.value as UserRole }))} className={inp}>
-                            <option value={UserRole.VERIFIED_SELLER}>VERIFIED_SELLER</option>
-                            <option value={UserRole.VERIFIED_BUSINESS}>VERIFIED_BUSINESS</option>
-                          </select>
-                          <input placeholder="Optional admin notes" value={notes} onChange={(e) => setVerNotes((s) => ({ ...s, [v.id]: e.target.value }))} className={inp} />
-                          <div className="flex gap-2">
-                            <button disabled={busy} className={btnOk} onClick={() => run(async () => {
-                              await dbOperations.handleVerificationApproval(
-                                v.id,
-                                VerificationStatus.APPROVED,
-                                notes || 'Your verification is approved successfully by admin.',
-                                target
-                              );
-                            }, 'Verification approved')}>
-                              <ShieldCheck className="w-3.5 h-3.5" /> Approve
-                            </button>
-                            <button disabled={busy} className={btnNo} onClick={() => run(async () => {
-                              await dbOperations.handleVerificationApproval(v.id, VerificationStatus.REJECTED, notes || 'Documents rejected. Please re-upload valid IDs.');
-                            }, 'Verification rejected')}>
-                              <XCircle className="w-3.5 h-3.5" /> Reject
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
+        {/* Seller verification management — server-authoritative review queue */}
+        {activeTab === 'verifications' && <AdminVerificationPanel />}
 
         {/* Users */}
         {activeTab === 'users' && (
@@ -572,6 +424,9 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
             </div>
           </div>
         )}
+
+        {/* Wallet ledger, funding, payouts, refunds and audited adjustments */}
+        {activeTab === 'finance' && <AdminFinancePanel />}
 
         {/* Orders / Escrow */}
         {activeTab === 'orders_escrow' && (
@@ -1085,6 +940,15 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
             </div>
           </div>
         )}
+
+        {/* Phase 2 rider verification, assignments, service areas and earnings */}
+        {activeTab === 'riders' && <AdminRiderPanel />}
+
+        {/* Canonical delivery records, rider/courier assignment and tracking */}
+        {activeTab === 'deliveries' && <AdminDeliveryPanel />}
+
+        {/* Shipping pricing, zones, couriers and audit */}
+        {activeTab === 'shipping' && <AdminShippingPanel />}
 
         {/* Settings */}
         {/* Seeded launch catalog — create and manage the demo/launch sellers */}

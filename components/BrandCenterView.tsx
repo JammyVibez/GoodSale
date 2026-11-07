@@ -255,9 +255,14 @@ export default function BrandCenterView({ onBack }: BrandCenterViewProps) {
                 <div className="p-4 bg-ink-50 dark:bg-ink-950 border border-ink-100 dark:border-ink-800 rounded-2xl space-y-3">
                   <div className="border-b border-ink-200/50 dark:border-ink-800/50 pb-2">
                     <span className="text-xs font-bold text-ink-400">Display type</span>
-                    <h2 className="font-sans font-semibold text-xl sm:text-2xl text-ink-950 dark:text-white tracking-tight mt-1">
-                      Good<span className="text-jade-500 font-bold">Sale</span>
-                    </h2>
+                    <div className="mt-2">
+                      <Logo
+                        iconSize={30}
+                        wordmarkClassName="text-xl"
+                        textColorClass="text-ink-950 dark:text-white"
+                        subtitleColorClass="text-ink-400 dark:text-ink-500"
+                      />
+                    </div>
                   </div>
                   <div className="text-xs text-ink-500 font-sans space-y-1">
                     <p><strong>Font family:</strong> Plus Jakarta Sans (display) · Inter (body)</p>

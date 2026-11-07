@@ -17,6 +17,8 @@ import Button from './ui/Button';
 import EmptyState from './ui/EmptyState';
 import { toast, confirmDialog } from '@/lib/feedback';
 import { computeSellerTrust } from '@/lib/trust';
+import { isVerifiedSeller } from '@/lib/verification';
+import VerifiedBadge from '@/components/verification/VerifiedBadge';
 
 interface BuyerProfileViewProps {
   onBack?: () => void;
@@ -32,6 +34,10 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
   const currentProfile = currentUser 
     ? db.profiles.find(p => p.userId === currentUser.id) 
     : null;
+  const profileVerified = isVerifiedSeller({
+    verificationStatus: currentProfile?.verificationStatus,
+    verificationExpiresAt: currentProfile?.verificationExpiresAt,
+  });
 
   // Buying is open to every signed-in role. Only seller / business accounts can
   // list, so buyers are pointed at Settings to switch their account type.
@@ -337,25 +343,34 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                     {(() => {
                       switch (currentUser.role) {
                         case UserRole.VERIFIED_BUSINESS:
-                          return 'Verified Business';
+                          return profileVerified ? 'Verified Business' : 'Business';
                         case UserRole.BUSINESS:
                           return 'Business';
                         case UserRole.VERIFIED_SELLER:
-                          return 'Verified Seller';
+                          return profileVerified ? 'Verified Seller' : 'Seller';
                         case UserRole.SELLER:
                           return 'Seller';
                         case UserRole.SUPER_ADMIN:
                           return 'Super Admin';
                         case UserRole.ADMIN:
                           return 'Admin';
+                        case UserRole.RIDER:
+                          return 'Rider';
                         default:
                           return 'Buyer';
                       }
                     })()}
                   </Chip>
+                  <VerifiedBadge
+                    sellerId={currentUser.id}
+                    status={currentProfile?.verificationStatus}
+                    expiresAt={currentProfile?.verificationExpiresAt}
+                    variant="pill"
+                    fallbackName={currentUser.fullName}
+                  />
                 </div>
                 <p className="mt-1.5 font-mono text-xs text-ink-500">@{currentUser.username} · {currentUser.email}</p>
-                <p className="mt-2 max-w-lg text-sm leading-relaxed text-ink-500">{currentProfile?.bio || 'Verified buyer on the GoodSale escrow network.'}</p>
+                <p className="mt-2 max-w-lg text-sm leading-relaxed text-ink-500">{currentProfile?.bio || 'GoodSale member on the escrow-protected marketplace.'}</p>
               </div>
             </div>
 
@@ -431,10 +446,12 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
             </div>
             <div>
               <h4 className="text-xs font-bold text-ink-900 dark:text-white group-hover:text-jade-500 transition-colors">
-                GoodDispatch™ Network
+                {currentUser.role === UserRole.RIDER ? 'Rider Dashboard' : 'GoodDispatch™ Network'}
               </h4>
               <p className="text-xs text-ink-400 mt-0.5 leading-snug">
-                Accept delivery jobs & track riders.
+                {currentUser.role === UserRole.RIDER
+                  ? 'Go online, accept deliveries and track earnings.'
+                  : 'Apply to deliver or manage rider operations.'}
               </p>
             </div>
           </button>

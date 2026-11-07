@@ -384,7 +384,7 @@ export default function RevenueCenterView() {
 
                         <div className="p-3 bg-white dark:bg-ink-900 rounded-xl border border-ink-100 dark:border-ink-800 flex items-center justify-between text-xs">
                           <span className="text-ink-400 font-medium">Gateway Service:</span>
-                          <span className="font-semibold text-[#0A854B] flex items-center gap-1">
+                          <span className="font-semibold text-jade-600 flex items-center gap-1">
                             Paystack Secure Checkout
                           </span>
                         </div>

@@ -7,6 +7,7 @@ import {
   ShieldCheck, Facebook, Instagram, Twitter, Linkedin, Mail,
 } from 'lucide-react';
 import MarketplaceHeader from '../components/MarketplaceHeader';
+import Logo from '../components/LogoIcon';
 import { useWishlist } from '@/lib/hooks/useWishlist';
 import LandingView from '../components/LandingView';
 import WalletView from '../components/WalletView';
@@ -17,7 +18,7 @@ import DispatchDashboardView from '../components/DispatchDashboardView';
 import RevenueCenterView from '../components/RevenueCenterView';
 import ChatView from '../components/ChatView';
 import CartCheckoutView from '../components/CartCheckoutView';
-import VerificationBadgeView from '../components/VerificationBadgeView';
+import SellerVerificationCenter from '../components/seller/SellerVerificationCenter';
 import LoyaltyHubView from '../components/LoyaltyHubView';
 import BrandCenterView from '../components/BrandCenterView';
 import SellerProfileView from '../components/SellerProfileView';
@@ -31,32 +32,15 @@ import SetupBanner from '../components/SetupBanner';
 import FeedbackHost from '../components/ui/FeedbackHost';
 import AnnouncementModal from '../components/AnnouncementModal';
 import CallHost from '../components/CallHost';
-import LottieAnimation from '../components/ui/LottieAnimation';
-import goodsaleLoader from '../lib/lottie/goodsale-loader.json';
+import BrandLoader from '../components/ui/BrandLoader';
 import { getDBState, useDBState } from '../lib/store';
 import { trackProductMetric } from '../lib/productMetrics';
 import { toast } from '../lib/feedback';
 
 function BootSplash() {
   return (
-    <div className="fixed inset-0 z-[200] grid place-items-center bg-white dark:bg-ink-950 animate-fade-in">
-      <div className="flex flex-col items-center gap-4">
-        <div className="lottie-host h-28 w-28">
-          <span
-            className="lottie-fallback h-16 w-16 rounded-full border-[3px] border-ink-200 dark:border-ink-800 border-t-jade-500 animate-spin"
-            aria-hidden="true"
-          />
-          <div className="lottie-layer h-28 w-28">
-            <LottieAnimation animationData={goodsaleLoader} className="h-28 w-28" />
-          </div>
-        </div>
-        <p className="font-display font-bold tracking-tight text-lg text-ink-900 dark:text-white">
-          Good<span className="text-jade-600 dark:text-jade-400">Sale</span>
-        </p>
-        <p className="text-sm text-ink-400">
-          Securing your trade…
-        </p>
-      </div>
+    <div className="fixed inset-0 z-[200] animate-fade-in bg-white dark:bg-ink-950">
+      <BrandLoader message="Securing your trade…" />
     </div>
   );
 }
@@ -70,11 +54,57 @@ export default function Home() {
   const [wishlistOnly, setWishlistOnly] = useState(false);
   // Full-screen transition beat: the goodsale-loader Lottie owns this moment only.
   const [booted, setBooted] = useState(false);
+  // Deep link used when onboarding finishes (e.g. /?view=dashboard).
+  const [pendingView, setPendingView] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setBooted(true), 450);
     return () => clearTimeout(t);
   }, []);
+
+  // Public SEO pages deep-link into the interactive app without changing the
+  // existing single-page view model: /?product=123 or /?seller=45.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const productParam = Number(params.get('product'));
+    const sellerParam = Number(params.get('seller'));
+
+    if (Number.isFinite(productParam) && productParam > 0) {
+      setSelectedProductId(productParam);
+      setCurrentView('product');
+      return;
+    }
+    if (Number.isFinite(sellerParam) && sellerParam > 0) {
+      setSelectedSellerId(sellerParam);
+      setCurrentView('seller-profile');
+    }
+
+    // /?view=dashboard lets onboarding land a seller on their hub. It waits for
+    // the session to load so a guest still sees the marketplace.
+    const viewParam = params.get('view');
+    if (viewParam) setPendingView(viewParam);
+  }, []);
+
+  useEffect(() => {
+    if (!pendingView) return;
+    const known = [
+      'marketplace', 'dashboard', 'wallet', 'chats', 'settings', 'buyer-profile', 'cart',
+      'loyalty', 'dispatch', 'revenue', 'verification', 'brand-center', 'admin',
+    ];
+    if (!known.includes(pendingView)) {
+      setPendingView(null);
+      return;
+    }
+    if (!db.currentUser) return; // signed-in views wait for the session
+    setCurrentView(pendingView);
+    setPendingView(null);
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('view');
+      window.history.replaceState({}, '', `${url.pathname}${url.search}`);
+    }
+  }, [pendingView, db.currentUser]);
 
   const [isAuthModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
@@ -199,9 +229,12 @@ export default function Home() {
     }
   };
 
-  if (!booted) return <BootSplash />;
-
   return (
+    <>
+      {/* The splash overlays the marketplace rather than replacing it, so the
+          landing content is present in the server-rendered HTML for crawlers
+          and no-JavaScript visitors. */}
+      {!booted && <BootSplash />}
     <div className="bg-white dark:bg-ink-950 text-ink-900 dark:text-ink-100 min-h-screen transition-colors duration-300">
       <SetupBanner />
       
@@ -317,7 +350,7 @@ export default function Home() {
         )}
 
         {currentView === 'verification' && (
-          <VerificationBadgeView />
+          <SellerVerificationCenter />
         )}
 
         {currentView === 'loyalty' && (
@@ -357,9 +390,11 @@ export default function Home() {
             <div className="grid grid-cols-2 gap-8 sm:grid-cols-3 lg:grid-cols-6">
               {/* Brand */}
               <div className="col-span-2 lg:col-span-2">
-                <p className="font-display text-xl font-bold tracking-tight text-ink-900 dark:text-white">
-                  Good<span className="text-jade-600 dark:text-jade-400">Sale</span>
-                </p>
+                <Logo
+                  iconSize={36}
+                  textColorClass="text-ink-900 dark:text-white"
+                  subtitleColorClass="text-ink-400 dark:text-ink-500"
+                />
                 <p className="mt-3 max-w-xs text-sm leading-relaxed text-ink-500 dark:text-ink-400">
                   Nigeria&apos;s escrow-backed marketplace. Buy and sell with verified sellers,
                   tracked delivery and money that moves only when goods do.
@@ -393,7 +428,9 @@ export default function Home() {
                 <p className="text-sm font-semibold text-ink-900 dark:text-white">Marketplace</p>
                 <ul className="mt-4 space-y-3 text-sm">
                   <li><button onClick={() => handleNavigate('marketplace')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Browse listings</button></li>
-                  <li><button onClick={() => handleNavigate('marketplace')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Categories</button></li>
+                  <li><Link href="/categories" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Categories</Link></li>
+                  <li><Link href="/sellers" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Verified sellers</Link></li>
+                  <li><Link href="/promotions" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Featured deals</Link></li>
                   <li><button onClick={() => handleNavigate('cart')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Your cart</button></li>
                 </ul>
               </div>
@@ -413,8 +450,9 @@ export default function Home() {
               <div>
                 <p className="text-sm font-semibold text-ink-900 dark:text-white">Support</p>
                 <ul className="mt-4 space-y-3 text-sm">
-                  <li><button onClick={() => handleNavigate('trust-safety')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Trust &amp; Safety Centre</button></li>
+                  <li><Link href="/trust-safety" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Trust &amp; Safety Centre</Link></li>
                   <li><button onClick={() => handleNavigate('support')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Help centre</button></li>
+                  <li><Link href="/track" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Track a shipment</Link></li>
                   <li><button onClick={() => handleNavigate('chats')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Chat with a seller</button></li>
                   <li><button onClick={() => handleNavigate('settings')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Delivery &amp; tracking</button></li>
                   <li>
@@ -432,7 +470,7 @@ export default function Home() {
                   <li><Link href="/terms" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Terms of Service</Link></li>
                   <li><Link href="/privacy" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Privacy Policy</Link></li>
                   <li><button onClick={() => handleNavigate('settings')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Escrow agreement</button></li>
-                  <li><button onClick={() => handleNavigate('trust-safety')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Trust &amp; dispute policy</button></li>
+                  <li><Link href="/trust-safety" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Trust &amp; dispute policy</Link></li>
                 </ul>
               </div>
             </div>
@@ -468,5 +506,6 @@ export default function Home() {
       />
 
     </div>
+    </>
   );
 }

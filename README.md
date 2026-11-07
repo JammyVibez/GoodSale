@@ -72,6 +72,34 @@ See **[PRODUCTION.md](./PRODUCTION.md)** for the full go-live checklist (credent
 14. `supabase/migrations/014_products_video.sql` (optional product video)
 15. `supabase/migrations/015_resync_id_sequences.sql` (id sequences for safe re-seeding)
 16. `supabase/migrations/016_compare_at_price.sql` (seller compare-at price — real discount badges)
+17. `supabase/migrations/017_trust_safety.sql` (trust, safety and verification)
+18. `supabase/migrations/018_shipping_engine.sql` (shipping rates, zones and quotes)
+19. `supabase/migrations/019_delivery_tracking.sql` (delivery lifecycle, tracking and buyer confirmation code)
+20. `supabase/migrations/020_rider_management.sql` (rider onboarding, availability and earnings)
+21. `supabase/migrations/021_delivery_logistics.sql` (automated matching, live tracking, courier integration, failures/returns, notifications and analytics)
+22. `supabase/migrations/022_premium_tracking.sql` (saved addresses, checkout groups, `GSD-` shipment IDs, public tracking)
+23. `supabase/migrations/023_onboarding.sql` (buyer + seller onboarding state, store details, notification preferences)
+24. `supabase/migrations/024_seller_verification.sql` (seller verification lifecycle, private documents, audit trail, approval RPCs)
+25. `supabase/migrations/025_wallet_ledger.sql` (append-only wallet ledger, Paystack funding, wallet checkout, payout lifecycle, refunds to wallet, admin finance controls)
+
+### Seller verification
+
+- Sellers apply from the seller hub → **Verification** (`/seller/verification`): seller type,
+  legal details, identity document, business details for registered businesses, store profile,
+  then a signed declaration.
+- Submitting sets the application to **Pending review**. It never verifies anyone. Only
+  `admin_verification_action()` — callable by ADMIN / SUPER_ADMIN — can approve, reject, request
+  information, suspend, revoke or expire a verification. Every decision writes an audit event
+  (admin id, seller id, action, reason, timestamp) and a seller notification.
+- Approval writes `profiles.verification_status = 'VERIFIED'`, `verified_at`, the reviewing admin,
+  a 12-month `verification_expires_at`, mirrors `businesses.is_verified`, and upgrades the role.
+  The public badge reads only that status, so suspending or revoking removes it everywhere.
+- Identity documents live in the private `government-ids` bucket (5 MB limit, JPEG/PNG/WebP/PDF).
+  The database stores storage paths, not URLs. Admins open files through
+  `/api/admin/verifications/documents`, which issues a 90-second signed URL and records the view.
+- Admins review from **Admin → Verifications**: filter by status, search sellers, open the file,
+  read history, add internal notes, and confirm every decision with a reason.
+- Verification does not change listing ranking. Any future seller programme is announced separately.
 
 ### Apply them from the terminal
 
@@ -97,13 +125,16 @@ Paystack step-by-step: **[docs/PAYSTACK.md](./docs/PAYSTACK.md)**. Full env list
 
 ## What is live now
 
-- **Auth**: Supabase email/password signup & login (`AuthModal`)
+- **Auth**: Supabase email/password signup, login, password reset and session persistence on the dedicated `/auth` and `/auth/register` routes
+- **Onboarding**: guided `/onboarding` flow (purpose, location, profile, notifications) and `/seller/onboarding` store setup, both persisted so they resume where they stopped
 - **Profiles**: created by DB trigger on `auth.users` insert
 - **Catalog / orders / escrow / chat / delivery jobs**: loaded from Postgres; writes for products, orders, messages, chat rooms persist to Supabase
 - **Realtime**: `messages`, `orders`, `delivery_jobs`, `products`, `notifications`, `bids`, `chat_rooms`, …
 - **Payments**: Order created first as `PENDING` → Paystack Inline with `GS_<orderId>_…` → `/api/payments/verify` + webhook mark `PAID_ESCROW`
 - **Escrow**: Buyer PIN `/api/orders/release-escrow`; courier `/api/orders/complete-delivery-job`; admin force `/api/admin/escrow`
 - **Disputes / payouts**: `/api/disputes/*`, `/api/wallet/withdraw`, `/api/admin/withdrawals`
+- **Wallet**: `Wallet & payouts` shows database-backed available, pending, escrow-held and seller earnings. Funding uses `/api/wallet/fund` → Paystack → `/api/wallet/fund/verify` or signed webhook; the balance is credited only after intent, amount, currency and provider reference checks. Eligible pending orders can be paid from the wallet through `pay_order_with_wallet` (atomic debit + escrow hold). Funding and payouts report **unavailable** unless the Paystack keys are configured.
+- **Wallet admin**: **Admin panel → Finance & Wallet** for ledger search, pending payouts, refund-to-wallet/provider, audited adjustments, limits/fees and reconciliation. `npm run verify:wallet` runs a rollback-only database test of funding, duplicate prevention, immutable ledger rows, withdrawal reservation, wallet checkout and refunds.
 - **Admin panel**: sign in as an `ADMIN` / `SUPER_ADMIN` account, open the account menu (top-right),
   and choose **Admin panel** → **Revenue & Payment Settings** to toggle the per-item platform fee
   and set its percentage. It is **OFF at launch** — buyers pay only the item price plus delivery.

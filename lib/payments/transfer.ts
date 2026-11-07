@@ -28,6 +28,28 @@ async function paystackFetch(path: string, init?: RequestInit) {
   return { ok: true as const, data: payload.data, payload };
 }
 
+/** Resolve the account name held by the bank before creating a recipient. */
+export async function resolveAccountName(opts: {
+  accountNumber: string;
+  bankCode: string;
+}) {
+  if (!process.env.PAYSTACK_SECRET_KEY) {
+    return { ok: false as const, error: 'PAYSTACK_SECRET_KEY missing — cannot verify the bank account.' };
+  }
+
+  const result = await paystackFetch(
+    `/bank/resolve?account_number=${encodeURIComponent(opts.accountNumber)}&bank_code=${encodeURIComponent(opts.bankCode)}`,
+    { method: 'GET' }
+  );
+
+  if (!result.ok) return result;
+  return {
+    ok: true as const,
+    accountName: String(result.data?.account_name || ''),
+    accountNumber: String(result.data?.account_number || opts.accountNumber),
+  };
+}
+
 /** Create (or reuse) a transfer recipient for a Nigerian NUBAN account */
 export async function createTransferRecipient(opts: {
   name: string;
@@ -91,6 +113,24 @@ export async function initiateTransfer(opts: {
     ok: true as const,
     reference: result.data?.reference as string,
     transferCode: result.data?.transfer_code as string,
+    data: result.data,
+  };
+}
+
+/** Verify a transfer with Paystack before reconciliation. */
+export async function verifyTransfer(reference: string) {
+  if (!process.env.PAYSTACK_SECRET_KEY) {
+    return { ok: false as const, error: 'PAYSTACK_SECRET_KEY missing — cannot verify the transfer.' };
+  }
+  const result = await paystackFetch(`/transfer/verify/${encodeURIComponent(reference)}`, {
+    method: 'GET',
+  });
+  if (!result.ok) return result;
+  return {
+    ok: true as const,
+    status: String(result.data?.status || ''),
+    reference: String(result.data?.reference || reference),
+    transferCode: String(result.data?.transfer_code || ''),
     data: result.data,
   };
 }

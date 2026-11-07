@@ -2,21 +2,24 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
 import { 
   ShoppingCart, Shield, CreditCard, ChevronRight, CheckCircle2, 
   MapPin, Award, Trash2, KeyRound, QrCode, ClipboardCheck, ArrowLeft, RefreshCw,
   Truck, ExternalLink, Sparkles, ShieldAlert, ShieldCheck, CheckCircle,
-  Coins, FileText, Upload, Navigation
+  Coins, FileText, Upload, Navigation, Minus, Plus, Check, BadgeCheck,
+  ShoppingBag, Bell, Headphones, ChevronLeft, Gift, Clock, ChevronDown, Copy, Package
 } from 'lucide-react';
 import { 
-  getDBState, saveDBState, dbOperations, Product, Order, OrderStatus 
+  getDBState, saveDBState, dbOperations, Product, Order, OrderStatus, UserRole
 } from '../lib/store';
 import PaystackPayment from './PaystackPayment';
 import { toast } from '@/lib/feedback';
 import EmptyState from './ui/EmptyState';
 import { SmartImage } from './ui/SmartImage';
 import LiveDispatchMap from './LiveDispatchMap';
-import OrderTrackingCard, { hasLiveTracking } from './OrderTrackingCard';
+import DeliveryTrackingPanel from './DeliveryTrackingPanel';
+import PremiumCheckout from './checkout/PremiumCheckout';
 import { useLiveLocation } from '@/lib/hooks/useLiveLocation';
 import {
   LOCATION_PRESETS,
@@ -25,6 +28,8 @@ import {
   formatDistanceKm,
 } from '@/lib/geo';
 import { computePlatformFee } from '@/lib/fees';
+import { isVerifiedSeller } from '@/lib/verification';
+import type { ShippingQuoteResult } from '@/lib/types';
 
 interface CartCheckoutViewProps {
   onBack: () => void;
@@ -34,6 +39,120 @@ interface CartCheckoutViewProps {
   onClearCart: () => void;
   preselectedProductId?: number | null;
   onOpenAuth?: () => void;
+}
+
+type OrderFilter = 'all' | 'active' | 'delivered' | 'issues';
+
+const ESCROW_ACTIVE_STATUSES = [
+  OrderStatus.PAID_ESCROW,
+  OrderStatus.SHIPPED,
+  OrderStatus.OUT_FOR_DELIVERY,
+  OrderStatus.DISPUTED,
+];
+const ORDER_ISSUE_STATUSES = [
+  OrderStatus.DISPUTED,
+  OrderStatus.REFUND_REQUESTED,
+  OrderStatus.REFUNDED,
+  OrderStatus.CANCELLED,
+];
+const ORDER_PENDING_PAYMENT_STATUSES = [
+  OrderStatus.PENDING,
+  OrderStatus.PENDING_BANK_TRANSFER,
+  OrderStatus.PARTIAL_DEPOSIT_PAID,
+  OrderStatus.INVOICE_SENT,
+  OrderStatus.COD_PENDING,
+];
+const ORDER_PROGRESS_STEPS = ['Placed', 'Paid', 'In transit', 'Delivered'];
+
+const ORDER_STATUS_META: Partial<Record<OrderStatus, {
+  label: string;
+  tone: 'jade' | 'gold' | 'neutral' | 'danger';
+  hint: string;
+  progress: number;
+}>> = {
+  [OrderStatus.PENDING]: {
+    label: 'Awaiting payment', tone: 'gold', progress: 0,
+    hint: 'Complete payment to start escrow protection. Use Pay now below to finish this order.',
+  },
+  [OrderStatus.PENDING_BANK_TRANSFER]: {
+    label: 'Checking transfer', tone: 'gold', progress: 0,
+    hint: 'Your bank transfer receipt is waiting for confirmation.',
+  },
+  [OrderStatus.PARTIAL_DEPOSIT_PAID]: {
+    label: 'Deposit received', tone: 'gold', progress: 0,
+    hint: 'Your deposit is secured. Complete the balance before dispatch.',
+  },
+  [OrderStatus.INVOICE_SENT]: {
+    label: 'Invoice sent', tone: 'gold', progress: 0,
+    hint: 'Your invoice is ready. Payment secures this order with escrow.',
+  },
+  [OrderStatus.COD_PENDING]: {
+    label: 'Pay on delivery', tone: 'gold', progress: 0,
+    hint: 'Have the exact amount ready when the rider arrives.',
+  },
+  [OrderStatus.PAID_ESCROW]: {
+    label: 'Payment secured', tone: 'jade', progress: 1,
+    hint: 'Your money is held safely in escrow. The seller is preparing your order.',
+  },
+  [OrderStatus.SHIPPED]: {
+    label: 'In transit', tone: 'jade', progress: 2,
+    hint: 'Your item has left the seller and is on the way to you.',
+  },
+  [OrderStatus.OUT_FOR_DELIVERY]: {
+    label: 'Out for delivery', tone: 'jade', progress: 2,
+    hint: 'The rider is heading to your delivery address now.',
+  },
+  [OrderStatus.DELIVERED_SUCCESS]: {
+    label: 'Delivered', tone: 'jade', progress: 3,
+    hint: 'Delivered successfully. Your escrow payment has been released to the seller.',
+  },
+  [OrderStatus.DISPUTED]: {
+    label: 'Under review', tone: 'danger', progress: 1,
+    hint: 'GoodSale is reviewing this order. Escrow is frozen until the case is resolved.',
+  },
+  [OrderStatus.REFUND_REQUESTED]: {
+    label: 'Refund requested', tone: 'neutral', progress: 1,
+    hint: 'Your refund request is being reviewed.',
+  },
+  [OrderStatus.REFUNDED]: {
+    label: 'Refunded', tone: 'neutral', progress: 1,
+    hint: 'This order has been refunded.',
+  },
+  [OrderStatus.CANCELLED]: {
+    label: 'Cancelled', tone: 'neutral', progress: 0,
+    hint: 'This order was cancelled.',
+  },
+};
+
+const ORDER_TONE_CLASSES = {
+  jade: 'border-jade-500/25 bg-jade-500/10 text-jade-700 dark:text-jade-300',
+  gold: 'border-gold-400/30 bg-gold-300/15 text-ink-700 dark:text-gold-200',
+  neutral: 'border-ink-200 bg-ink-100 text-ink-600 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-300',
+  danger: 'border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-300',
+};
+
+function orderStatusMeta(status: OrderStatus) {
+  return ORDER_STATUS_META[status] ?? {
+    label: status.replace(/_/g, ' ').toLowerCase(),
+    tone: 'neutral' as const,
+    hint: 'We will update this order as it progresses.',
+    progress: 1,
+  };
+}
+
+function orderIsIssue(status: OrderStatus) {
+  return ORDER_ISSUE_STATUSES.includes(status);
+}
+
+function orderHasEscrowStarted(status: OrderStatus) {
+  return !ORDER_PENDING_PAYMENT_STATUSES.includes(status) &&
+    ![OrderStatus.CANCELLED, OrderStatus.REFUNDED].includes(status);
+}
+
+function deliveryMethodLabel(order: Order) {
+  if (order.deliveryMethod === 'PICKUP') return 'Store pickup';
+  if (order.deliveryMethod === 'THIRD_PARTY_COURIER') return 'Courier delivery';
+  return `GoodSale rider${order.serviceType ? ` · ${order.serviceType.toLowerCase()}` : ''}`;
 }
 
 export default function CartCheckoutView({
@@ -46,7 +165,12 @@ export default function CartCheckoutView({
   onOpenAuth,
 }: CartCheckoutViewProps) {
   const [db, setDb] = useState(getDBState());
-  const [activeStep, setActiveStep] = useState<'cart' | 'checkout' | 'orders'>('cart');
+  const [activeStep, setActiveStep] = useState<'cart' | 'checkout' | 'checkout-legacy' | 'orders'>('cart');
+
+  // Cart-line controls live here so the marketplace's number[] cart contract stays intact.
+  const [quantities, setQuantities] = useState<Record<number, number>>({});
+  const [excludedIds, setExcludedIds] = useState<number[]>([]);
+  const [applyPoints, setApplyPoints] = useState(false);
   
   // Checkout Fields
   const [deliveryAddress, setDeliveryAddress] = useState<string>(LOCATION_PRESETS.gbagada.address);
@@ -81,11 +205,15 @@ export default function CartCheckoutView({
   const [invoiceTerms, setInvoiceTerms] = useState<string>('Net 15');
   const [pendingPayOrderIds, setPendingPayOrderIds] = useState<number[]>([]);
   const [pendingPayAmount, setPendingPayAmount] = useState(0);
+  const [payingExistingOrder, setPayingExistingOrder] = useState(false);
 
   // Interactive Verification PIN state
   const [enteredPin, setEnteredPin] = useState('');
   const [pinError, setPinError] = useState<string | null>(null);
   const [pinSuccess, setPinSuccess] = useState<string | null>(null);
+  const [orderFilter, setOrderFilter] = useState<OrderFilter>('all');
+  const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
+  const [visiblePinOrderId, setVisiblePinOrderId] = useState<number | null>(null);
 
   // Selected Order for Receipt View
   const [selectedReceiptOrder, setSelectedReceiptOrder] = useState<Order | null>(null);
@@ -94,6 +222,11 @@ export default function CartCheckoutView({
   const [showDisputeFormOrderId, setShowDisputeFormOrderId] = useState<number | null>(null);
   const [disputeReason, setDisputeReason] = useState('');
   const [showPaystackModal, setShowPaystackModal] = useState(false);
+
+  // Database-driven shipping quote (server-authoritative)
+  const [shippingQuote, setShippingQuote] = useState<ShippingQuoteResult | null>(null);
+  const [shippingLoading, setShippingLoading] = useState(false);
+  const [shippingError, setShippingError] = useState<string | null>(null);
 
   // Match algorithm: real GPS proximity + trust / workload
   const deliveryOrigin = useMemo(
@@ -156,7 +289,70 @@ export default function CartCheckoutView({
     ? db.products.filter(p => p.id === preselectedProductId)
     : db.products.filter(p => cart.includes(p.id));
 
-  const currentCheckoutItem = cartItems[0];
+  const qtyFor = (item: Product) => {
+    const requested = quantities[item.id] ?? 1;
+    return Math.max(1, Math.min(requested, Math.max(1, item.quantity)));
+  };
+  const changeQty = (item: Product, delta: number) => {
+    const next = Math.max(1, Math.min(qtyFor(item) + delta, Math.max(1, item.quantity)));
+    setQuantities((prev) => ({ ...prev, [item.id]: next }));
+  };
+  const toggleSelected = (id: number) => {
+    setExcludedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const checkoutItems = cartItems.filter((item) => !excludedIds.includes(item.id));
+  const currentCheckoutItem = checkoutItems[0] || cartItems[0];
+  const checkoutQuoteKey = checkoutItems.map((item) => `${item.id}:${qtyFor(item)}`).join('|');
+
+  const requestShippingQuote = async (signal?: AbortSignal): Promise<ShippingQuoteResult> => {
+    const res = await fetch('/api/shipping/quote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal,
+      body: JSON.stringify({
+        items: checkoutItems.map((item) => ({ productId: item.id, quantity: qtyFor(item) })),
+        destination: { address: deliveryAddress, city, state, lat: deliveryLat, lng: deliveryLng },
+        deliveryMethod,
+        serviceType,
+      }),
+    });
+    const payload = await res.json().catch(() => null);
+    if (!res.ok || !payload?.success || !payload?.quote) {
+      throw new Error(payload?.error || 'Could not calculate delivery for this address.');
+    }
+    return payload.quote as ShippingQuoteResult;
+  };
+
+  useEffect(() => {
+    if (!db.currentUser || checkoutItems.length === 0) {
+      setShippingQuote(null);
+      setShippingError(null);
+      setShippingLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setShippingLoading(true);
+    setShippingError(null);
+    const timer = setTimeout(() => {
+      requestShippingQuote(controller.signal)
+        .then((quote) => setShippingQuote(quote))
+        .catch((error) => {
+          if (controller.signal.aborted) return;
+          setShippingQuote(null);
+          setShippingError(error instanceof Error ? error.message : 'Could not calculate delivery.');
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setShippingLoading(false);
+        });
+    }, 350);
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+    // Recalculate on any address, cart, method or service change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkoutQuoteKey, deliveryAddress, city, state, deliveryLat, deliveryLng, deliveryMethod, serviceType, db.currentUser?.id]);
 
   // Get active payment methods globally configured by admin, default to all if not set
   const enabledGlobalMethods = db.paymentSettings?.enabledMethods || ['escrow', 'cod', 'card', 'bank', 'invoice', 'partial'];
@@ -212,30 +408,52 @@ export default function CartCheckoutView({
     );
   }
 
-  const subtotal = cartItems.reduce((acc, p) => acc + p.price, 0);
+  const subtotal = checkoutItems.reduce((acc, p) => acc + p.price * qtyFor(p), 0);
   // Per-item platform fee — mirrors Order.taxAmount (admin-toggleable, OFF at launch).
   const platformFeeMeta = computePlatformFee(db.revenueSettings, subtotal);
-  const escrowFee = cartItems.reduce(
-    (acc, p) => acc + computePlatformFee(db.revenueSettings, p.price).amount,
+  const escrowFee = checkoutItems.reduce(
+    (acc, p) => acc + computePlatformFee(db.revenueSettings, p.price * qtyFor(p)).amount,
     0
   );
   
   const protectFee = hasGoodSaleProtect ? (db.revenueSettings?.goodSaleProtectFee || 1500) : 0;
+  const pointsDiscount = applyPoints
+    ? Math.min(user.goodPoints, Math.floor(subtotal / 10)) * 10
+    : 0;
   
-  const deliveryCharge = cartItems.length === 0 ? 0 : (
-    deliveryMethod === 'GOODSALE_PARTNER' ? (
-      serviceType === 'EXPRESS' ? 10000 : serviceType === 'ECONOMY' ? 3500 : 6000
-    ) : deliveryMethod === 'THIRD_PARTY_COURIER' ? 12000 : 0
+  const selectedMethodOptions = (shippingQuote?.groups || []).map((group) =>
+    group.options.find((option) => option.method === deliveryMethod)
   );
+  const methodAvailable = (method: 'GOODSALE_PARTNER' | 'THIRD_PARTY_COURIER' | 'PICKUP') =>
+    Boolean(shippingQuote?.groups.length) &&
+    shippingQuote!.groups.every((group) => group.options.some((option) => option.method === method));
+  const methodTotal = (method: 'GOODSALE_PARTNER' | 'THIRD_PARTY_COURIER' | 'PICKUP') =>
+    (shippingQuote?.groups || []).reduce((sum, group) => {
+      const option = group.options.find((candidate) => candidate.method === method);
+      return sum + (option?.fee || 0);
+    }, 0);
+  const shippingChooseAnotherMethod = Boolean(shippingQuote) && !methodAvailable(deliveryMethod);
+  const requiresManualQuote = Boolean(shippingQuote?.requiresManualQuote) || shippingChooseAnotherMethod;
+  const deliveryCharge = !shippingQuote || requiresManualQuote ? 0 : methodTotal(deliveryMethod);
+  const shippingEta = selectedMethodOptions.filter(Boolean).length
+    ? {
+        min: Math.min(...selectedMethodOptions.filter((option) => Boolean(option)).map((option) => option!.etaMinDays)),
+        max: Math.max(...selectedMethodOptions.filter((option) => Boolean(option)).map((option) => option!.etaMaxDays)),
+      }
+    : null;
+  const shippingBlocked = shippingLoading || !shippingQuote || requiresManualQuote || Boolean(shippingError);
 
-  const totalDue = subtotal + escrowFee + deliveryCharge + protectFee;
+  const totalDue = Math.max(0, subtotal + escrowFee + deliveryCharge + protectFee - pointsDiscount);
 
   // Create order(s); for card/escrow/partial open Paystack after order exists
   const handlePayIntoEscrow = async (customMethod?: string) => {
-    if (cartItems.length === 0) return;
+    if (checkoutItems.length === 0) {
+      toast.error('Select at least one item to check out.');
+      return;
+    }
 
     // Block checkout for listings that sold out or were withdrawn while in the cart.
-    const unavailable = cartItems.filter(
+    const unavailable = checkoutItems.filter(
       (item) => item.quantity <= 0 || item.stockStatus === 'SOLD' || item.stockStatus === 'UNAVAILABLE' || item.stockStatus === 'OUT_OF_STOCK'
     );
     if (unavailable.length > 0) {
@@ -246,10 +464,50 @@ export default function CartCheckoutView({
     const pm = (customMethod || selectedPaymentMethod || 'escrow').toLowerCase();
     const needsPaystack = ['escrow', 'card', 'partial'].includes(pm);
 
+    // Revalidate with the server immediately before creating orders. The
+    // order insert only carries server-priced fees, then the verifier applies
+    // the quote authoritatively before any payment is opened.
+    setShippingLoading(true);
+    setShippingError(null);
+    let freshQuote: ShippingQuoteResult;
+    try {
+      freshQuote = await requestShippingQuote();
+      setShippingQuote(freshQuote);
+    } catch (error) {
+      setShippingLoading(false);
+      const message = error instanceof Error ? error.message : 'Delivery could not be priced.';
+      setShippingError(message);
+      toast.error(message);
+      return;
+    }
+    setShippingLoading(false);
+
+    if (freshQuote.requiresManualQuote || freshQuote.groups.some((group) => !group.options.some((option) => option.method === deliveryMethod))) {
+      toast.error('Choose an available delivery method or request a manual courier quotation.');
+      return;
+    }
+    if (!freshQuote.quoteId) {
+      toast.error('Delivery quote could not be verified. Please retry.');
+      return;
+    }
+
     const createdIds: number[] = [];
     let payAmount = 0;
+    const seenSeller = new Set<number>();
 
-    for (const item of cartItems) {
+    for (const item of checkoutItems) {
+      const group = freshQuote.groups.find((candidate) => candidate.sellerId === item.sellerId);
+      const option = group?.options.find((candidate) => candidate.method === deliveryMethod);
+      if (!option) {
+        toast.error('Delivery is unavailable for one of the sellers in your cart.');
+        return;
+      }
+      const alreadyCharged = seenSeller.has(item.sellerId);
+      const fee = alreadyCharged ? 0 : option.fee;
+      const breakdown = alreadyCharged
+        ? { ...option.breakdown, total: 0, discount: option.fee, freeShipping: true }
+        : { ...option.breakdown, total: fee };
+
       const order = await dbOperations.placeOrder(
         item.id,
         deliveryAddress,
@@ -257,23 +515,47 @@ export default function CartCheckoutView({
         state,
         pm,
         deliveryMethod,
-        false,
+        applyPoints,
         deliveryMethod === 'GOODSALE_PARTNER' && selectedPartnerId ? selectedPartnerId : undefined,
         serviceType,
         hasGoodSaleProtect,
         bankTransferReceipt || undefined,
         invoiceTerms,
-        { lat: deliveryOrigin.lat, lng: deliveryOrigin.lng }
+        { lat: deliveryOrigin.lat, lng: deliveryOrigin.lng },
+        qtyFor(item),
+        {
+          fee,
+          breakdown,
+          quoteId: freshQuote.quoteId,
+          ruleId: option.breakdown.ruleId,
+          zoneId: option.breakdown.zoneId,
+          etaMin: option.etaMinDays,
+          etaMax: option.etaMaxDays,
+        }
       );
+      seenSeller.add(item.sellerId);
       if (order?.id) {
         createdIds.push(order.id);
         payAmount += order.totalAmount;
       }
     }
 
-    if (needsPaystack && createdIds.length > 0) {
+    if (createdIds.length === 0) {
+      toast.error('Could not create the order. Please retry.');
+      return;
+    }
+
+    const verified = await dbOperations.applyVerifiedShipping(freshQuote.quoteId, createdIds);
+    if ('error' in verified) {
+      toast.error(verified.error || 'Shipping could not be verified. Please retry payment from your orders.');
+      return;
+    }
+    payAmount = verified.orders.reduce((sum, order) => sum + order.totalAmount, 0) || payAmount;
+
+    if (needsPaystack) {
+      setPayingExistingOrder(false);
       setPendingPayOrderIds(createdIds);
-      setPendingPayAmount(payAmount || totalDue);
+      setPendingPayAmount(payAmount);
       setShowPaystackModal(true);
       return;
     }
@@ -286,8 +568,16 @@ export default function CartCheckoutView({
     setShowPaystackModal(false);
     setPendingPayOrderIds([]);
     setPendingPayAmount(0);
-    onClearCart();
+    if (!payingExistingOrder) onClearCart();
+    setPayingExistingOrder(false);
     setActiveStep('orders');
+  };
+
+  const handlePayPendingOrder = (order: Order) => {
+    setPayingExistingOrder(true);
+    setPendingPayOrderIds([order.id]);
+    setPendingPayAmount(order.totalAmount);
+    setShowPaystackModal(true);
   };
 
   // Submit Secret PIN Verification to release funds
@@ -339,12 +629,54 @@ export default function CartCheckoutView({
     order.buyerId === user.id || order.sellerId === user.id
   ).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
+  const activeOrderCount = myOrders.filter(
+    (order) => order.status !== OrderStatus.DELIVERED_SUCCESS && !orderIsIssue(order.status)
+  ).length;
+  const deliveredOrderCount = myOrders.filter(
+    (order) => order.status === OrderStatus.DELIVERED_SUCCESS
+  ).length;
+  const issueOrderCount = myOrders.filter((order) => orderIsIssue(order.status)).length;
+  const escrowProtectedValue = myOrders
+    .filter((order) => ESCROW_ACTIVE_STATUSES.includes(order.status))
+    .reduce((sum, order) => sum + order.totalAmount, 0);
+
+  const orderFilters: { id: OrderFilter; label: string; count: number }[] = [
+    { id: 'all', label: 'All orders', count: myOrders.length },
+    { id: 'active', label: 'In progress', count: activeOrderCount },
+    { id: 'delivered', label: 'Delivered', count: deliveredOrderCount },
+    { id: 'issues', label: 'Needs attention', count: issueOrderCount },
+  ];
+  const filteredOrders = myOrders.filter((order) => {
+    if (orderFilter === 'active') {
+      return order.status !== OrderStatus.DELIVERED_SUCCESS && !orderIsIssue(order.status);
+    }
+    if (orderFilter === 'delivered') return order.status === OrderStatus.DELIVERED_SUCCESS;
+    if (orderFilter === 'issues') return orderIsIssue(order.status);
+    return true;
+  });
+
+  const toggleOrderDetails = (orderId: number) => {
+    setExpandedOrderId((current) => (current === orderId ? null : orderId));
+    setVisiblePinOrderId(null);
+    setEnteredPin('');
+    setPinError(null);
+    setPinSuccess(null);
+  };
+
+  useEffect(() => {
+    if (activeStep === 'orders') {
+      setOrderFilter('all');
+      setExpandedOrderId(null);
+      setVisiblePinOrderId(null);
+    }
+  }, [activeStep]);
+
   return (
     <div className="bg-ink-50 dark:bg-ink-950 min-h-screen py-8 px-4 sm:px-6 lg:px-8 transition-colors duration-300">
       <div className="max-w-6xl mx-auto">
         
         {/* Navigation Tabs */}
-        <div className="mb-6 flex items-center justify-between border-b border-ink-200 dark:border-ink-800 pb-4">
+        <div className="mb-6 flex flex-col gap-3 border-b border-ink-200 pb-4 dark:border-ink-800 sm:flex-row sm:items-center sm:justify-between">
           <button 
             onClick={onBack}
             className="text-xs font-bold text-ink-500 hover:text-ink-900 dark:hover:text-white flex items-center gap-1 cursor-pointer"
@@ -353,130 +685,342 @@ export default function CartCheckoutView({
             Continue Shopping
           </button>
 
-          <div className="flex gap-2 bg-ink-100 dark:bg-ink-900 p-1 rounded-xl">
+          <div className="flex w-full gap-2 overflow-x-auto rounded-xl bg-ink-100 p-1 dark:bg-ink-900 sm:w-auto">
             <button
               onClick={() => setActiveStep('cart')}
-              className={`px-4 py-2 rounded-lg text-xs font-sans font-bold transition-all ${activeStep === 'cart' ? 'bg-jade-500 text-white shadow' : 'text-ink-700 dark:text-ink-400 hover:text-ink-950'}`}
+              className={`shrink-0 rounded-lg px-4 py-2 text-xs font-sans font-bold transition-all ${activeStep === 'cart' ? 'bg-jade-500 text-white shadow' : 'text-ink-700 dark:text-ink-400 hover:text-ink-950'}`}
             >
-              Shopping Cart ({cart.length})
+              Cart ({cart.length})
             </button>
             <button
               onClick={() => setActiveStep('checkout')}
               disabled={cartItems.length === 0}
-              className={`px-4 py-2 rounded-lg text-xs font-sans font-bold transition-all ${activeStep === 'checkout' ? 'bg-jade-500 text-white shadow' : 'text-ink-700 dark:text-ink-400 hover:text-ink-950 disabled:opacity-50'}`}
+              className={`shrink-0 rounded-lg px-4 py-2 text-xs font-sans font-bold transition-all ${activeStep === 'checkout' ? 'bg-jade-500 text-white shadow' : 'text-ink-700 dark:text-ink-400 hover:text-ink-950 disabled:opacity-50'}`}
             >
-              Escrow Checkout
+              Checkout
             </button>
             <button
               onClick={() => setActiveStep('orders')}
-              className={`px-4 py-2 rounded-lg text-xs font-sans font-bold transition-all ${activeStep === 'orders' ? 'bg-jade-500 text-white shadow' : 'text-ink-700 dark:text-ink-400 hover:text-ink-950'}`}
+              className={`shrink-0 rounded-lg px-4 py-2 text-xs font-sans font-bold transition-all ${activeStep === 'orders' ? 'bg-jade-500 text-white shadow' : 'text-ink-700 dark:text-ink-400 hover:text-ink-950'}`}
             >
-              My Escrow Orders ({myOrders.length})
+              My Orders ({myOrders.length})
             </button>
           </div>
         </div>
 
         {/* STEP 1: Shopping Cart */}
         {activeStep === 'cart' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            
-            {/* Cart products item list */}
-            <div className="lg:col-span-8 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-6 shadow-sm space-y-4">
-              <h3 className="font-sans font-semibold text-sm text-ink-900 dark:text-white flex items-center gap-2">
-                <ShoppingCart className="w-5 h-5 text-jade-500" />
-                Shopping Bag Items
-              </h3>
-
-              {cartItems.length === 0 ? (
-                <EmptyState
-                  state="empty-cart"
-                  size="sm"
-                  icon={<ShoppingCart />}
-                  title="Your shopping cart is empty"
-                  description="Go back to browse premium secured C2C items."
-                  action={
-                    <button
-                      type="button"
-                      onClick={() => onNavigate('marketplace')}
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-jade-500 hover:bg-jade-600 text-white text-xs font-semibold tracking-tight rounded-xl transition-all cursor-pointer press-scale focus-ring"
-                    >
-                      Browse marketplace
-                    </button>
-                  }
-                />
-              ) : (
-                <div className="divide-y divide-ink-100 dark:divide-ink-800/60">
-                  {cartItems.map((item) => (
-                    <div key={item.id} className="py-4 first:pt-0 last:pb-0 flex gap-4 items-center justify-between text-xs">
-                      <div className="flex items-center gap-3">
-                        <div className="w-14 h-14 rounded-lg bg-ink-100 dark:bg-ink-800 overflow-hidden shrink-0">
-                          <SmartImage src={item.images?.[0]} alt={item.title} seed={`cart-${item.id}`} className="h-full w-full" />
-                        </div>
-                        <div>
-                          <h4 className="font-bold text-ink-950 dark:text-white">{item.title}</h4>
-                          <span className="text-jade-500 font-mono">Category: {item.category}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-4">
-                        <span className="font-sans font-semibold text-sm text-ink-950 dark:text-white">₦{item.price.toLocaleString()}</span>
-                        {!preselectedProductId && (
-                          <button
-                            onClick={() => onRemoveFromCart(item.id)}
-                            className="p-1.5 hover:bg-ink-500/10 text-ink-500 rounded-lg cursor-pointer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Price calculations summary sidebar */}
-            <div className="lg:col-span-4 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-6 shadow-sm space-y-4">
-              <h4 className="font-sans font-bold text-xs tracking-tight text-ink-500 dark:text-ink-400">Order Pricing Summary</h4>
-              
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-ink-400">Cart Subtotal</span>
-                  <span className="font-bold text-ink-800 dark:text-ink-200">₦{subtotal.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-ink-400">
-                    {platformFeeMeta.enabled && platformFeeMeta.percentage > 0
-                      ? `GoodSale Platform Fee (${platformFeeMeta.percentage}%)`
-                      : 'GoodSale Platform Fee — Free'}
+          <div className="space-y-5">
+            {/* Cart hero */}
+            <section className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-jade-950 via-jade-900 to-jade-800 px-5 py-6 text-white sm:px-8 sm:py-8">
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0 opacity-30"
+                style={{
+                  backgroundImage:
+                    'radial-gradient(circle at 82% 10%, rgba(212,175,55,0.55), transparent 42%), radial-gradient(circle at 15% 90%, rgba(255,255,255,0.18), transparent 45%)',
+                }}
+              />
+              <div className="relative flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3 sm:gap-4">
+                  <button
+                    type="button"
+                    onClick={onBack}
+                    aria-label="Back to marketplace"
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-white/15 bg-white/10 text-white/85 transition-colors hover:bg-white/20 cursor-pointer"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                  <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-white/20 bg-white/10 backdrop-blur">
+                    <ShoppingCart className="h-6 w-6" />
                   </span>
-                  <span className="font-bold text-ink-800 dark:text-ink-200">₦{escrowFee.toLocaleString()}</span>
+                  <div>
+                    <h1 className="font-display text-2xl font-bold tracking-tight sm:text-3xl">Your Cart</h1>
+                    <p className="mt-1 text-xs text-white/70 sm:text-sm">
+                      {cartItems.length} {cartItems.length === 1 ? 'item' : 'items'} ·{' '}
+                      <button onClick={onBack} className="font-semibold text-gold-200 underline underline-offset-4 hover:text-gold-100 cursor-pointer">
+                        Keep shopping
+                      </button>
+                    </p>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-ink-400">Nigeria Delivery Charge</span>
-                  <span className="font-bold text-ink-800 dark:text-ink-200">₦{deliveryCharge.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between border-t border-ink-100 dark:border-ink-800 pt-2 font-bold text-sm text-ink-950 dark:text-white">
-                  <span>Grand Total</span>
-                  <span>₦{totalDue.toLocaleString()}</span>
+                <div className="hidden items-center gap-2 sm:flex">
+                  <span className="grid h-10 w-10 place-items-center rounded-full border border-white/15 bg-white/10">
+                    <Bell className="h-5 w-5 text-white/80" />
+                  </span>
+                  <span className="grid h-10 w-10 place-items-center rounded-full border border-white/15 bg-white/10">
+                    <Headphones className="h-5 w-5 text-white/80" />
+                  </span>
+                  <span className="ml-2 grid h-14 w-14 place-items-center rounded-2xl bg-gold-300 text-jade-950 shadow-lg shadow-gold-400/20">
+                    <ShoppingBag className="h-7 w-7" />
+                  </span>
                 </div>
               </div>
+            </section>
 
-              <button
-                onClick={() => setActiveStep('checkout')}
-                disabled={cartItems.length === 0}
-                className="w-full py-3 bg-jade-500 hover:bg-jade-600 text-white font-sans font-semibold text-xs rounded-xl transition-all shadow-md shadow-jade-500/10 cursor-pointer flex items-center justify-center gap-1 disabled:opacity-50"
-              >
-                Proceed to Escrow Checkout
-                <ChevronRight className="w-4 h-4" />
-              </button>
+            <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[1.55fr_1fr]">
+              {/* Cart line items */}
+              <div className="min-w-0 space-y-3">
+                {cartItems.length === 0 ? (
+                  <div className="rounded-3xl border border-dashed border-ink-200 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
+                    <EmptyState
+                      state="empty-cart"
+                      size="sm"
+                      icon={<ShoppingCart />}
+                      title="Your shopping cart is empty"
+                      description="Browse escrow-protected listings and add something you love."
+                      action={
+                        <button
+                          type="button"
+                          onClick={() => onNavigate('marketplace')}
+                          className="inline-flex items-center gap-2 rounded-xl bg-jade-600 px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-jade-700 cursor-pointer"
+                        >
+                          Browse marketplace
+                        </button>
+                      }
+                    />
+                  </div>
+                ) : (
+                  cartItems.map((item) => {
+                    const selected = !excludedIds.includes(item.id);
+                    const seller = db.users.find((u) => u.id === item.sellerId);
+                    const sellerProfile = db.profiles.find((p) => p.userId === item.sellerId);
+                    const verified = isVerifiedSeller({
+                      verificationStatus: sellerProfile?.verificationStatus,
+                      verificationExpiresAt: sellerProfile?.verificationExpiresAt,
+                    });
+                    const qty = qtyFor(item);
+                    const saving = item.compareAtPrice && item.compareAtPrice > item.price
+                      ? (item.compareAtPrice - item.price) * qty
+                      : 0;
+                    return (
+                      <article
+                        key={item.id}
+                        className={`relative rounded-3xl border bg-white p-3 shadow-sm transition-all dark:bg-ink-900 sm:p-4 ${
+                          selected ? 'border-jade-500/25' : 'border-ink-200 opacity-70 dark:border-ink-800'
+                        }`}
+                      >
+                        <div className="flex gap-3 sm:gap-4">
+                          <button
+                            type="button"
+                            role="checkbox"
+                            aria-checked={selected}
+                            aria-label={`${selected ? 'Deselect' : 'Select'} ${item.title}`}
+                            onClick={() => toggleSelected(item.id)}
+                            className={`mt-1 grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 transition-colors cursor-pointer ${
+                              selected
+                                ? 'border-jade-600 bg-jade-600 text-white'
+                                : 'border-ink-300 bg-white text-transparent dark:border-ink-600 dark:bg-ink-900'
+                            }`}
+                          >
+                            <Check className="h-3.5 w-3.5" strokeWidth={3} />
+                          </button>
+
+                          <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-ink-100 dark:bg-ink-800 sm:h-24 sm:w-24">
+                            <SmartImage src={item.images?.[0]} alt={item.title} seed={`cart-${item.id}`} className="h-full w-full" imgClassName="object-cover" />
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <h3 className="truncate text-sm font-bold text-ink-900 dark:text-white sm:text-base">{item.title}</h3>
+                                <p className="mt-0.5 truncate text-[11px] text-ink-500 dark:text-ink-400">
+                                  {[item.brand, item.category, item.condition.replace(/_/g, ' ')].filter(Boolean).join(' · ')}
+                                </p>
+                              </div>
+                              {!preselectedProductId && (
+                                <button
+                                  type="button"
+                                  aria-label={`Remove ${item.title}`}
+                                  onClick={() => onRemoveFromCart(item.id)}
+                                  className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-700 dark:hover:bg-ink-800 dark:hover:text-white cursor-pointer"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              )}
+                            </div>
+
+                            {verified && (
+                              <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-jade-500/10 px-2 py-0.5 text-[10px] font-bold text-jade-700 dark:bg-jade-500/15 dark:text-jade-300">
+                                <BadgeCheck className="h-3 w-3" /> Verified Seller
+                              </span>
+                            )}
+
+                            <div className="mt-2 flex flex-wrap items-baseline gap-1.5">
+                              <span className="text-base font-black tracking-tight text-jade-700 dark:text-jade-300">
+                                ₦{(item.price * qty).toLocaleString()}
+                              </span>
+                              {item.compareAtPrice && item.compareAtPrice > item.price && (
+                                <span className="text-[11px] text-ink-400 line-through">
+                                  ₦{(item.compareAtPrice * qty).toLocaleString()}
+                                </span>
+                              )}
+                            </div>
+                            {saving > 0 && (
+                              <span className="mt-1 inline-flex rounded-full bg-jade-500/10 px-2 py-0.5 text-[10px] font-bold text-jade-600 dark:bg-jade-500/15 dark:text-jade-300">
+                                Save ₦{saving.toLocaleString()}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="mt-3 flex items-center justify-between gap-3 border-t border-ink-100 pt-3 dark:border-ink-800 sm:mt-2 sm:border-0 sm:pt-0">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-400">
+                            {item.quantity <= 5 ? `Only ${item.quantity} left` : 'In stock'}
+                          </span>
+                          <div className="flex items-center rounded-full border border-ink-200 bg-ink-50 dark:border-ink-700 dark:bg-ink-950">
+                            <button
+                              type="button"
+                              aria-label="Decrease quantity"
+                              disabled={qty <= 1}
+                              onClick={() => changeQty(item, -1)}
+                              className="grid h-8 w-8 place-items-center rounded-full text-ink-600 transition-colors hover:text-jade-700 disabled:opacity-30 dark:text-ink-300 dark:hover:text-jade-300 cursor-pointer"
+                            >
+                              <Minus className="h-3.5 w-3.5" />
+                            </button>
+                            <span className="w-8 text-center text-xs font-black tabular-nums text-ink-900 dark:text-white">{qty}</span>
+                            <button
+                              type="button"
+                              aria-label="Increase quantity"
+                              disabled={qty >= Math.max(1, item.quantity)}
+                              onClick={() => changeQty(item, 1)}
+                              className="grid h-8 w-8 place-items-center rounded-full text-ink-600 transition-colors hover:text-jade-700 disabled:opacity-30 dark:text-ink-300 dark:hover:text-jade-300 cursor-pointer"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })
+                )}
+
+                {/* Real loyalty redemption — same GoodPoints used by escrow checkout */}
+                {cartItems.length > 0 && (
+                  <div className="flex items-center gap-3 rounded-3xl border border-jade-500/20 bg-jade-500/[0.07] p-4 dark:border-jade-500/15 dark:bg-jade-500/10">
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-jade-600 text-white">
+                      <Gift className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-ink-900 dark:text-white">Have GoodPoints?</p>
+                      <p className="text-[11px] text-ink-500 dark:text-ink-400">
+                        {applyPoints
+                          ? `Redeeming ₦${pointsDiscount.toLocaleString()} (${user.goodPoints.toLocaleString()} points available).`
+                          : `${user.goodPoints.toLocaleString()} points available · 1 point = ₦10 off escrow.`}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={user.goodPoints <= 50}
+                      onClick={() => setApplyPoints((v) => !v)}
+                      className={`shrink-0 rounded-full border px-4 py-2 text-xs font-bold transition-colors cursor-pointer ${
+                        applyPoints
+                          ? 'border-jade-600 bg-jade-600 text-white'
+                          : 'border-jade-600 text-jade-700 hover:bg-jade-500/10 dark:text-jade-300'
+                      } disabled:cursor-not-allowed disabled:opacity-40`}
+                    >
+                      {applyPoints ? 'Applied' : 'Apply'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Order summary */}
+              <aside className="space-y-3 lg:sticky lg:top-24">
+                <div className="rounded-3xl border border-ink-200 bg-white p-5 shadow-sm dark:border-ink-800 dark:bg-ink-900">
+                  <h2 className="font-display text-base font-bold text-ink-900 dark:text-white">Order Summary</h2>
+                  <div className="mt-4 space-y-2.5 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-ink-500 dark:text-ink-400">Subtotal ({checkoutItems.length} {checkoutItems.length === 1 ? 'item' : 'items'})</span>
+                      <span className="font-bold text-ink-900 dark:text-white">₦{subtotal.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-ink-500 dark:text-ink-400">{shippingLoading ? 'Calculating delivery…' : 'Shipping fee'}</span>
+                      <span className="font-bold text-ink-900 dark:text-white">
+                        {shippingError ? 'Unavailable' : requiresManualQuote ? 'Manual quote' : shippingLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : deliveryCharge === 0 ? 'Free' : `₦${deliveryCharge.toLocaleString()}`}
+                      </span>
+                    </div>
+                    {!shippingLoading && shippingQuote?.groups.map((group) => {
+                      const option = group.options.find((candidate) => candidate.method === deliveryMethod);
+                      if (!option) return null;
+                      return (
+                        <div key={group.sellerId} className="flex justify-between pl-3 text-[10px] text-ink-400">
+                          <span className="truncate pr-2">{group.sellerName} · {option.freeShipping ? 'Free' : `₦${option.fee.toLocaleString()}`}</span>
+                          <span className="shrink-0">{option.etaMinDays}–{option.etaMaxDays}d</span>
+                        </div>
+                      );
+                    })}
+                    <div className="flex justify-between">
+                      <span className="text-ink-500 dark:text-ink-400">
+                        Platform fee{platformFeeMeta.enabled && platformFeeMeta.percentage > 0 ? ` (${platformFeeMeta.percentage}%)` : ''}
+                      </span>
+                      <span className="font-bold text-ink-900 dark:text-white">₦{escrowFee.toLocaleString()}</span>
+                    </div>
+                    {hasGoodSaleProtect && (
+                      <div className="flex justify-between text-jade-700 dark:text-jade-300">
+                        <span>GoodSale Protect™</span>
+                        <span className="font-bold">₦{protectFee.toLocaleString()}</span>
+                      </div>
+                    )}
+                    {pointsDiscount > 0 && (
+                      <div className="flex justify-between text-jade-700 dark:text-jade-300">
+                        <span>GoodPoints discount</span>
+                        <span className="font-bold">−₦{pointsDiscount.toLocaleString()}</span>
+                      </div>
+                    )}
+                    <div className="flex items-baseline justify-between border-t border-ink-100 pt-3 dark:border-ink-800">
+                      <span className="text-sm font-bold text-ink-900 dark:text-white">Total</span>
+                      <span className="font-display text-xl font-black text-jade-700 dark:text-jade-300">₦{totalDue.toLocaleString()}</span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setActiveStep('checkout')}
+                    disabled={checkoutItems.length === 0}
+                    className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-gold-300 to-gold-400 px-4 py-3.5 text-sm font-black text-ink-900 shadow-lg shadow-gold-400/25 transition-all hover:from-gold-200 hover:to-gold-300 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                  >
+                    <Shield className="h-4 w-4" />
+                    Proceed to Checkout
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                  <p className="mt-3 flex items-center justify-center gap-1.5 text-[10px] font-medium text-ink-400">
+                    <ShieldCheck className="h-3.5 w-3.5 text-jade-500" /> Escrow protected · funds release after delivery PIN
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900">
+                  <p className="flex items-center gap-1.5 text-[11px] font-bold text-ink-700 dark:text-ink-200">
+                    <Headphones className="h-3.5 w-3.5 text-jade-600 dark:text-jade-400" /> Need help with an order?
+                  </p>
+                  <button
+                    onClick={() => onNavigate('support')}
+                    className="mt-1.5 text-[11px] font-semibold text-jade-700 hover:text-jade-600 dark:text-jade-300 cursor-pointer"
+                  >
+                    Open the support centre →
+                  </button>
+                </div>
+              </aside>
             </div>
-
           </div>
         )}
 
-        {/* STEP 2: Checkout Details Form */}
+        {/* STEP 2: Premium four-step checkout */}
         {activeStep === 'checkout' && (
+          <PremiumCheckout
+            items={checkoutItems.map((item) => ({ product: item, quantity: qtyFor(item) }))}
+            user={user}
+            profile={db.profiles.find((entry) => entry.userId === user.id)}
+            revenueSettings={db.revenueSettings}
+            paymentSettings={db.paymentSettings}
+            deliveryPartners={db.deliveryPartners}
+            onBack={() => setActiveStep('cart')}
+            onOrders={() => setActiveStep('orders')}
+            onClearCart={onClearCart}
+          />
+        )}
+
+        {/* Legacy single-page checkout retained as a fallback during rollout. */}
+        {activeStep === 'checkout-legacy' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             
             {/* Core checkout form */}
@@ -520,11 +1064,10 @@ export default function CartCheckoutView({
                 </button>
                 <div className="rounded-2xl overflow-hidden border border-ink-200 dark:border-ink-700">
                   <LiveDispatchMap
-                    destination={deliveryOrigin}
-                    rider={buyerGps.coords}
-                    statusLabel="Your delivery pin"
-                    geoError={buyerGps.error}
-                    gpsLocked={buyerGps.source === 'gps'}
+                    destination={buyerGps.source === 'gps' ? buyerGps.coords : null}
+                    statusLabel={buyerGps.source === 'gps' ? 'GPS-confirmed delivery pin' : 'Waiting for a GPS fix'}
+                    geoError={buyerGps.source === 'gps' ? buyerGps.error : 'A live location will appear only after you grant GPS access'}
+                    gpsLocked={false}
                     height="300px"
                   />
                 </div>
@@ -602,8 +1145,8 @@ export default function CartCheckoutView({
                     <p className="text-xs text-ink-500 dark:text-ink-400 leading-normal">
                       Verified dispatch riders with real-time GPS & secure PIN release.
                     </p>
-                    <div className="mt-2.5 inline-block text-xs font-bold font-mono px-2 py-0.5 bg-jade-100 dark:bg-jade-950/40 text-jade-600 rounded-full">
-                      Escrow Secured
+                    <div className="mt-2.5 inline-flex items-center gap-1 text-xs font-bold font-mono px-2 py-0.5 bg-jade-100 dark:bg-jade-950/40 text-jade-600 rounded-full">
+                      {shippingLoading ? 'Pricing…' : methodAvailable('GOODSALE_PARTNER') ? `₦${methodTotal('GOODSALE_PARTNER').toLocaleString()}` : 'Unavailable'}
                     </div>
                   </button>
 
@@ -626,10 +1169,10 @@ export default function CartCheckoutView({
                       <span className="font-sans font-semibold text-xs text-ink-900 dark:text-white">Third-Party Courier</span>
                     </div>
                     <p className="text-xs text-ink-500 dark:text-ink-400 leading-normal">
-                      Coordinate your own delivery with DHL, FedEx, GIGM, or others.
+                      Booked with a configured courier. If the route has no rate, GoodSale arranges a manual quotation.
                     </p>
                     <div className="mt-2.5 inline-block text-xs font-bold font-mono px-2 py-0.5 bg-jade-100 dark:bg-jade-950/40 text-jade-600 rounded-full">
-                      Flat ₦12,000
+                      {shippingLoading ? 'Pricing…' : methodAvailable('THIRD_PARTY_COURIER') ? `₦${methodTotal('THIRD_PARTY_COURIER').toLocaleString()}` : 'Manual quote'}
                     </div>
                   </button>
 
@@ -656,10 +1199,23 @@ export default function CartCheckoutView({
                       Pick up directly from the merchant&apos;s physical shop or SafeMeet hub.
                     </p>
                     <div className="mt-2.5 inline-block text-xs font-bold font-mono px-2 py-0.5 bg-ink-100 dark:bg-ink-950/40 text-ink-600 rounded-full">
-                      Free ₦0
+                      {methodAvailable('PICKUP') ? 'Free ₦0' : 'Seller pickup unavailable'}
                     </div>
                   </button>
                 </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="text-ink-500 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5" />
+                    {shippingLoading ? 'Calculating delivery time…' : shippingEta ? `Estimated delivery in ${shippingEta.min}–${shippingEta.max} day${shippingEta.max === 1 ? '' : 's'}` : 'Delivery time shown once a route is priced'}
+                  </span>
+                  {shippingQuote?.groups.length ? <span className="text-ink-400">{shippingQuote.groups.length} seller shipment{shippingQuote.groups.length === 1 ? '' : 's'} · fees combined</span> : null}
+                </div>
+                {shippingError ? <p className="text-xs font-semibold text-ink-500">{shippingError}</p> : null}
+                {requiresManualQuote && !shippingError ? (
+                  <p className="text-xs font-semibold text-amber-600">
+                    This route is outside the automatic pricing tiers. Select another method or ask support for a manual courier quotation.
+                  </p>
+                ) : null}
               </div>
 
               {/* GOODDISPATCH MARKETPLACE AND SMART MATCHING PANEL */}
@@ -690,9 +1246,9 @@ export default function CartCheckoutView({
                     <span className="text-xs font-bold text-ink-400 tracking-tight block">Select Service Tier</span>
                     <div className="grid grid-cols-3 gap-2">
                       {[
-                        { type: 'ECONOMY', label: 'Economy', price: '₦3,500', desc: 'Est. 24 Hours' },
-                        { type: 'STANDARD', label: 'Standard', price: '₦6,000', desc: 'Est. 3-4 Hours' },
-                        { type: 'EXPRESS', label: 'Express', price: '₦10,000', desc: 'Est. 1 Hour' }
+                        { type: 'ECONOMY' as const, label: 'Economy', desc: 'Lowest cost' },
+                        { type: 'STANDARD' as const, label: 'Standard', desc: 'Everyday delivery' },
+                        { type: 'EXPRESS' as const, label: 'Express', desc: 'Fastest option' },
                       ].map((tier) => (
                         <button
                           key={tier.type}
@@ -705,7 +1261,9 @@ export default function CartCheckoutView({
                           }`}
                         >
                           <span className="block text-xs">{tier.label}</span>
-                          <span className="block text-xs font-mono mt-0.5">{tier.price}</span>
+                          <span className="block text-xs font-mono mt-0.5">
+                            {shippingLoading ? '…' : requiresManualQuote ? 'Manual' : shippingQuote?.serviceTotals?.[tier.type] != null ? `₦${shippingQuote.serviceTotals[tier.type].toLocaleString()}` : '—'}
+                          </span>
                           <span className="block text-[10px] text-ink-400 font-medium mt-0.5">{tier.desc}</span>
                         </button>
                       ))}
@@ -825,10 +1383,10 @@ export default function CartCheckoutView({
                     </div>
                   )}
 
-                  {/* Require selection lock warning */}
+                  {/* Courier preference is optional; GoodSale assigns after payment if skipped. */}
                   {!selectedPartnerId && (
-                    <p className="text-xs font-semibold text-ink-500 flex items-center gap-1 animate-pulse">
-                      Please select a Courier Partner from the list or click &quot;Smart Match Me&quot; to unlock secure escrow assignment.
+                    <p className="text-xs font-semibold text-ink-500 flex items-center gap-1">
+                      Optional: choose a preferred rider, or GoodSale will assign an available courier after payment.
                     </p>
                   )}
 
@@ -1153,9 +1711,23 @@ export default function CartCheckoutView({
                   <span className="font-bold text-ink-800 dark:text-ink-200">₦{escrowFee.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-ink-400">Delivery charge ({deliveryMethod === 'GOODSALE_PARTNER' ? serviceType : 'Other'})</span>
-                  <span className="font-bold text-ink-800 dark:text-ink-200">₦{deliveryCharge.toLocaleString()}</span>
+                  <span className="text-ink-400">Delivery charge ({deliveryMethod === 'GOODSALE_PARTNER' ? serviceType : deliveryMethod === 'PICKUP' ? 'Pickup' : 'Courier'})</span>
+                  <span className="font-bold text-ink-800 dark:text-ink-200">
+                    {shippingLoading ? 'Calculating…' : requiresManualQuote ? 'Manual quote' : deliveryCharge === 0 ? 'Free' : `₦${deliveryCharge.toLocaleString()}`}
+                  </span>
                 </div>
+                {!shippingLoading && shippingQuote?.groups.map((group) => {
+                  const option = group.options.find((candidate) => candidate.method === deliveryMethod);
+                  if (!option) return null;
+                  return (
+                    <div key={group.sellerId} className="flex justify-between pl-3 text-[10px] text-ink-400">
+                      <span className="truncate pr-2">{group.sellerName}</span>
+                      <span>{option.freeShipping ? 'Free shipping' : `₦${option.fee.toLocaleString()}`} · {option.etaMinDays}–{option.etaMaxDays}d</span>
+                    </div>
+                  );
+                })}
+                {shippingError ? <p className="text-[10px] text-ink-500 leading-snug">{shippingError}</p> : null}
+                {requiresManualQuote && !shippingError ? <p className="text-[10px] text-amber-600 leading-snug">This route needs an administrator manual quotation before payment.</p> : null}
                 {hasGoodSaleProtect && (
                   <div className="flex justify-between text-jade-600 dark:text-jade-400 font-semibold">
                     <span>GoodSale Protect™ Fee</span>
@@ -1192,7 +1764,7 @@ export default function CartCheckoutView({
 
               <button
                 disabled={
-                  (deliveryMethod === 'GOODSALE_PARTNER' && !selectedPartnerId) ||
+                  shippingBlocked ||
                   (selectedPaymentMethod === 'bank' && !bankTransferReceipt)
                 }
                 onClick={() => {
@@ -1213,8 +1785,12 @@ export default function CartCheckoutView({
                 className="w-full py-3 bg-jade-500 hover:bg-jade-600 text-white font-sans font-semibold text-xs rounded-xl transition-all shadow-lg shadow-jade-500/20 cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-45 disabled:cursor-not-allowed"
               >
                 <Shield className="w-4 h-4 text-ink-300" />
-                {deliveryMethod === 'GOODSALE_PARTNER' && !selectedPartnerId ? (
-                  'Select a courier partner'
+                {shippingLoading ? (
+                  'Calculating delivery…'
+                ) : requiresManualQuote ? (
+                  'Manual quotation required'
+                ) : shippingError ? (
+                  'Delivery unavailable'
                 ) : selectedPaymentMethod === 'bank' ? (
                   'Submit Transfer for Review'
                 ) : selectedPaymentMethod === 'invoice' ? (
@@ -1232,201 +1808,450 @@ export default function CartCheckoutView({
           </div>
         )}
 
-        {/* STEP 3: My Escrow Orders Log with active delivery pin inputs */}
+        {/* STEP 3: buyer and seller order hub */}
         {activeStep === 'orders' && (
-          <div className="space-y-6">
-            
-            <div className="p-4 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-2xl shadow-sm">
-              <span className="font-sans font-bold text-sm text-ink-900 dark:text-white block mb-1">Active Payout Escrow Trackers</span>
-              <p className="text-xs text-ink-400">
-                Track status updates. Once couriers present packages, buyers must provide their secret 6-digit PIN. Senders input PIN below to unlock neutral funds automatically.
-              </p>
-            </div>
+          <div className="space-y-5">
+            <section className="overflow-hidden rounded-[2rem] border border-ink-200 bg-white shadow-sm dark:border-ink-800 dark:bg-ink-900">
+              <div className="relative overflow-hidden bg-gradient-to-br from-jade-950 via-jade-900 to-jade-800 px-5 py-6 text-white sm:px-7 sm:py-7">
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 opacity-30"
+                  style={{
+                    backgroundImage:
+                      'radial-gradient(circle at 88% 10%, rgba(212,175,55,0.5), transparent 42%), radial-gradient(circle at 8% 92%, rgba(255,255,255,0.14), transparent 45%)',
+                  }}
+                />
+                <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-gold-200">
+                      <ShieldCheck className="h-3 w-3" /> Escrow protected
+                    </span>
+                    <h1 className="mt-2 font-display text-2xl font-extrabold tracking-tight sm:text-3xl">My orders</h1>
+                    <p className="mt-1 max-w-md text-xs leading-relaxed text-white/65 sm:text-sm">
+                      See what you bought, where it is, and the next step. Every payment stays protected until delivery is confirmed.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 sm:min-w-[280px]">
+                    <div className="rounded-2xl border border-white/15 bg-white/10 px-3 py-2.5 backdrop-blur">
+                      <p className="text-[9px] font-bold uppercase tracking-wide text-white/50">Active</p>
+                      <p className="mt-0.5 text-lg font-extrabold leading-none">{activeOrderCount}</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/15 bg-white/10 px-3 py-2.5 backdrop-blur">
+                      <p className="text-[9px] font-bold uppercase tracking-wide text-white/50">Delivered</p>
+                      <p className="mt-0.5 text-lg font-extrabold leading-none">{deliveredOrderCount}</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/15 bg-white/10 px-3 py-2.5 backdrop-blur">
+                      <p className="text-[9px] font-bold uppercase tracking-wide text-white/50">In escrow</p>
+                      <p className="mt-0.5 truncate text-[11px] font-extrabold leading-tight">₦{escrowProtectedValue.toLocaleString()}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {myOrders.length > 0 && (
+                <div className="flex gap-2 overflow-x-auto border-t border-ink-100 bg-white px-3 py-3 dark:border-ink-800 dark:bg-ink-900 sm:px-4">
+                  {orderFilters.map((filter) => (
+                    <button
+                      key={filter.id}
+                      type="button"
+                      onClick={() => setOrderFilter(filter.id)}
+                      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-bold transition-colors cursor-pointer ${
+                        orderFilter === filter.id
+                          ? 'bg-jade-600 text-white shadow-sm'
+                          : 'border border-ink-200 bg-white text-ink-500 hover:border-jade-400 hover:text-jade-700 dark:border-ink-700 dark:bg-ink-950 dark:text-ink-300'
+                      }`}
+                    >
+                      {filter.label}
+                      <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${orderFilter === filter.id ? 'bg-white/20 text-white' : 'bg-ink-100 text-ink-500 dark:bg-ink-800 dark:text-ink-300'}`}>
+                        {filter.count}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
 
             {myOrders.length === 0 ? (
-              <div className="p-12 text-center text-xs text-ink-400">
-                You have not placed any orders yet.
-              </div>
+              <section className="rounded-[2rem] border border-dashed border-ink-200 bg-white dark:border-ink-800 dark:bg-ink-900">
+                <EmptyState
+                  state="empty-cart"
+                  size="md"
+                  icon={<ShoppingBag />}
+                  title="No orders yet"
+                  description="When you buy or sell something, it will appear here with its payment, delivery and escrow status in one place."
+                  action={
+                    <button
+                      type="button"
+                      onClick={onBack}
+                      className="rounded-xl bg-jade-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-jade-700 cursor-pointer"
+                    >
+                      Browse the marketplace
+                    </button>
+                  }
+                />
+              </section>
+            ) : filteredOrders.length === 0 ? (
+              <section className="rounded-[2rem] border border-ink-200 bg-white p-10 text-center dark:border-ink-800 dark:bg-ink-900">
+                <Package className="mx-auto h-7 w-7 text-ink-300 dark:text-ink-600" />
+                <p className="mt-3 text-sm font-bold text-ink-800 dark:text-ink-100">No orders in this view</p>
+                <p className="mt-1 text-xs text-ink-400">Try another filter to see the rest of your orders.</p>
+                <button
+                  type="button"
+                  onClick={() => setOrderFilter('all')}
+                  className="mt-4 rounded-xl border border-ink-200 px-4 py-2 text-xs font-bold text-ink-600 hover:border-jade-400 hover:text-jade-700 dark:border-ink-700 dark:text-ink-300 cursor-pointer"
+                >
+                  Show all orders
+                </button>
+              </section>
             ) : (
-              <div className="space-y-4">
-                {myOrders.map((order) => {
+              <div className="space-y-3">
+                {filteredOrders.map((order) => {
                   const product = db.products.find(p => p.id === order.productId);
                   const isBuyer = order.buyerId === user.id;
                   const activeDispute = db.disputes.find(d => d.orderId === order.id);
+                  const delivery = (db.deliveries || []).find(d => d.orderId === order.id);
+                  const deliveryRider = delivery?.riderId
+                    ? db.deliveryPartners.find(p => p.id === delivery.riderId)
+                    : undefined;
+                  const meta = orderStatusMeta(order.status);
+                  const isDelivered = order.status === OrderStatus.DELIVERED_SUCCESS;
+                  const isExpanded = expandedOrderId === order.id;
+                  const canTrack = orderHasEscrowStarted(order.status);
+                  const canReportIssue = isBuyer && [
+                    OrderStatus.PENDING,
+                    OrderStatus.PAID_ESCROW,
+                    OrderStatus.SHIPPED,
+                    OrderStatus.OUT_FOR_DELIVERY,
+                  ].includes(order.status);
+                  const seller = db.users.find((candidate) => candidate.id === order.sellerId);
+                  const sellerBusiness = db.businesses.find((business) => business.ownerId === order.sellerId);
+                  const sellerName = sellerBusiness?.name || seller?.fullName || 'GoodSale seller';
+                  const buyer = db.users.find((candidate) => candidate.id === order.buyerId);
+                  const trackingHref = `/track/${encodeURIComponent(delivery?.trackingId || order.orderNumber)}`;
+                  const etaText = delivery?.estimatedDeliveryDate
+                    ? new Date(`${delivery.estimatedDeliveryDate}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+                    : order.estimatedDeliveryMinDays != null && order.estimatedDeliveryMaxDays != null
+                      ? `${order.estimatedDeliveryMinDays}–${order.estimatedDeliveryMaxDays} days`
+                      : 'Confirmed after dispatch';
+                  const escrowState = isDelivered
+                    ? 'Released to seller'
+                    : order.status === OrderStatus.DISPUTED || order.status === OrderStatus.REFUND_REQUESTED
+                      ? 'On hold'
+                      : order.status === OrderStatus.REFUNDED
+                        ? 'Refunded'
+                        : ESCROW_ACTIVE_STATUSES.includes(order.status)
+                          ? 'Protected in escrow'
+                          : 'Not funded yet';
 
                   return (
-                    <div 
+                    <article
                       key={order.id}
-                      className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-3xl p-5 shadow-sm space-y-4"
+                      className={`overflow-hidden rounded-3xl border bg-white shadow-sm transition-colors dark:bg-ink-900 ${
+                        isExpanded
+                          ? 'border-jade-500/45 ring-1 ring-jade-500/10'
+                          : 'border-ink-200 hover:border-jade-400/40 dark:border-ink-800'
+                      }`}
                     >
-                      {/* Order Title Header */}
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-ink-100 dark:border-ink-800 pb-3">
-                        <div>
-                          <span className="text-xs text-ink-400 tracking-tight font-mono">Order SKU: {order.id}</span>
-                          <h4 className="font-bold text-sm text-ink-900 dark:text-white mt-0.5">{product?.title}</h4>
+                      <div className="p-4 sm:p-5">
+                        <div className="flex gap-3 sm:gap-4">
+                          <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-ink-100 dark:bg-ink-800 sm:h-20 sm:w-20">
+                            <SmartImage
+                              src={order.productImage || product?.images?.[0] || ''}
+                              alt={order.productTitle || product?.title || 'Ordered item'}
+                              seed={`order-${order.id}`}
+                              className="h-full w-full"
+                              imgClassName="object-cover"
+                            />
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[9px] font-bold ${ORDER_TONE_CLASSES[meta.tone]}`}>
+                                    <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                                    {meta.label}
+                                  </span>
+                                  <span className="rounded-full border border-ink-200 px-2 py-0.5 text-[9px] font-semibold text-ink-400 dark:border-ink-700">
+                                    {isBuyer ? 'Purchase' : 'Sale'}
+                                  </span>
+                                  {order.hasGoodSaleProtect && (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-gold-300/20 px-2 py-0.5 text-[9px] font-bold text-ink-600 dark:text-gold-200">
+                                      <ShieldCheck className="h-2.5 w-2.5" /> Protected
+                                    </span>
+                                  )}
+                                </div>
+                                <h3 className="mt-1.5 line-clamp-2 font-display text-sm font-bold leading-snug text-ink-900 dark:text-white sm:text-base">
+                                  {order.productTitle || product?.title || 'GoodSale order'}
+                                </h3>
+                                <p className="mt-1 text-[10px] text-ink-400">
+                                  <span className="font-mono font-semibold text-ink-500 dark:text-ink-300">{order.orderNumber || `#${order.id}`}</span>
+                                  <span className="mx-1.5">·</span>
+                                  {new Date(order.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+                                </p>
+                                <p className="mt-0.5 truncate text-[10px] text-ink-400">
+                                  {isBuyer ? `Sold by ${sellerName}` : `Order from ${buyer?.fullName || 'GoodSale buyer'}`}
+                                </p>
+                              </div>
+                              <div className="shrink-0 text-left sm:text-right">
+                                <p className="font-display text-base font-extrabold text-ink-900 dark:text-white">₦{order.totalAmount.toLocaleString()}</p>
+                                <p className="mt-0.5 text-[9px] font-semibold text-ink-400">{escrowState}</p>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                        
-                        <div className="flex items-center gap-2">
-                          <span className="font-sans font-semibold text-sm text-ink-950 dark:text-white">₦{order.totalAmount.toLocaleString()}</span>
-                          <span className={`px-2 py-0.5 rounded text-xs font-bold tracking-tight ${order.status === OrderStatus.DELIVERED_SUCCESS ? 'bg-jade-100 text-jade-800 dark:bg-jade-500/10 dark:text-jade-400' : order.status === OrderStatus.PAID_ESCROW ? 'bg-ink-100 text-ink-800 dark:bg-ink-500/10' : 'bg-ink-100 text-ink-800 dark:bg-ink-500/10'}`}>
-                            {order.status.replace('_', ' ')}
-                          </span>
+
+                        <div className="relative mt-4" aria-label={`Order progress: ${meta.label}`}>
+                          <div className="absolute left-[12.5%] right-[12.5%] top-3 h-0.5 rounded-full bg-ink-200 dark:bg-ink-700" />
+                          <div
+                            className="absolute left-[12.5%] top-3 h-0.5 rounded-full bg-jade-500 transition-all duration-500"
+                            style={{ width: `${(meta.progress / (ORDER_PROGRESS_STEPS.length - 1)) * 75}%` }}
+                          />
+                          <div className="relative grid grid-cols-4 gap-1">
+                            {ORDER_PROGRESS_STEPS.map((step, index) => {
+                              const complete = index <= meta.progress;
+                              return (
+                                <div key={step} className="flex flex-col items-center text-center">
+                                  <span className={`relative z-10 grid h-6 w-6 place-items-center rounded-full border-2 text-[9px] font-black ${
+                                    complete
+                                      ? 'border-jade-500 bg-jade-500 text-white'
+                                      : 'border-ink-200 bg-white text-ink-400 dark:border-ink-700 dark:bg-ink-900'
+                                  }`}>
+                                    {complete ? <Check className="h-3 w-3" strokeWidth={3} /> : index + 1}
+                                  </span>
+                                  <span className={`mt-1 text-[9px] font-semibold ${complete ? 'text-jade-700 dark:text-jade-300' : 'text-ink-400'}`}>
+                                    {step}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       </div>
 
-                      {/* Info logs */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                        
-                        {/* Shipping address details */}
-                        <div className="space-y-1.5">
-                          <div>
-                            <span className="text-ink-400 block text-xs">Destination Address</span>
-                            <span className="font-bold text-ink-800 dark:text-ink-300">{order.deliveryAddress}</span>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <span className="text-ink-400 block text-xs">Carrier & Speed</span>
-                              <span className="font-semibold text-ink-800 dark:text-ink-300 block">
-                                {order.deliveryMethod === 'GOODSALE_PARTNER' 
-                                  ? `GoodDispatch (${order.serviceType || 'STANDARD'})` 
-                                  : order.deliveryMethod === 'THIRD_PARTY_COURIER' 
-                                    ? 'Third-Party Express' 
-                                    : 'Self-Pickup'
-                                }
-                              </span>
-                            </div>
-                            <div>
-                              <span className="text-ink-400 block text-xs">Ledger Mode</span>
-                              <span className="font-semibold text-ink-800 dark:text-ink-300 block">PIN Verification</span>
-                            </div>
-                          </div>
-
-                          {order.hasGoodSaleProtect && (
-                            <div className="pt-1.5">
-                              <span className="inline-flex items-center gap-1 bg-jade-500/10 text-jade-600 dark:text-jade-400 px-2 py-0.5 rounded-full text-xs font-bold">
-                                <ShieldCheck className="w-3 h-3" />
-                                GoodSale Protect™ Coverage Active
-                              </span>
-                            </div>
-                          )}
-
-                          {/* Live rider tracking while the order is on the move */}
-                          {order.deliveryMethod === 'GOODSALE_PARTNER' &&
-                            hasLiveTracking(db.deliveryJobs.find((j) => j.orderId === order.id)) && (() => {
-                              const job = db.deliveryJobs.find((j) => j.orderId === order.id);
-                              const partner = job?.partnerId
-                                ? db.deliveryPartners.find((p) => p.id === job.partnerId)
-                                : undefined;
-                              return (
-                                <div className="pt-3">
-                                  <OrderTrackingCard
-                                    order={order}
-                                    job={job}
-                                    partnerName={partner?.fullName}
-                                    height="340px"
-                                  />
-                                </div>
-                              );
-                            })()}
-                          
-                          {/* Printable digital receipt click */}
-                          <div className="pt-2">
+                      <div className="flex flex-col gap-3 border-t border-ink-100 bg-ink-50/60 px-4 py-3 dark:border-ink-800 dark:bg-ink-950/30 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                        <p className="flex items-start gap-2 text-[10px] leading-relaxed text-ink-500 dark:text-ink-400">
+                          <Clock className="mt-0.5 h-3 w-3 shrink-0 text-jade-600" />
+                          <span>{meta.hint}</span>
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {isBuyer && order.status === OrderStatus.PENDING && ['escrow', 'card', 'partial'].includes(order.paymentMethod) && (
                             <button
-                              onClick={() => setSelectedReceiptOrder(order)}
-                              className="text-jade-500 font-bold hover:underline text-xs flex items-center gap-1 cursor-pointer"
+                              type="button"
+                              onClick={() => handlePayPendingOrder(order)}
+                              className="inline-flex flex-1 items-center justify-center gap-1 rounded-xl bg-gold-300 px-3 py-2 text-[10px] font-black text-ink-900 transition-colors hover:bg-gold-200 sm:flex-none cursor-pointer"
                             >
-                              <ClipboardCheck className="w-3.5 h-3.5" />
-                              Generate Escrow Ledger Receipt
+                              <CreditCard className="h-3.5 w-3.5" /> Pay now
                             </button>
-                          </div>
+                          )}
+                          {canTrack && (
+                            <Link
+                              href={trackingHref}
+                              className="inline-flex flex-1 items-center justify-center gap-1 rounded-xl bg-jade-600 px-3 py-2 text-[10px] font-bold text-white transition-colors hover:bg-jade-700 sm:flex-none"
+                            >
+                              <Truck className="h-3.5 w-3.5" /> Track order <ChevronRight className="h-3 w-3" />
+                            </Link>
+                          )}
+                          {isDelivered && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedReceiptOrder(order)}
+                              className="inline-flex items-center justify-center gap-1 rounded-xl border border-ink-200 bg-white px-3 py-2 text-[10px] font-bold text-ink-600 hover:border-jade-400 hover:text-jade-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-300 cursor-pointer"
+                            >
+                              <ClipboardCheck className="h-3.5 w-3.5" /> Receipt
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => toggleOrderDetails(order.id)}
+                            aria-expanded={isExpanded}
+                            className="inline-flex flex-1 items-center justify-center gap-1 rounded-xl border border-ink-200 bg-white px-3 py-2 text-[10px] font-bold text-ink-600 hover:border-jade-400 hover:text-jade-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-300 sm:flex-none cursor-pointer"
+                          >
+                            {isExpanded ? 'Hide details' : 'View details'}
+                            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                          </button>
                         </div>
+                      </div>
 
-                        {/* Secret PIN display / verification forms */}
-                        <div className="p-4 bg-ink-50 dark:bg-ink-800/40 rounded-2xl flex flex-col justify-between gap-3">
-                          
-                          {isBuyer ? (
-                            // Buyer sees PIN code to hand over to courier
-                            <div>
-                              <span className="text-xs text-jade-500 font-semibold tracking-tight block mb-1">Your Secret Delivery Verification PIN</span>
-                              <div className="flex items-center gap-2.5">
-                                <KeyRound className="w-4 h-4 text-jade-500 animate-pulse" />
-                                <span className="font-mono text-lg font-semibold text-ink-900 dark:text-white tracking-widest bg-white dark:bg-ink-900 px-3.5 py-1 rounded-lg border border-ink-100 dark:border-ink-800">
-                                  {order.deliveryPin}
-                                </span>
-                              </div>
-                              <p className="text-xs text-ink-400 mt-2 leading-relaxed">
-                                Present this secret PIN code to the dispatch courier only after verifying package physical specifications. Never share PIN online!
-                              </p>
+                      {isExpanded && (
+                        <div className="border-t border-ink-100 bg-ink-50/40 p-4 dark:border-ink-800 dark:bg-ink-950/20 sm:p-5">
+                          <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <div className="rounded-2xl border border-ink-200 bg-white p-3.5 dark:border-ink-800 dark:bg-ink-900">
+                              <p className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wide text-ink-400"><MapPin className="h-3 w-3 text-jade-600" /> Delivery</p>
+                              <p className="mt-1.5 text-[11px] font-semibold text-ink-800 dark:text-ink-200">{deliveryMethodLabel(order)}</p>
+                              <p className="mt-1 line-clamp-2 text-[10px] text-ink-500 dark:text-ink-400">{order.deliveryAddress}, {order.deliveryCity} {order.deliveryState}</p>
+                              <p className="mt-1 text-[10px] text-ink-400">Expected: <strong className="font-semibold text-ink-600 dark:text-ink-300">{etaText}</strong></p>
                             </div>
-                          ) : (
-                            // Senders/Couriers input PIN to confirm delivery and release funds
-                            order.status === OrderStatus.DELIVERED_SUCCESS ? (
-                              <div className="text-center py-2 text-jade-500 font-bold text-xs">
-                                Neutral Escrow Payout released successfully to your wallet!
+                            <div className="rounded-2xl border border-ink-200 bg-white p-3.5 dark:border-ink-800 dark:bg-ink-900">
+                              <p className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wide text-ink-400"><CreditCard className="h-3 w-3 text-jade-600" /> Payment</p>
+                              <p className="mt-1.5 text-[11px] font-semibold text-ink-800 dark:text-ink-200">{escrowState}</p>
+                              <p className="mt-1 text-[10px] text-ink-500 dark:text-ink-400">Method: {order.paymentMethod?.replace(/_/g, ' ')}</p>
+                              <p className="mt-1 text-[10px] text-ink-400">Total: <strong className="font-semibold text-ink-600 dark:text-ink-300">₦{order.totalAmount.toLocaleString()}</strong></p>
+                            </div>
+                          </div>
+
+                          {/* Existing detailed delivery, PIN and dispute controls stay available when expanded. */}
+                          <div className="space-y-4">
+
+                        {/* Delivery PIN display / verification forms */}
+                        {isBuyer ? (
+                          <div className="rounded-2xl border border-jade-500/20 bg-jade-500/[0.04] p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-jade-700 dark:text-jade-300">
+                                  <KeyRound className="h-3.5 w-3.5" /> Delivery PIN
+                                </p>
+                                <p className="mt-1 text-[10px] leading-relaxed text-ink-500 dark:text-ink-400">
+                                  Reveal this only at handover, after you have inspected the item. Never share it online.
+                                </p>
+                              </div>
+                              <ShieldCheck className="h-4 w-4 shrink-0 text-jade-600" />
+                            </div>
+                            {orderHasEscrowStarted(order.status) && !isDelivered && !orderIsIssue(order.status) ? (
+                              <div className="mt-3 flex flex-wrap items-center gap-2">
+                                <span className="rounded-xl border border-ink-200 bg-white px-3 py-2 font-mono text-base font-bold tracking-[0.3em] text-ink-900 dark:border-ink-700 dark:bg-ink-950 dark:text-white">
+                                  {visiblePinOrderId === order.id ? order.deliveryPin : '••••••'}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setVisiblePinOrderId((current) => (current === order.id ? null : order.id))}
+                                  className="rounded-xl border border-ink-200 bg-white px-3 py-2 text-[10px] font-bold text-ink-600 hover:border-jade-400 hover:text-jade-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-300 cursor-pointer"
+                                >
+                                  {visiblePinOrderId === order.id ? 'Hide PIN' : 'Show PIN'}
+                                </button>
+                                {visiblePinOrderId === order.id && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void navigator.clipboard.writeText(order.deliveryPin)
+                                        .then(() => toast.success('Delivery PIN copied.'))
+                                        .catch(() => toast.error('Could not copy the PIN. Please read it from the screen.'));
+                                    }}
+                                    className="grid h-9 w-9 place-items-center rounded-xl border border-ink-200 bg-white text-ink-500 hover:text-jade-700 dark:border-ink-700 dark:bg-ink-900 cursor-pointer"
+                                    aria-label="Copy delivery PIN"
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
                               </div>
                             ) : (
-                              <div className="space-y-2">
-                                <span className="text-xs text-ink-500 font-semibold tracking-tight block">Input Buyer PIN to Release Escrow Payout</span>
+                              <p className="mt-3 rounded-xl bg-white px-3 py-2.5 text-[10px] font-semibold text-ink-500 dark:bg-ink-950 dark:text-ink-400">
+                                {isDelivered
+                                  ? 'This order is complete. No delivery PIN is needed.'
+                                  : orderIsIssue(order.status)
+                                    ? 'The delivery PIN is paused while this order is under review.'
+                                    : 'Your delivery PIN appears here once payment is secured.'}
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="rounded-2xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900">
+                            <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-ink-500 dark:text-ink-300">
+                              <KeyRound className="h-3.5 w-3.5 text-jade-600" /> Release seller payment
+                            </p>
+                            <p className="mt-1 text-[10px] leading-relaxed text-ink-500 dark:text-ink-400">
+                              Enter the buyer&apos;s 6-digit delivery PIN after a successful handover. This releases the escrow payment.
+                            </p>
+                            {isDelivered ? (
+                              <p className="mt-3 flex items-center gap-1.5 rounded-xl bg-jade-500/10 px-3 py-2.5 text-[10px] font-bold text-jade-700 dark:text-jade-300">
+                                <CheckCircle2 className="h-3.5 w-3.5" /> Payment released successfully.
+                              </p>
+                            ) : orderHasEscrowStarted(order.status) && !orderIsIssue(order.status) ? (
+                              <form
+                                onSubmit={(event) => {
+                                  event.preventDefault();
+                                  void handleVerifyDeliveryPin(order.id);
+                                }}
+                                className="mt-3 space-y-2"
+                              >
                                 <div className="flex gap-2">
                                   <input
                                     type="text"
+                                    inputMode="numeric"
                                     maxLength={6}
                                     value={enteredPin}
-                                    onChange={(e) => setEnteredPin(e.target.value)}
-                                    placeholder="Enter 6-digit PIN"
-                                    className="flex-1 px-3 py-1.5 text-xs bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-700 rounded-lg text-ink-800 dark:text-white text-center font-mono"
+                                    onChange={(event) => setEnteredPin(event.target.value.replace(/\D/g, ''))}
+                                    placeholder="6-digit PIN"
+                                    className="min-w-0 flex-1 rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-center font-mono text-sm font-bold tracking-widest text-ink-800 dark:border-ink-700 dark:bg-ink-950 dark:text-white"
                                   />
                                   <button
-                                    onClick={() => handleVerifyDeliveryPin(order.id)}
-                                    className="px-3.5 py-1.5 bg-jade-500 hover:bg-jade-600 text-white font-bold text-xs rounded-lg transition-all cursor-pointer"
+                                    type="submit"
+                                    disabled={enteredPin.length < 4}
+                                    className="rounded-xl bg-jade-600 px-3.5 py-2.5 text-[10px] font-bold text-white hover:bg-jade-700 disabled:opacity-40 cursor-pointer"
                                   >
-                                    Verify
+                                    Release
                                   </button>
                                 </div>
-                                {pinError && <p className="text-xs font-bold text-ink-500">{pinError}</p>}
-                                {pinSuccess && <p className="text-xs font-bold text-jade-500">{pinSuccess}</p>}
-                              </div>
-                            )
-                          )}
+                                {pinError && <p className="text-[10px] font-bold text-red-600 dark:text-red-300">{pinError}</p>}
+                                {pinSuccess && <p className="text-[10px] font-bold text-jade-600 dark:text-jade-300">{pinSuccess}</p>}
+                              </form>
+                            ) : (
+                              <p className="mt-3 text-[10px] text-ink-400">
+                                Payment can be released after the buyer has paid and the order is on its way.
+                              </p>
+                            )}
+                          </div>
+                        )}
 
-                        </div>
-
-                      </div>
+                      {delivery && (
+                        <DeliveryTrackingPanel
+                          delivery={delivery}
+                          events={db.deliveryEvents || []}
+                          rider={deliveryRider}
+                          orderNumber={order.orderNumber}
+                          isBuyer={isBuyer}
+                          onDispute={
+                            canReportIssue
+                              ? () => {
+                                  setShowDisputeFormOrderId(order.id);
+                                  setDisputeReason('');
+                                }
+                              : undefined
+                          }
+                        />
+                      )}
 
                       {/* Escrow Dispute Status and File Dispute form */}
                       {order.status === OrderStatus.DISPUTED ? (
-                        <div className="p-4 bg-ink-500/10 border border-ink-500/20 rounded-2xl text-xs space-y-1.5 animate-fade-in">
-                          <div className="flex items-center gap-1.5 text-ink-600 dark:text-ink-400 font-semibold tracking-tight text-xs">
-                            <span className="w-2 h-2 bg-jade-500 rounded-full animate-ping shrink-0" />
-                            <span>Escrow Payout Frozen & Disputed</span>
+                        <div className="rounded-2xl border border-gold-400/30 bg-gold-300/10 p-4 text-xs">
+                          <div className="flex items-center gap-2 font-bold text-ink-800 dark:text-gold-200">
+                            <ShieldAlert className="h-4 w-4 shrink-0" />
+                            Order under review
                           </div>
-                          <p className="text-ink-700 dark:text-ink-300">
-                            <strong>Arbitration Reason:</strong> {activeDispute?.reason || 'The buyer reported that product specifications or physical conditions do not match listings.'}
+                          <p className="mt-1.5 leading-relaxed text-ink-600 dark:text-ink-300">
+                            {activeDispute?.reason || 'You reported a problem with this order. GoodSale has paused the seller payment while the case is reviewed.'}
                           </p>
-                          <div className="text-xs text-ink-500 dark:text-ink-400 font-mono font-bold">
-                            Case Status: {activeDispute?.resolution === 'PENDING' ? 'Under review by GoodSale neutral arbitration' : `Resolved: ${activeDispute?.resolution}`}
-                          </div>
+                          <p className="mt-2 rounded-xl bg-white/70 px-3 py-2 text-[10px] font-semibold text-ink-500 dark:bg-ink-950/40 dark:text-ink-400">
+                            {activeDispute?.resolution && activeDispute.resolution !== 'PENDING'
+                              ? `Status: ${activeDispute.resolution}.`
+                              : 'Status: waiting for GoodSale support to review the case.'}
+                          </p>
                         </div>
                       ) : (
-                        isBuyer && [OrderStatus.PENDING, OrderStatus.PAID_ESCROW, OrderStatus.SHIPPED, OrderStatus.OUT_FOR_DELIVERY].includes(order.status) && (
-                          <div className="mt-4 border-t border-ink-100 dark:border-ink-800/60 pt-3">
+                        canReportIssue && (
+                          <div className="border-t border-ink-100 pt-3 dark:border-ink-800/60">
                             {showDisputeFormOrderId === order.id ? (
-                              <div className="space-y-3 bg-ink-500/5 border border-ink-500/10 rounded-2xl p-4 animate-slide-up">
-                                <label className="text-xs text-ink-500 dark:text-ink-400 font-semibold tracking-tight block">Explain the Dispute (Merchant Fraud, Broken Spec, Delayed Shipment)</label>
+                              <div className="space-y-3 rounded-2xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900">
+                                <div>
+                                  <p className="text-xs font-bold text-ink-800 dark:text-ink-100">Tell us what went wrong</p>
+                                  <p className="mt-0.5 text-[10px] leading-relaxed text-ink-400">
+                                    This pauses the seller payment while GoodSale reviews your order. Include as much detail as you can.
+                                  </p>
+                                </div>
                                 <textarea
                                   required
                                   rows={3}
-                                  placeholder="Please detail why you want to halt the escrow payout. Be professional and detailed. A neutral GoodSale Admin arbiter will review the case..."
+                                  placeholder="For example: the item is damaged, the wrong item arrived, or the seller has not dispatched it."
                                   value={disputeReason}
                                   onChange={(e) => setDisputeReason(e.target.value)}
-                                  className="w-full p-3 text-xs bg-white dark:bg-ink-905 border border-ink-500/20 rounded-xl focus:outline-none focus:ring-1 focus:ring-ink-500 text-ink-800 dark:text-white"
+                                  className="w-full rounded-xl border border-ink-200 bg-ink-50 p-3 text-xs text-ink-800 focus:outline-none focus:ring-1 focus:ring-jade-500 dark:border-ink-700 dark:bg-ink-950 dark:text-white"
                                 />
                                 <div className="flex gap-2">
                                   <button
                                     onClick={() => {
                                       void (async () => {
                                         if (!disputeReason.trim()) {
-                                          toast.error('Please enter a reason for the dispute.');
+                                          toast.error('Please tell us what went wrong.');
                                           return;
                                         }
                                         const result = await dbOperations.openDispute(order.id, disputeReason);
@@ -1436,19 +2261,19 @@ export default function CartCheckoutView({
                                         }
                                         setShowDisputeFormOrderId(null);
                                         setDisputeReason('');
-                                        toast.success('Escrow dispute submitted — funds are now frozen pending review.');
+                                        toast.success('Issue submitted. Escrow is on hold while GoodSale reviews it.');
                                       })();
                                     }}
-                                    className="px-4 py-2 bg-jade-500 hover:bg-jade-600 text-white font-bold text-xs rounded-xl transition-all cursor-pointer"
+                                    className="rounded-xl bg-jade-600 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-jade-700 cursor-pointer"
                                   >
-                                    Freeze Funds & Dispute
+                                    Submit issue
                                   </button>
                                   <button
                                     onClick={() => {
                                       setShowDisputeFormOrderId(null);
                                       setDisputeReason('');
                                     }}
-                                    className="px-4 py-2 bg-transparent text-ink-500 hover:text-ink-700 font-bold text-xs rounded-xl cursor-pointer"
+                                    className="rounded-xl px-4 py-2 text-xs font-bold text-ink-500 hover:text-ink-700 cursor-pointer"
                                   >
                                     Cancel
                                   </button>
@@ -1460,16 +2285,18 @@ export default function CartCheckoutView({
                                   setShowDisputeFormOrderId(order.id);
                                   setDisputeReason('');
                                 }}
-                                className="text-ink-500 hover:text-ink-600 font-bold text-xs flex items-center gap-1 cursor-pointer"
+                                className="inline-flex items-center gap-1.5 text-[10px] font-bold text-ink-500 hover:text-jade-700 dark:text-ink-400 cursor-pointer"
                               >
-                                File Escrow Dispute / Freeze Capital
+                                <ShieldAlert className="h-3.5 w-3.5" /> Report a problem with this order
                               </button>
                             )}
                           </div>
                         )
                       )}
-
-                    </div>
+                          </div>
+                        </div>
+                      )}
+                    </article>
                   );
                 })}
               </div>
@@ -1477,46 +2304,46 @@ export default function CartCheckoutView({
 
             {/* Printable Ledger PDF/HTML Receipt Drawer */}
             {selectedReceiptOrder && (
-              <div className="fixed inset-0 bg-ink-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                <div className="bg-white text-ink-900 p-6 rounded-3xl max-w-md w-full shadow-2xl relative space-y-4">
+              <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink-950/80 backdrop-blur-sm sm:items-center sm:p-4">
+                <div className="relative max-h-[calc(100dvh-1rem)] w-full max-w-md space-y-4 overflow-y-auto rounded-t-3xl bg-white p-5 pb-safe-bottom text-ink-900 shadow-2xl sm:rounded-3xl sm:p-6">
                   <div className="text-center border-b border-ink-100 pb-3">
                     <QrCode className="w-10 h-10 text-jade-500 mx-auto mb-1" />
-                    <h3 className="font-sans font-semibold text-base tracking-tight text-ink-950">GoodSale Payout Escrow Receipt</h3>
-                    <p className="text-xs font-mono tracking-tight text-ink-400">Neutral Ledger Certificate</p>
+                    <h3 className="font-sans font-semibold text-base tracking-tight text-ink-950">GoodSale order receipt</h3>
+                    <p className="text-xs text-ink-400">Order {selectedReceiptOrder.orderNumber}</p>
                   </div>
 
                   <div className="text-xs space-y-2 font-sans text-ink-700">
-                    <div className="flex justify-between border-b border-ink-50 pb-1">
-                      <span>Receipt ID Reference:</span>
-                      <span className="font-mono font-semibold">REC-{selectedReceiptOrder.id}-TXN</span>
+                    <div className="flex justify-between gap-3 border-b border-ink-50 pb-1">
+                      <span>Item:</span>
+                      <span className="max-w-[220px] truncate text-right font-semibold">{selectedReceiptOrder.productTitle}</span>
+                    </div>
+                    <div className="flex justify-between gap-3 border-b border-ink-50 pb-1">
+                      <span>Buyer:</span>
+                      <span className="font-bold">{db.users.find((candidate) => candidate.id === selectedReceiptOrder.buyerId)?.fullName || user.fullName}</span>
+                    </div>
+                    <div className="flex justify-between gap-3 border-b border-ink-50 pb-1">
+                      <span>Delivery address:</span>
+                      <span className="max-w-[220px] text-right font-semibold">{selectedReceiptOrder.deliveryAddress}, {selectedReceiptOrder.deliveryCity}</span>
                     </div>
                     <div className="flex justify-between border-b border-ink-50 pb-1">
-                      <span>Buyer Client:</span>
-                      <span className="font-bold">{user.fullName}</span>
-                    </div>
-                    <div className="flex justify-between border-b border-ink-50 pb-1">
-                      <span>Recipient Address:</span>
-                      <span className="font-semibold text-right max-w-[200px] truncate">{selectedReceiptOrder.deliveryAddress}</span>
-                    </div>
-                    <div className="flex justify-between border-b border-ink-50 pb-1">
-                      <span>Escrow Capital held:</span>
+                      <span>Order total:</span>
                       <span className="font-mono font-semibold text-ink-950">₦{selectedReceiptOrder.totalAmount.toLocaleString()}</span>
                     </div>
-                    <div className="flex justify-between pt-1 border-t border-dashed border-ink-200 text-sm font-bold text-ink-950">
+                    <div className="flex justify-between pt-1 text-sm font-bold text-ink-950">
                       <span>Status:</span>
-                      <span className="text-jade-500 font-mono font-semibold">{selectedReceiptOrder.status}</span>
+                      <span className="text-jade-600">{orderStatusMeta(selectedReceiptOrder.status).label}</span>
                     </div>
                   </div>
 
-                  <div className="pt-2 text-center text-xs text-ink-400 leading-relaxed border-t border-ink-100">
-                    Scanning the unique transaction QR Code verifies secure blockchain ledger registration. Thank you for choosing GoodSale Escrow systems!
+                  <div className="pt-2 text-center text-xs leading-relaxed text-ink-400 border-t border-ink-100">
+                    This receipt is generated from your GoodSale order record. Keep it for your records or share it with support if you need help.
                   </div>
 
                   <button
                     onClick={() => setSelectedReceiptOrder(null)}
                     className="w-full py-2 bg-jade-600 hover:bg-jade-700 text-white font-sans font-bold text-xs rounded-xl transition-all cursor-pointer"
                   >
-                    Close Ledger Receipt
+                    Close receipt
                   </button>
                 </div>
               </div>
@@ -1536,6 +2363,7 @@ export default function CartCheckoutView({
             }} 
             onCancel={() => {
               setShowPaystackModal(false);
+              setPayingExistingOrder(false);
               // Orders remain PENDING until paid
               setActiveStep('orders');
             }} 

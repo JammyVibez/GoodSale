@@ -2,23 +2,38 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { 
   BarChart3, Plus, Package, Settings, Sparkles, MapPin, 
-  Trash2, QrCode, AlertCircle, TrendingUp, DollarSign, Users, 
-  RefreshCw, Landmark, Truck, Check, HelpCircle, ArrowRight, Shield, Edit, Store, Key, Clock,
-  ChevronRight, ChevronLeft, Image as ImageIcon, Video, Crop, RotateCw, Layers, Info, FileText, Sliders
+  Trash2, QrCode, AlertCircle, TrendingUp,
+  RefreshCw, Landmark, Truck, Check, HelpCircle, Shield, Edit, Store, Clock,
+  ChevronRight, ChevronLeft, Image as ImageIcon, Video, Crop, RotateCw, Layers, Sliders, ShieldCheck, Loader2,
+  CheckCircle2, Wallet
 } from 'lucide-react';
+import { isVerifiedSeller, toStage } from '@/lib/verification';
 import { 
   Product, ProductCondition, getDBState, saveDBState, dbOperations, UserRole, OrderStatus, Order, Escrow
 } from '../lib/store';
 import { SmartImage } from './ui/SmartImage';
+import Logo from './LogoIcon';
 import LiveSafeMeetMap from './LiveSafeMeetMap';
 import OrderTrackingCard, { hasLiveTracking } from './OrderTrackingCard';
 import SellerAnalyticsPanel from './SellerAnalyticsPanel';
+import SellerShippingPanel from './SellerShippingPanel';
+import SellerDeliveryPanel from './SellerDeliveryPanel';
 import { createProductAppeal } from '@/lib/trustCenter';
 import { bestCoords, rankPartnersByProximity, formatDistanceKm } from '@/lib/geo';
 import { toast, confirmDialog } from '@/lib/feedback';
 import AdSlot from './AdSlot';
+import Button from './ui/Button';
+import Dialog from './ui/Dialog';
+import VerifiedBadge from './verification/VerifiedBadge';
+import VerificationStatusChip from './verification/VerificationStatusChip';
+import MerchantHubOverview, {
+  type MerchantAiInsight,
+  type MerchantHubTab,
+  type PayoutRecord,
+} from './seller/MerchantHubOverview';
 
 export default function DashboardView({
   onOpenAuth,
@@ -28,7 +43,7 @@ export default function DashboardView({
   onNavigate?: (view: string) => void;
 }) {
   const [db, setDb] = useState(getDBState());
-  const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'orders' | 'inventory' | 'create_listing' | 'barcode_scanner'>('overview');
+  const [activeTab, setActiveTab] = useState<MerchantHubTab>('overview');
   
   // Create Listing Form State - Expanded for Multi-step professional wizard
   const [currentListingStep, setCurrentListingStep] = useState(1);
@@ -66,6 +81,8 @@ export default function DashboardView({
   // Multi-image & video assets list (Min 3, Max 15)
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
   const [uploadedVideo, setUploadedVideo] = useState<string | null>(null);
+  const [pendingImageUploads, setPendingImageUploads] = useState(0);
+  const [pendingVideoUpload, setPendingVideoUpload] = useState(false);
 
   // Listing validation & moderation feedback
   const [stepValidationErrors, setStepValidationErrors] = useState<string | null>(null);
@@ -77,9 +94,7 @@ export default function DashboardView({
   const [barcodeQuery, setBarcodeQuery] = useState('');
 
   // Premium Analytics & AI Insights states
-  const [analyticsTab, setAnalyticsTab] = useState<'sales' | 'visits'>('sales');
-  const [analyticsPeriod, setAnalyticsPeriod] = useState<'7days' | '30days'>('7days');
-  const [aiPremiumInsight, setAiPremiumInsight] = useState<any | null>(null);
+  const [aiPremiumInsight, setAiPremiumInsight] = useState<MerchantAiInsight | null>(null);
   const [isAnalyzingMetrics, setIsAnalyzingMetrics] = useState(false);
 
   // Shipping Modal State
@@ -99,11 +114,13 @@ export default function DashboardView({
   // Payout Bank Form State
   const [showPayoutModal, setShowPayoutModal] = useState(false);
   const [payoutBank, setPayoutBank] = useState('GTBank');
+  const [payoutAccountName, setPayoutAccountName] = useState('');
   const [payoutAccountNum, setPayoutAccountNum] = useState('');
   const [payoutAmount, setPayoutAmount] = useState('');
   const [payoutError, setPayoutError] = useState<string | null>(null);
   const [payoutSuccess, setPayoutSuccess] = useState(false);
-  const [payoutHistory, setPayoutHistory] = useState<any[]>([]);
+  const [payoutSubmitting, setPayoutSubmitting] = useState(false);
+  const [payoutHistory, setPayoutHistory] = useState<PayoutRecord[]>([]);
 
   // Direct Product Price Editing State
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
@@ -122,29 +139,40 @@ export default function DashboardView({
     const historyJson = localStorage.getItem('goodsale_payouts_history');
     if (historyJson) {
       try {
-        setPayoutHistory(JSON.parse(historyJson));
+        const parsed = JSON.parse(historyJson);
+        setPayoutHistory(Array.isArray(parsed) ? parsed : []);
       } catch (e) {
         console.error(e);
       }
     }
   }, []);
 
-  const savePayoutHistory = (history: any[]) => {
-    setPayoutHistory(history);
-    localStorage.setItem('goodsale_payouts_history', JSON.stringify(history));
-  };
-
   const user = db.currentUser;
   const business = db.businesses.find(b => b.ownerId === user?.id);
+  const sellerProfile = db.profiles.find(p => p.userId === user?.id);
+  const verificationStage = toStage(sellerProfile?.verificationStatus);
+  const sellerVerified = isVerifiedSeller({
+    verificationStatus: sellerProfile?.verificationStatus,
+    verificationExpiresAt: sellerProfile?.verificationExpiresAt,
+  });
   const sellerProducts = db.products.filter(p => p.sellerId === user?.id);
   const sellerOrders = db.orders.filter(o => o.sellerId === user?.id);
 
   // FINANCIALS: Calculate Escrow held and withdrawable balances
   const totalVisits = sellerProducts.reduce((acc, p) => acc + p.viewCount, 0);
 
-  // Escrow Held = Sum of PENDING, PAID_ESCROW, SHIPPED, OUT_FOR_DELIVERY order amounts
+  // Escrow Held = money actually paid and not yet released. Unpaid orders
+  // (PENDING / bank-transfer / COD) are excluded — they are not in escrow yet.
   const escrowHeldSum = sellerOrders
-    .filter(o => [OrderStatus.PENDING, OrderStatus.PAID_ESCROW, OrderStatus.SHIPPED, OrderStatus.OUT_FOR_DELIVERY].includes(o.status))
+    .filter(o =>
+      [
+        OrderStatus.PAID_ESCROW,
+        OrderStatus.PARTIAL_DEPOSIT_PAID,
+        OrderStatus.SHIPPED,
+        OrderStatus.OUT_FOR_DELIVERY,
+        OrderStatus.DISPUTED,
+      ].includes(o.status)
+    )
     .reduce((acc, o) => acc + o.totalAmount, 0);
 
   // Withdrawable Earnings = Sum of DELIVERED_SUCCESS order amounts minus processed payouts
@@ -152,10 +180,23 @@ export default function DashboardView({
     .filter(o => o.status === OrderStatus.DELIVERED_SUCCESS)
     .reduce((acc, o) => acc + o.totalAmount, 0);
 
-  const totalWithdrawn = payoutHistory.reduce((acc, p) => acc + p.amount, 0);
+  const totalWithdrawn = payoutHistory.reduce((acc, p) => acc + Number(p.amount || 0), 0);
   const withdrawableEarnings = Math.max(0, grossEarnings - totalWithdrawn);
 
-  const [hoveredDataIndex, setHoveredDataIndex] = useState<number | null>(null);
+  const hubTabs: Array<{
+    id: MerchantHubTab;
+    label: string;
+    Icon: typeof BarChart3;
+    count?: number;
+  }> = [
+    { id: 'overview', label: 'Overview', Icon: BarChart3 },
+    { id: 'orders', label: 'Orders', Icon: Truck, count: sellerOrders.length },
+    { id: 'inventory', label: 'Inventory', Icon: Package, count: sellerProducts.length },
+    { id: 'analytics', label: 'Analytics', Icon: TrendingUp },
+    { id: 'shipping', label: 'Shipping', Icon: MapPin },
+    { id: 'create_listing', label: 'New listing', Icon: Plus },
+    { id: 'barcode_scanner', label: 'Barcode', Icon: QrCode },
+  ];
 
   const handleAnalyzeStoreMetrics = async () => {
     setIsAnalyzingMetrics(true);
@@ -181,18 +222,18 @@ export default function DashboardView({
       } else {
         setAiPremiumInsight({
           salesVelocity: "Moderate Traffic Momentum",
-          growthTip: "Increase view-to-purchase conversions by placing your hot-ticket items into high-visibility Featured Slots. This generates up to 2.5x more views in Lagos metropolitan zones.",
+          growthTip: "Put your fastest-moving items into a promotion and keep their photos current to increase visibility with buyers in your city.",
           priceAdjustment: "Adjust pricing within ±5% of competitors. Maintain high rating scores by attaching store warranties on luxury electronics to reassure prospective buyers.",
-          organicBoostChance: "Verify your BVN or corporate license in Settings to receive the Gold Verification Badge. Verified+ merchants gain an organic ranking search priority boost."
+          organicBoostChance: "Complete GoodSale verification to show the verified badge on your storefront and listings, so buyers can see what was checked."
         });
       }
     } catch (err) {
       console.error(err);
       setAiPremiumInsight({
         salesVelocity: "Moderate Traffic Momentum",
-        growthTip: "Increase view-to-purchase conversions by placing your hot-ticket items into high-visibility Featured Slots. This generates up to 2.5x more views in Lagos metropolitan zones.",
+        growthTip: "Put your fastest-moving items into a promotion and keep their photos current to increase visibility with buyers in your city.",
         priceAdjustment: "Adjust pricing within ±5% of competitors. Maintain high rating scores by attaching store warranties on luxury electronics to reassure prospective buyers.",
-        organicBoostChance: "Verify your BVN or corporate license in Settings to receive the Gold Verification Badge. Verified+ merchants gain an organic ranking search priority boost."
+        organicBoostChance: "Complete GoodSale verification to show the verified badge on your storefront and listings, so buyers can see what was checked."
       });
     } finally {
       setIsAnalyzingMetrics(false);
@@ -481,17 +522,23 @@ export default function DashboardView({
       setPayoutError('Nigerian NUBAN account numbers must be exactly 10 digits.');
       return;
     }
+    if (payoutAccountName.trim().length < 2) {
+      setPayoutError('Enter the account name exactly as it appears at the bank.');
+      return;
+    }
 
     if (!user) {
       setPayoutError('Please log in to request a payout.');
       return;
     }
 
+    setPayoutSubmitting(true);
     const result = await dbOperations.withdrawFromWallet(user.id, amt, {
-      name: user.fullName,
+      name: payoutAccountName.trim(),
       number: payoutAccountNum,
       bank: payoutBank,
     });
+    setPayoutSubmitting(false);
 
     if (!result.success) {
       setPayoutError(result.message || 'Withdrawal request failed.');
@@ -500,7 +547,6 @@ export default function DashboardView({
 
     setPayoutSuccess(true);
     setPayoutAmount('');
-    setTimeout(() => setPayoutSuccess(false), 4000);
     setDb(getDBState());
   };
 
@@ -565,21 +611,64 @@ export default function DashboardView({
 
   if (!user) {
     return (
-      <div className="max-w-md mx-auto px-4 py-16 text-center select-none">
-        <div className="w-16 h-16 bg-ink-500/10 dark:bg-ink-500/5 rounded-full flex items-center justify-center mx-auto mb-6 border border-ink-500/20">
-          <Store className="w-8 h-8 text-ink-500" />
-        </div>
-        <h2 className="font-display font-bold text-2xl text-ink-900 dark:text-white mb-2">Merchant Seller Hub</h2>
-        <p className="text-sm text-ink-500 dark:text-ink-400 mb-8 max-w-sm mx-auto leading-relaxed">
-          Setup your escrow secure business store, manage product stock inventory, list items, verify barcode tags, and check pending payouts from Nigerian buyers.
-        </p>
-        <div className="space-y-3">
-          <button
-            onClick={onOpenAuth}
-            className="w-full py-3 bg-jade-500 hover:bg-jade-600 text-white font-semibold text-sm rounded-xl cursor-pointer shadow-md shadow-jade-500/10 transition-all"
-          >
-            Sign in or create an account
-          </button>
+      <div className="grid min-h-[calc(100vh-10rem)] place-items-center bg-ink-50 px-4 py-16 dark:bg-ink-950">
+        <div className="w-full max-w-4xl overflow-hidden rounded-[30px] border border-ink-200/80 bg-white shadow-xl shadow-ink-950/5 dark:border-ink-800 dark:bg-ink-900 lg:grid lg:grid-cols-[1.05fr_0.95fr]">
+          <div className="relative overflow-hidden bg-jade-950 p-8 text-white sm:p-10">
+            <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+              <div className="absolute -right-20 -top-24 h-64 w-64 rounded-full bg-jade-500/25 blur-3xl" />
+              <div className="absolute -bottom-24 left-0 h-56 w-56 rounded-full bg-gold-400/10 blur-3xl" />
+            </div>
+            <div className="relative">
+              <Logo
+                iconSize={36}
+                textColorClass="text-white"
+                subtitleColorClass="text-jade-200/65"
+                accentClassName="from-gold-300 to-gold-500"
+              />
+              <p className="mt-8 font-mono text-[10px] uppercase tracking-[0.3em] text-jade-200/70">
+                Merchant workspace
+              </p>
+              <h2 className="mt-2 font-display text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
+                Run your store from one place.
+              </h2>
+              <p className="mt-3 max-w-sm text-sm leading-relaxed text-jade-100/70">
+                Listings, escrow orders, dispatch, payouts and buyer trust — all in the GoodSale merchant hub.
+              </p>
+              <ul className="mt-8 space-y-3 text-xs text-jade-100/80">
+                {[
+                  { icon: ShieldCheck, label: 'Escrow-protected orders with delivery PIN release' },
+                  { icon: Truck, label: 'Courier dispatch and live delivery tracking' },
+                  { icon: Landmark, label: 'Naira settlements straight to your bank' },
+                  { icon: TrendingUp, label: 'Real order and catalogue performance' },
+                ].map(({ icon: Icon, label }) => (
+                  <li key={label} className="flex items-center gap-2.5">
+                    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/10">
+                      <Icon className="h-3.5 w-3.5" />
+                    </span>
+                    {label}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          <div className="flex flex-col justify-center p-8 sm:p-10">
+            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-jade-500/10 text-jade-700 dark:text-jade-300">
+              <Store className="h-5 w-5" />
+            </span>
+            <h3 className="mt-4 font-display text-xl font-bold tracking-tight text-ink-950 dark:text-white">
+              Merchant sign in
+            </h3>
+            <p className="mt-2 text-sm leading-relaxed text-ink-500">
+              Sign in to manage your store, or create an account to start selling with escrow protection.
+            </p>
+            <Button className="mt-6 w-full" onClick={onOpenAuth}>
+              Sign in or create an account
+            </Button>
+            <p className="mt-4 text-[11px] leading-relaxed text-ink-400">
+              Buying stays available on the same account. You can switch between shopping and selling at any time.
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -640,639 +729,284 @@ export default function DashboardView({
     <div className="bg-ink-50 dark:bg-ink-950 min-h-screen py-8 px-4 sm:px-6 lg:px-8 transition-colors duration-300">
       <div className="max-w-7xl mx-auto">
 
-        {/* Sponsored: seller-hub placement */}
-        <AdSlot placement="DASHBOARD" className="mb-6" />
-        
-        {/* Hub Title Row & Merchant Bio */}
-        <div className="mb-8 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 border-b border-ink-200 dark:border-ink-800 pb-6">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-jade-500/10 flex items-center justify-center text-jade-500 shrink-0 border border-jade-500/10">
-              <Package className="w-7 h-7" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-display font-bold text-2xl text-ink-900 dark:text-white leading-none">
-                  GoodSale Merchant Hub
-                </h1>
-                <span className="px-2.5 py-1 bg-ink-500/10 border border-ink-500/20 text-ink-500 text-xs font-mono font-bold tracking-wider rounded-full">
-                  {user?.role.replace('_', ' ')}
-                </span>
+        {/* Merchant hub identity */}
+        <header className="mb-5 space-y-4">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-center gap-4">
+              <div className="h-16 w-16 shrink-0 overflow-hidden rounded-[20px] border border-ink-200/80 bg-white shadow-sm dark:border-ink-700 dark:bg-ink-900">
+                <SmartImage
+                  src={business?.logoUrl}
+                  alt={business?.name || 'Store logo'}
+                  seed={business?.name || user.username}
+                  className="h-full w-full"
+                />
               </div>
-              <p className="text-xs text-ink-500 dark:text-ink-400 mt-1.5 font-sans">
-                Vendor: <strong className="text-ink-800 dark:text-ink-200">@{user?.username} ({user?.fullName})</strong> • Store: <span className="font-semibold text-jade-500">{business?.name || 'My Storefront'}</span> • Location: {business?.city || 'Lagos'}
-              </p>
+              <div className="min-w-0">
+                <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.28em] text-jade-700 dark:text-jade-400">
+                  Merchant workspace
+                </p>
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <h1 className="truncate font-display text-2xl font-bold tracking-tight text-ink-950 dark:text-white sm:text-[30px]">
+                    {business?.name || 'GoodSale Merchant Hub'}
+                  </h1>
+                  {sellerVerified ? (
+                    <VerifiedBadge
+                      sellerId={user.id}
+                      status={sellerProfile?.verificationStatus}
+                      expiresAt={sellerProfile?.verificationExpiresAt}
+                      variant="pill"
+                      fallbackName={business?.name}
+                    />
+                  ) : (
+                    <VerificationStatusChip stage={verificationStage} size="sm" />
+                  )}
+                </div>
+                <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-500 dark:text-ink-400">
+                  <span className="font-semibold text-ink-700 dark:text-ink-200">@{user.username}</span>
+                  <span aria-hidden="true">·</span>
+                  <span>{[business?.city || sellerProfile?.city, business?.state || sellerProfile?.state].filter(Boolean).join(', ') || 'Nigeria'}</span>
+                  <span aria-hidden="true">·</span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-400">
+                    {user.role.replaceAll('_', ' ')}
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href={`/sellers/${user.id}`}
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-ink-200 bg-white px-3.5 text-xs font-bold text-ink-700 transition-colors hover:border-ink-300 hover:bg-ink-50 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 dark:hover:bg-ink-800"
+              >
+                <Store className="h-4 w-4" aria-hidden="true" />
+                View storefront
+              </Link>
+              <Button size="sm" onClick={() => setActiveTab('create_listing')}>
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                New listing
+              </Button>
             </div>
           </div>
 
-          {/* Sub Navigation pills - Mobile responsive flex-wrap */}
-          <div className="flex flex-wrap gap-1.5 bg-ink-100 dark:bg-ink-900 p-1.5 rounded-2xl w-full lg:w-auto overflow-x-auto">
-            <button
-              onClick={() => setActiveTab('overview')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-sans font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${activeTab === 'overview' ? 'bg-jade-500 text-white shadow-md' : 'text-ink-700 dark:text-ink-400 hover:text-ink-950 dark:hover:text-white'}`}
+          <nav
+            aria-label="Merchant sections"
+            className="flex items-center gap-1 overflow-x-auto rounded-2xl border border-ink-200/80 bg-white p-1.5 shadow-sm dark:border-ink-800 dark:bg-ink-900"
+          >
+            {hubTabs.map(({ id, label, Icon, count }) => {
+              const active = activeTab === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setActiveTab(id)}
+                  aria-current={active ? 'page' : undefined}
+                  className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition-all duration-200 ${
+                    active
+                      ? 'bg-jade-600 text-white shadow-sm shadow-jade-600/20'
+                      : 'text-ink-600 hover:bg-ink-100 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-white'
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                  {label}
+                  {typeof count === 'number' && (
+                    <span
+                      className={`rounded-full px-1.5 py-0.5 font-mono text-[9px] tabular-nums ${
+                        active ? 'bg-white/20 text-white' : 'bg-ink-100 text-ink-500 dark:bg-ink-800 dark:text-ink-400'
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+            <Link
+              href="/seller/verification"
+              className={`ml-auto hidden shrink-0 items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition-colors sm:inline-flex ${
+                sellerVerified
+                  ? 'border-gold-300/50 bg-gold-50 text-gold-700 hover:bg-gold-100 dark:border-gold-300/25 dark:bg-gold-300/10 dark:text-gold-200'
+                  : 'border-jade-500/25 bg-jade-50/70 text-jade-700 hover:bg-jade-50 dark:border-jade-400/20 dark:bg-jade-400/5 dark:text-jade-300'
+              }`}
             >
-              <BarChart3 className="w-4 h-4" />
-              Overview & Payouts
-            </button>
-            <button
-              onClick={() => setActiveTab('analytics')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-sans font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${activeTab === 'analytics' ? 'bg-jade-500 text-white shadow-md' : 'text-ink-700 dark:text-ink-400 hover:text-ink-950 dark:hover:text-white'}`}
-            >
-              <BarChart3 className="w-4 h-4" />
-              Analytics
-            </button>
-            <button
-              onClick={() => setActiveTab('orders')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-sans font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${activeTab === 'orders' ? 'bg-jade-500 text-white shadow-md' : 'text-ink-700 dark:text-ink-400 hover:text-ink-950 dark:hover:text-white'}`}
-            >
-              <Truck className="w-4 h-4" />
-              Escrow Orders ({sellerOrders.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('inventory')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-sans font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${activeTab === 'inventory' ? 'bg-jade-500 text-white shadow-md' : 'text-ink-700 dark:text-ink-400 hover:text-ink-950 dark:hover:text-white'}`}
-            >
-              <Package className="w-4 h-4" />
-              Inventory ({sellerProducts.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('create_listing')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-sans font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${activeTab === 'create_listing' ? 'bg-jade-500 text-white shadow-md' : 'text-ink-700 dark:text-ink-400 hover:text-ink-950 dark:hover:text-white'}`}
-            >
-              <Plus className="w-4 h-4" />
-              Create Listing
-            </button>
-            <button
-              onClick={() => setActiveTab('barcode_scanner')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-sans font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${activeTab === 'barcode_scanner' ? 'bg-jade-500 text-white shadow-md' : 'text-ink-700 dark:text-ink-400 hover:text-ink-950 dark:hover:text-white'}`}
-            >
-              <QrCode className="w-4 h-4" />
-              Barcode Auto-Fill
-            </button>
-          </div>
-        </div>
+              <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+              {sellerVerified ? 'Verified' : 'Verification'}
+            </Link>
+          </nav>
+        </header>
 
         {/* TAB 1: OVERVIEW & WALLET BALANCE */}
         {activeTab === 'overview' && (
           <div className="space-y-8">
-            
-            {/* Top Cards grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              
-              {/* Withdrawable Earnings */}
-              <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 p-5 rounded-3xl flex flex-col justify-between shadow-sm relative overflow-hidden group">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-xs text-ink-400 dark:text-ink-500 font-bold tracking-widest font-mono">Withdrawable Balance</span>
-                  <div className="w-9 h-9 bg-jade-500/10 rounded-xl flex items-center justify-center text-jade-500">
-                    <DollarSign className="w-5 h-5" />
+
+            <MerchantHubOverview
+              user={user}
+              business={business}
+              profile={sellerProfile}
+              products={sellerProducts}
+              orders={sellerOrders}
+              users={db.users}
+              payoutHistory={payoutHistory}
+              withdrawableEarnings={withdrawableEarnings}
+              escrowHeldSum={escrowHeldSum}
+              grossEarnings={grossEarnings}
+              totalWithdrawn={totalWithdrawn}
+              totalVisits={totalVisits}
+              aiInsight={aiPremiumInsight}
+              isAnalyzing={isAnalyzingMetrics}
+              onAnalyze={handleAnalyzeStoreMetrics}
+              onWithdraw={() => {
+                setPayoutError(null);
+                setPayoutSuccess(false);
+                if (!payoutAccountName) setPayoutAccountName(user.fullName || '');
+                setShowPayoutModal(true);
+              }}
+              onTabChange={setActiveTab}
+              onOpenSettings={() => onNavigate?.('settings')}
+            />
+
+            {/* Payout Withdrawal Modal */}
+            <Dialog
+              open={showPayoutModal}
+              onClose={() => {
+                if (!payoutSubmitting) setShowPayoutModal(false);
+              }}
+              title={payoutSuccess ? 'Payout requested' : 'Withdraw earnings'}
+              description={
+                payoutSuccess
+                  ? 'Your request is now with the payout team.'
+                  : 'Send released earnings to your Nigerian bank account.'
+              }
+            >
+              {payoutSuccess ? (
+                <div className="space-y-4 py-2 text-center">
+                  <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-jade-500/10 text-jade-600 dark:text-jade-400">
+                    <CheckCircle2 className="h-8 w-8" />
                   </div>
-                </div>
-                <div>
-                  <span className="font-mono font-semibold text-2xl text-ink-950 dark:text-white block">₦{withdrawableEarnings.toLocaleString()}</span>
-                  <button 
-                    onClick={() => {
-                      setPayoutError(null);
-                      setPayoutSuccess(false);
-                      setShowPayoutModal(true);
-                    }}
-                    disabled={withdrawableEarnings <= 0}
-                    className="mt-3.5 w-full py-2 bg-jade-500 hover:bg-jade-600 disabled:bg-ink-100 disabled:text-ink-400 dark:disabled:bg-ink-800/50 dark:disabled:text-ink-600 text-white font-sans font-semibold text-xs tracking-wider rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 shadow-md shadow-jade-500/10"
-                  >
-                    <Landmark className="w-3.5 h-3.5" />
-                    Withdraw to Bank
-                  </button>
-                </div>
-              </div>
-
-              {/* Escrow Held */}
-              <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 p-5 rounded-3xl flex flex-col justify-between shadow-sm">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-xs text-ink-400 dark:text-ink-500 font-bold tracking-widest font-mono">Held in Escrow</span>
-                  <div className="w-9 h-9 bg-ink-500/10 rounded-xl flex items-center justify-center text-ink-500">
-                    <Shield className="w-4 h-4" />
+                  <div>
+                    <p className="font-mono text-2xl font-bold text-ink-900 dark:text-white">
+                      ₦{Number(payoutAmount || 0).toLocaleString()}
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-ink-500 dark:text-ink-400">
+                      Requested to {payoutBank} ••••{payoutAccountNum.slice(-4)}. Reviewed payouts
+                      usually reach the bank within one business day.
+                    </p>
                   </div>
+                  <Button className="w-full" onClick={() => setShowPayoutModal(false)}>
+                    Done
+                  </Button>
                 </div>
-                <div>
-                  <span className="font-mono font-semibold text-2xl text-ink-950 dark:text-white block">₦{escrowHeldSum.toLocaleString()}</span>
-                  <span className="text-xs text-ink-400 font-sans block mt-1.5 italic">
-                    Released instantly upon delivery PIN handshake
-                  </span>
-                </div>
-              </div>
-
-              {/* Active Products count */}
-              <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 p-5 rounded-3xl flex flex-col justify-between shadow-sm">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-xs text-ink-400 dark:text-ink-500 font-bold tracking-widest font-mono">Store Listings</span>
-                  <div className="w-9 h-9 bg-ink-100 dark:bg-ink-800 rounded-xl flex items-center justify-center text-ink-600 dark:text-ink-300">
-                    <Package className="w-4 h-4" />
+              ) : (
+                <form onSubmit={handleProcessPayout} className="space-y-4">
+                  <div className="flex items-center justify-between gap-3 rounded-2xl border border-jade-500/25 bg-jade-500/[0.06] p-4">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-jade-700 dark:text-jade-300">
+                        Available to withdraw
+                      </p>
+                      <p className="mt-1 font-mono text-xl font-bold text-ink-900 dark:text-white">
+                        ₦{withdrawableEarnings.toLocaleString()}
+                      </p>
+                    </div>
+                    <span className="grid h-10 w-10 place-items-center rounded-xl bg-white text-jade-600 shadow-sm dark:bg-ink-900 dark:text-jade-400">
+                      <Wallet className="h-5 w-5" />
+                    </span>
                   </div>
-                </div>
-                <div>
-                  <span className="font-sans font-bold text-2xl text-ink-950 dark:text-white block">{sellerProducts.length} Items</span>
-                  <button 
-                    onClick={() => setActiveTab('inventory')}
-                    className="text-xs text-jade-500 font-bold flex items-center gap-0.5 mt-3 hover:underline text-left"
-                  >
-                    Manage Inventory
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
 
-              {/* Views */}
-              <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 p-5 rounded-3xl flex flex-col justify-between shadow-sm">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-xs text-ink-400 dark:text-ink-500 font-bold tracking-widest font-mono">Traffic Analytics</span>
-                  <div className="w-9 h-9 bg-ink-100 dark:bg-ink-800 rounded-xl flex items-center justify-center text-ink-600 dark:text-ink-300">
-                    <TrendingUp className="w-4 h-4" />
+                  {payoutError && (
+                    <div className="flex items-start gap-2 rounded-xl border border-rose-500/20 bg-rose-500/[0.06] p-3 text-xs text-rose-700 dark:text-rose-300">
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                      <span>{payoutError}</span>
+                    </div>
+                  )}
+
+                  <div className="space-y-3 text-xs">
+                    <label className="block font-bold text-ink-600 dark:text-ink-300">
+                      Bank
+                      <select
+                        value={payoutBank}
+                        onChange={(e) => setPayoutBank(e.target.value)}
+                        className="mt-1.5 h-11 w-full rounded-xl border border-ink-200 bg-white px-3 text-ink-800 outline-none transition-colors focus:border-jade-500 dark:border-ink-700 dark:bg-ink-950 dark:text-white"
+                      >
+                        <option value="GTBank">Guaranty Trust Bank (GTBank)</option>
+                        <option value="Kuda">Kuda Microfinance Bank</option>
+                        <option value="AccessBank">Access Bank PLC</option>
+                        <option value="ZenithBank">Zenith Bank PLC</option>
+                        <option value="UBA">United Bank for Africa (UBA)</option>
+                        <option value="Sterling">Sterling Bank PLC</option>
+                        <option value="FirstBank">First Bank of Nigeria</option>
+                      </select>
+                    </label>
+
+                    <label className="block font-bold text-ink-600 dark:text-ink-300">
+                      Account name
+                      <input
+                        type="text"
+                        required
+                        value={payoutAccountName}
+                        onChange={(e) => setPayoutAccountName(e.target.value)}
+                        placeholder="Exactly as it appears at your bank"
+                        className="mt-1.5 h-11 w-full rounded-xl border border-ink-200 bg-white px-3 text-ink-800 outline-none transition-colors placeholder:text-ink-400 focus:border-jade-500 dark:border-ink-700 dark:bg-ink-950 dark:text-white"
+                      />
+                    </label>
+
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <label className="block font-bold text-ink-600 dark:text-ink-300">
+                        Account number
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={10}
+                          required
+                          value={payoutAccountNum}
+                          onChange={(e) => setPayoutAccountNum(e.target.value.replace(/\D/g, ''))}
+                          placeholder="0123456789"
+                          className="mt-1.5 h-11 w-full rounded-xl border border-ink-200 bg-white px-3 font-mono text-ink-800 outline-none transition-colors placeholder:text-ink-400 focus:border-jade-500 dark:border-ink-700 dark:bg-ink-950 dark:text-white"
+                        />
+                      </label>
+
+                      <label className="block font-bold text-ink-600 dark:text-ink-300">
+                        Amount (₦)
+                        <input
+                          type="number"
+                          required
+                          min={1}
+                          max={withdrawableEarnings}
+                          value={payoutAmount}
+                          onChange={(e) => setPayoutAmount(e.target.value)}
+                          placeholder="15000"
+                          className="mt-1.5 h-11 w-full rounded-xl border border-ink-200 bg-white px-3 font-mono text-ink-800 outline-none transition-colors placeholder:text-ink-400 focus:border-jade-500 dark:border-ink-700 dark:bg-ink-950 dark:text-white"
+                        />
+                      </label>
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <span className="font-sans font-bold text-2xl text-ink-950 dark:text-white block">{totalVisits.toLocaleString()} Views</span>
-                  <span className="text-xs text-ink-400 block mt-1.5">
-                    Conversion rate: 4.8% average
-                  </span>
-                </div>
-              </div>
 
-            </div>
-
-            {/* INTERACTIVE PREMIUM BUSINESS ANALYTICS & AI OPTIMIZER CARD */}
-            <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 p-6 sm:p-8 rounded-[32px] shadow-sm mb-10 space-y-6">
-              
-              {/* Card Header & Controls */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-ink-100 dark:border-ink-800 pb-5">
-                <div>
-                  <h3 className="font-display font-bold text-base text-ink-900 dark:text-white flex items-center gap-1.5">
-                    <BarChart3 className="w-5 h-5 text-jade-500" />
-                    Interactive Business Analytics
-                  </h3>
-                  <p className="text-xs text-ink-400 mt-1">
-                    Monitor catalog traffic, conversion ratios, and execute AI-powered inventory yield audits.
+                  <p className="flex items-start gap-2 rounded-xl bg-ink-50 px-3 py-2.5 text-[11px] leading-relaxed text-ink-500 dark:bg-ink-950/40 dark:text-ink-400">
+                    <Landmark className="mt-0.5 h-3.5 w-3.5 shrink-0 text-jade-600 dark:text-jade-400" />
+                    Bank details are saved for next time. Double-check the account name and number
+                    before submitting.
                   </p>
-                </div>
-                
-                {/* Visual Selectors */}
-                <div className="flex flex-wrap items-center gap-2 text-xs font-sans font-bold">
-                  {/* Tab Selector */}
-                  <div className="bg-ink-100 dark:bg-ink-800 p-0.5 rounded-lg flex">
-                    <button
+
+                  <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
+                    <Button
                       type="button"
-                      onClick={() => { setAnalyticsTab('sales'); setHoveredDataIndex(null); }}
-                      className={`px-3 py-1.5 rounded-md cursor-pointer transition-all ${analyticsTab === 'sales' ? 'bg-white dark:bg-ink-700 text-ink-900 dark:text-white shadow' : 'text-ink-400 hover:text-ink-600'}`}
+                      variant="ghost"
+                      className="w-full sm:w-auto"
+                      disabled={payoutSubmitting}
+                      onClick={() => setShowPayoutModal(false)}
                     >
-                      Sales Revenue
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setAnalyticsTab('visits'); setHoveredDataIndex(null); }}
-                      className={`px-3 py-1.5 rounded-md cursor-pointer transition-all ${analyticsTab === 'visits' ? 'bg-white dark:bg-ink-700 text-ink-900 dark:text-white shadow' : 'text-ink-400 hover:text-ink-600'}`}
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      className="w-full sm:w-auto"
+                      loading={payoutSubmitting}
+                      disabled={withdrawableEarnings <= 0}
                     >
-                      Traffic Views
-                    </button>
+                      Request payout
+                    </Button>
                   </div>
-
-                  {/* Period Selector */}
-                  <div className="bg-ink-100 dark:bg-ink-800 p-0.5 rounded-lg flex">
-                    <button
-                      type="button"
-                      onClick={() => { setAnalyticsPeriod('7days'); setHoveredDataIndex(null); }}
-                      className={`px-3 py-1.5 rounded-md cursor-pointer transition-all ${analyticsPeriod === '7days' ? 'bg-white dark:bg-ink-700 text-ink-900 dark:text-white shadow' : 'text-ink-400 hover:text-ink-600'}`}
-                    >
-                      7 Days
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setAnalyticsPeriod('30days'); setHoveredDataIndex(null); }}
-                      className={`px-3 py-1.5 rounded-md cursor-pointer transition-all ${analyticsPeriod === '30days' ? 'bg-white dark:bg-ink-700 text-ink-900 dark:text-white shadow' : 'text-ink-400 hover:text-ink-600'}`}
-                    >
-                      30 Days
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Main Content: Split Chart and AI Recommendation */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                
-                {/* Left Side: SVG Live Render Chart */}
-                <div className="lg:col-span-7 flex flex-col justify-between space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-mono text-ink-400 tracking-widest">
-                      {analyticsTab === 'sales' ? 'Naira (₦) Cashflow Volume' : 'Total Client Impressions'}
-                    </span>
-                    <span className="text-xs font-bold text-ink-850 dark:text-white bg-ink-50 dark:bg-ink-800 px-2.5 py-1 rounded-lg">
-                      {analyticsTab === 'sales' 
-                        ? `Cumulative: ₦${(grossEarnings + escrowHeldSum).toLocaleString()}`
-                        : `Cumulative: ${totalVisits.toLocaleString()} Views`
-                      }
-                    </span>
-                  </div>
-
-                  {/* SVG Chart Drawing Canvas */}
-                  <div className="relative bg-ink-50/50 dark:bg-ink-950/20 p-4 rounded-3xl border border-ink-100 dark:border-ink-800/40 h-52 flex items-center justify-center">
-                    {/* SVG Element */}
-                    <svg className="w-full h-full overflow-visible" viewBox="0 0 500 150">
-                      <defs>
-                        <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#1fb377" stopOpacity="0.25" />
-                          <stop offset="100%" stopColor="#1fb377" stopOpacity="0.0" />
-                        </linearGradient>
-                      </defs>
-
-                      {/* Grid Lines */}
-                      <line x1="20" y1="130" x2="480" y2="130" stroke="#717D78" strokeOpacity="0.15" strokeWidth="1" />
-                      <line x1="20" y1="90" x2="480" y2="90" stroke="#717D78" strokeOpacity="0.1" strokeWidth="1" strokeDasharray="3 3" />
-                      <line x1="20" y1="50" x2="480" y2="50" stroke="#717D78" strokeOpacity="0.1" strokeWidth="1" strokeDasharray="3 3" />
-                      <line x1="20" y1="10" x2="480" y2="10" stroke="#717D78" strokeOpacity="0.15" strokeWidth="1" />
-
-                      {/* Dynamic Points Calculator based on Tabs */}
-                      {(() => {
-                        // Data Selection
-                        let rawData: number[] = [];
-                        let labels: string[] = [];
-                        
-                        if (analyticsPeriod === '7days') {
-                          labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-                          if (analyticsTab === 'sales') {
-                            rawData = [45000, 12000, 85000, 140000, 90000, 195000, (escrowHeldSum + withdrawableEarnings)];
-                          } else {
-                            rawData = [40, 25, 75, 120, 110, 240, totalVisits];
-                          }
-                        } else {
-                          labels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
-                          if (analyticsTab === 'sales') {
-                            rawData = [180000, 320000, 450000, (escrowHeldSum + grossEarnings)];
-                          } else {
-                            rawData = [250, 520, 780, totalVisits];
-                          }
-                        }
-
-                        const minVal = Math.min(...rawData);
-                        const maxVal = Math.max(...rawData) || 1000;
-                        const range = maxVal - minVal || 1;
-
-                        // Calculate Coordinate Points
-                        const points = rawData.map((val, idx) => {
-                          const x = 20 + idx * (460 / (rawData.length - 1));
-                          // Map Y coordinate between 10 (max value) and 130 (min value)
-                          const pct = (val - minVal) / range;
-                          const y = 130 - pct * 120;
-                          return { x, y, val };
-                        });
-
-                        // Path strings
-                        const pathStr = points.reduce((acc, pt, i) => {
-                          return acc + (i === 0 ? `M ${pt.x} ${pt.y}` : ` L ${pt.x} ${pt.y}`);
-                        }, "");
-
-                        const areaStr = points.length > 0 
-                          ? `${pathStr} L ${points[points.length - 1].x} 130 L ${points[0].x} 130 Z`
-                          : "";
-
-                        return (
-                          <>
-                            {/* Area Fill */}
-                            {areaStr && <path d={areaStr} fill="url(#chartGrad)" />}
-
-                            {/* Line path */}
-                            {pathStr && <path d={pathStr} fill="none" stroke="#1fb377" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />}
-
-                            {/* Interactive Dots */}
-                            {points.map((pt, idx) => (
-                              <g key={idx}>
-                                <circle
-                                  cx={pt.x}
-                                  cy={pt.y}
-                                  r={hoveredDataIndex === idx ? 6 : 3.5}
-                                  fill={hoveredDataIndex === idx ? "#1fb377" : "#ffffff"}
-                                  stroke="#1fb377"
-                                  strokeWidth="2.5"
-                                  className="transition-all cursor-pointer"
-                                  onMouseEnter={() => setHoveredDataIndex(idx)}
-                                  onMouseLeave={() => setHoveredDataIndex(null)}
-                                />
-                                {/* Label Text at base */}
-                                <text
-                                  x={pt.x}
-                                  y="145"
-                                  textAnchor="middle"
-                                  fill="#717D78"
-                                  fontSize="8"
-                                  fontFamily="Inter, system-ui, sans-serif"
-                                  className="pointer-events-none"
-                                >
-                                  {labels[idx]}
-                                </text>
-                              </g>
-                            ))}
-
-                            {/* Hover Tooltip Overlay inside SVG */}
-                            {hoveredDataIndex !== null && points[hoveredDataIndex] && (
-                              <g className="pointer-events-none animate-fade-in">
-                                <rect
-                                  x={Math.max(10, Math.min(380, points[hoveredDataIndex].x - 60))}
-                                  y={Math.max(5, points[hoveredDataIndex].y - 35)}
-                                  width="120"
-                                  height="25"
-                                  rx="6"
-                                  fill="#053720"
-                                  stroke="#085c34"
-                                  strokeWidth="1"
-                                />
-                                <text
-                                  x={Math.max(10, Math.min(380, points[hoveredDataIndex].x - 60)) + 60}
-                                  y={Math.max(5, points[hoveredDataIndex].y - 35) + 16}
-                                  textAnchor="middle"
-                                  fill="#ffffff"
-                                  fontSize="9"
-                                  fontWeight="bold"
-                                  fontFamily="Inter, system-ui, sans-serif"
-                                >
-                                  {analyticsTab === 'sales' 
-                                    ? `₦${points[hoveredDataIndex].val.toLocaleString()}` 
-                                    : `${points[hoveredDataIndex].val.toLocaleString()} Views`
-                                  }
-                                </text>
-                              </g>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </svg>
-                  </div>
-                  
-                  {/* Mini Legend / Help line */}
-                  <div className="flex justify-between items-center text-xs text-ink-400 font-mono">
-                    <span className="flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-jade-500 inline-block" />
-                      Live verified platform ledger sync
-                    </span>
-                    <span>Hover over node points to inspect daily figures</span>
-                  </div>
-                </div>
-
-                {/* Right Side: AI Sales Optimizer */}
-                <div className="lg:col-span-5 bg-ink-50 dark:bg-ink-900/50 border border-ink-150 dark:border-ink-800 p-5 rounded-[24px] flex flex-col justify-between space-y-4">
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <Sparkles className="w-4 h-4 text-jade-500 animate-pulse" />
-                      <h4 className="text-xs font-sans font-bold text-ink-950 dark:text-white tracking-wider">
-                        Gemini AI Sales Optimizer
-                      </h4>
-                    </div>
-                    <p className="text-xs text-ink-500 leading-relaxed">
-                      Analyze current catalog impressions, price competitiveness, and regional Nigerian demands to receive live actionable advice.
-                    </p>
-                  </div>
-
-                  {/* Recommendation Output */}
-                  <div className="flex-1 flex flex-col justify-center min-h-[140px]">
-                    {isAnalyzingMetrics ? (
-                      <div className="text-center py-4 space-y-2.5">
-                        <RefreshCw className="w-6 h-6 text-jade-500 animate-spin mx-auto" />
-                        <p className="text-xs text-ink-400 font-mono animate-pulse">Running live market comparison analysis...</p>
-                      </div>
-                    ) : aiPremiumInsight ? (
-                      <div className="space-y-3.5 text-xs animate-fade-in">
-                        <div className="flex items-start gap-1.5">
-                          <span className="px-1.5 py-0.5 rounded bg-jade-100 dark:bg-jade-500/10 text-jade-800 dark:text-jade-400 font-bold text-[10px] tracking-wider">Velocity</span>
-                          <span className="text-ink-850 dark:text-ink-200 font-medium leading-normal">{aiPremiumInsight.salesVelocity}</span>
-                        </div>
-                        <div className="flex items-start gap-1.5">
-                          <span className="px-1.5 py-0.5 rounded bg-jade-100 dark:bg-jade-500/10 text-jade-800 dark:text-jade-400 font-bold text-[10px] tracking-wider">Strategy</span>
-                          <span className="text-ink-850 dark:text-ink-200 font-medium leading-normal">{aiPremiumInsight.growthTip}</span>
-                        </div>
-                        <div className="flex items-start gap-1.5">
-                          <span className="px-1.5 py-0.5 rounded bg-jade-100 dark:bg-jade-500/10 text-jade-800 dark:text-jade-400 font-bold text-[10px] tracking-wider">Price Audit</span>
-                          <span className="text-ink-850 dark:text-ink-200 font-medium leading-normal">{aiPremiumInsight.priceAdjustment}</span>
-                        </div>
-                        <div className="flex items-start gap-1.5">
-                          <span className="px-1.5 py-0.5 rounded bg-ink-100 dark:bg-ink-500/10 text-ink-800 dark:text-ink-400 font-bold text-[10px] tracking-wider">Trust Bump</span>
-                          <span className="text-ink-850 dark:text-ink-200 font-medium leading-normal">{aiPremiumInsight.organicBoostChance}</span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-center py-6 text-ink-400 text-xs italic">
-                        No active audit reports for this session. Click the button below to generate a real-time Gemini recommendation report.
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Trigger Button */}
-                  <button
-                    type="button"
-                    onClick={handleAnalyzeStoreMetrics}
-                    disabled={isAnalyzingMetrics}
-                    className="w-full py-2.5 bg-jade-600 hover:bg-jade-700 text-white font-sans font-semibold text-xs tracking-wider rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 shadow-md"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-jade-500" />
-                    {isAnalyzingMetrics ? 'Generating Strategy...' : 'Audit Store Metrics'}
-                  </button>
-                </div>
-
-              </div>
-
-            </div>
-
-            {/* Payout Withdrawal Modal Overlay */}
-            {showPayoutModal && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm select-none">
-                <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 p-6 rounded-[32px] max-w-md w-full shadow-2xl relative animate-fade-in space-y-4">
-                  <div>
-                    <h3 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
-                      <Landmark className="w-5 h-5 text-jade-500" />
-                      Instant Bank Settlement
-                    </h3>
-                    <p className="text-xs text-ink-500 dark:text-ink-400 mt-1 leading-relaxed">
-                      Withdraw your available release balance directly to your Nigerian bank account. Transfer settles instantly through the Central Bank NIP network.
-                    </p>
-                  </div>
-
-                  {payoutSuccess ? (
-                    <div className="py-6 text-center space-y-3">
-                      <div className="w-12 h-12 rounded-full bg-jade-500/10 text-jade-500 flex items-center justify-center mx-auto">
-                        <Check className="w-7 h-7" />
-                      </div>
-                      <p className="text-xs font-bold text-jade-500 tracking-widest">Withdrawal Dispatched Successfully!</p>
-                      <p className="text-xs text-ink-500">₦{Number(payoutAmount).toLocaleString()} dispatched to {payoutBank} Acc: {payoutAccountNum}.</p>
-                    </div>
-                  ) : (
-                    <form onSubmit={handleProcessPayout} className="space-y-4">
-                      
-                      <div className="bg-ink-50 dark:bg-ink-800/40 p-3 rounded-2xl flex justify-between items-center">
-                        <span className="text-xs text-ink-400">Withdrawable Cash:</span>
-                        <span className="font-mono font-bold text-sm text-ink-900 dark:text-white">₦{withdrawableEarnings.toLocaleString()}</span>
-                      </div>
-
-                      {payoutError && (
-                        <div className="p-3 bg-ink-100 text-ink-800 dark:bg-ink-500/10 dark:text-ink-400 rounded-xl text-xs font-sans flex items-center gap-1.5">
-                          <AlertCircle className="w-4 h-4 shrink-0" />
-                          <span>{payoutError}</span>
-                        </div>
-                      )}
-
-                      <div className="space-y-3 text-xs">
-                        <div>
-                          <label className="text-ink-500 font-bold block mb-1">Select Bank</label>
-                          <select
-                            value={payoutBank}
-                            onChange={(e) => setPayoutBank(e.target.value)}
-                            className="w-full px-3 py-2.5 bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl text-ink-800 dark:text-white focus:outline-none"
-                          >
-                            <option value="GTBank">Guaranty Trust Bank (GTBank)</option>
-                            <option value="Kuda">Kuda Microfinance Bank</option>
-                            <option value="AccessBank">Access Bank PLC</option>
-                            <option value="ZenithBank">Zenith Bank PLC</option>
-                            <option value="UBA">United Bank for Africa (UBA)</option>
-                            <option value="Sterling">Sterling Bank PLC</option>
-                            <option value="FirstBank">First Bank of Nigeria</option>
-                          </select>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <label className="text-ink-500 font-bold block mb-1">10-Digit Account Number</label>
-                            <input
-                              type="text"
-                              maxLength={10}
-                              required
-                              value={payoutAccountNum}
-                              onChange={(e) => setPayoutAccountNum(e.target.value.replace(/\D/g, ''))}
-                              placeholder="e.g. 0123456789"
-                              className="w-full px-3 py-2.5 bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl text-ink-800 dark:text-white focus:outline-none font-mono"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="text-ink-500 font-bold block mb-1">Withdraw Amount (₦)</label>
-                            <input
-                              type="number"
-                              required
-                              value={payoutAmount}
-                              onChange={(e) => setPayoutAmount(e.target.value)}
-                              placeholder="e.g. 15000"
-                              className="w-full px-3 py-2.5 bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl text-ink-800 dark:text-white focus:outline-none font-mono"
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-2.5 pt-2">
-                        <button
-                          type="button"
-                          onClick={() => setShowPayoutModal(false)}
-                          className="flex-1 py-3 bg-ink-100 hover:bg-ink-200 dark:bg-ink-800 dark:hover:bg-ink-750 text-ink-800 dark:text-white font-display font-semibold text-xs tracking-wider rounded-xl transition-all cursor-pointer text-center"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="submit"
-                          className="flex-1 py-3 bg-jade-500 hover:bg-jade-600 text-white font-display font-semibold text-xs tracking-wider rounded-xl transition-all cursor-pointer shadow-md shadow-jade-500/10 text-center"
-                        >
-                          Withdraw Funds
-                        </button>
-                      </div>
-
-                    </form>
-                  )}
-
-                </div>
-              </div>
-            )}
-
-            {/* Performance charts and metrics breakdown */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              
-              {/* Trust & Compliance Score Card */}
-              <div className="lg:col-span-1 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 p-6 rounded-3xl space-y-5">
-                <h3 className="font-display font-bold text-sm text-ink-900 dark:text-white">Seller Metrics Audit</h3>
-                
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex justify-between text-xs mb-1 font-sans">
-                      <span className="text-ink-500">Escrow Release Rating</span>
-                      <span className="font-bold text-ink-800 dark:text-ink-300">100%</span>
-                    </div>
-                    <div className="w-full bg-ink-100 dark:bg-ink-800 h-1.5 rounded-full overflow-hidden">
-                      <div className="bg-jade-500 h-full w-full" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between text-xs mb-1 font-sans">
-                      <span className="text-ink-500">Dispute Avoidance Rate</span>
-                      <span className="font-bold text-ink-800 dark:text-ink-300">97%</span>
-                    </div>
-                    <div className="w-full bg-ink-100 dark:bg-ink-800 h-1.5 rounded-full overflow-hidden">
-                      <div className="bg-jade-500 h-full w-[97%]" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between text-xs mb-1 font-sans">
-                      <span className="text-ink-500">Identity Verification Grade</span>
-                      <span className="font-bold text-ink-800 dark:text-ink-300">Gold Verified</span>
-                    </div>
-                    <div className="w-full bg-ink-100 dark:bg-ink-800 h-1.5 rounded-full overflow-hidden">
-                      <div className="bg-jade-500 h-full w-full" />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-3 bg-ink-50 dark:bg-ink-800/40 rounded-2xl border border-ink-100 dark:border-ink-800 text-xs text-ink-400 font-mono text-center">
-                  Verified gold status grants your product listings a 40% organic rank bump in buyer search results!
-                </div>
-              </div>
-
-              {/* Settlement History Logs */}
-              <div className="lg:col-span-2 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 p-6 rounded-3xl flex flex-col justify-between">
-                <div>
-                  <h3 className="font-display font-bold text-sm text-ink-900 dark:text-white mb-4">Payout Settlement History</h3>
-                  
-                  {payoutHistory.length === 0 ? (
-                    <div className="p-12 text-center text-xs text-ink-400 italic">
-                      No payouts processed yet. Completed order funds will appear here after withdrawal request is submitted.
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs text-left">
-                        <thead>
-                          <tr className="border-b border-ink-150 dark:border-ink-800 pb-2 text-ink-400 tracking-widest font-mono text-xs">
-                            <th className="pb-2 font-bold">Transaction ID</th>
-                            <th className="pb-2 font-bold">Bank Detail</th>
-                            <th className="pb-2 font-bold">Withdrawn</th>
-                            <th className="pb-2 font-bold">Date</th>
-                            <th className="pb-2 font-bold text-right">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-ink-100 dark:divide-ink-800/50">
-                          {payoutHistory.map((p) => (
-                            <tr key={p.id} className="text-ink-700 dark:text-ink-300 font-medium">
-                              <td className="py-2.5 font-mono text-xs text-ink-500">{p.transactionId}</td>
-                              <td className="py-2.5">{p.bank} - {p.accountNumber}</td>
-                              <td className="py-2.5 font-mono font-bold text-ink-900 dark:text-white">₦{p.amount.toLocaleString()}</td>
-                              <td className="py-2.5 text-ink-400 font-mono text-xs">{new Date(p.createdAt).toLocaleDateString()}</td>
-                              <td className="py-2.5 text-right">
-                                <span className="px-2 py-0.5 bg-jade-100 dark:bg-jade-500/10 text-jade-800 dark:text-jade-400 rounded-md text-xs font-bold">
-                                  {p.status}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-
-                <div className="pt-4 border-t border-ink-100 dark:border-ink-800 flex justify-between items-center text-xs text-ink-400">
-                  <span>Gross Funds Settled: ₦{totalWithdrawn.toLocaleString()}</span>
-                  <span className="font-mono">Central Bank NIP Gateway Active</span>
-                </div>
-              </div>
-
-            </div>
+                </form>
+              )}
+            </Dialog>
 
           </div>
         )}
@@ -1304,6 +1038,10 @@ export default function DashboardView({
                 <div className="divide-y divide-ink-100 dark:divide-ink-800">
                   {sellerOrders.map((ord) => {
                     const buyer = db.users.find(u => u.id === ord.buyerId);
+                    const delivery = (db.deliveries || []).find(d => d.orderId === ord.id);
+                    const deliveryRider = delivery?.riderId
+                      ? db.deliveryPartners.find(p => p.id === delivery.riderId)
+                      : undefined;
                     
                     return (
                       <div key={ord.id} className="p-5 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5 text-xs">
@@ -1453,6 +1191,14 @@ export default function DashboardView({
                               <MapPin className="w-3.5 h-3.5" />
                               {activeSafeMeetOrderId === ord.id ? 'Close SafeMeet™' : 'SafeMeet™ Coordinator'}
                             </button>
+                          )}
+
+                          {delivery && (
+                            <SellerDeliveryPanel
+                              delivery={delivery}
+                              events={db.deliveryEvents || []}
+                              rider={deliveryRider}
+                            />
                           )}
 
                         </div>
@@ -1620,8 +1366,8 @@ export default function DashboardView({
 
             {/* DISPATCH/SHIPPING CONFIGURATION DIALOG */}
             {selectedOrderForShipment && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
-                <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 p-6 rounded-[32px] max-w-sm w-full shadow-2xl relative space-y-4">
+              <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center sm:p-4">
+                <div className="relative max-h-[calc(100dvh-1rem)] w-full max-w-sm space-y-4 overflow-y-auto rounded-t-3xl border border-ink-200 bg-white p-5 pb-safe-bottom shadow-2xl dark:border-ink-800 dark:bg-ink-900 sm:rounded-[32px] sm:p-6">
                   <div>
                     <h3 className="font-display font-bold text-base text-ink-900 dark:text-white">Dispatch Escrow Item</h3>
                     <p className="text-xs text-ink-500 mt-1 font-sans">Enter shipping carrier details to update the buyer tracker.</p>
@@ -1675,8 +1421,8 @@ export default function DashboardView({
 
             {/* PIN HANDSHAKE VERIFICATION MODAL */}
             {selectedOrderForPin && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
-                <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 p-6 rounded-[32px] max-w-sm w-full shadow-2xl relative space-y-4">
+              <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center sm:p-4">
+                <div className="relative max-h-[calc(100dvh-1rem)] w-full max-w-sm space-y-4 overflow-y-auto rounded-t-3xl border border-ink-200 bg-white p-5 pb-safe-bottom shadow-2xl dark:border-ink-800 dark:bg-ink-900 sm:rounded-[32px] sm:p-6">
                   <div>
                     <h3 className="font-display font-bold text-base text-ink-900 dark:text-white flex items-center gap-1.5">
                       <Shield className="w-5 h-5 text-jade-500" />
@@ -2069,6 +1815,7 @@ export default function DashboardView({
                           return;
                         }
                         
+                        setPendingImageUploads((count) => count + files.length);
                         files.forEach((file) => {
                           void (async () => {
                             try {
@@ -2084,22 +1831,38 @@ export default function DashboardView({
                               };
                               reader.readAsDataURL(file);
                               toast.info('Cloud upload unavailable — using a local preview for now.');
+                            } finally {
+                              setPendingImageUploads((count) => Math.max(0, count - 1));
                             }
                           })();
                         });
                       }}
                       className="hidden"
                     />
-                    <ImageIcon className="w-8 h-8 text-ink-400 mx-auto mb-2 animate-pulse" />
-                    <span className="text-xs font-bold block text-ink-700 dark:text-ink-300">Drag & Drop pictures or Click to upload</span>
-                    <span className="text-xs text-ink-400 block mt-0.5 font-sans">Select physical images from your device. Real-time rendering enabled.</span>
+                    {pendingImageUploads > 0 ? (
+                      <Loader2 className="mx-auto mb-2 h-8 w-8 animate-spin text-jade-600 dark:text-jade-400" aria-hidden="true" />
+                    ) : (
+                      <ImageIcon className="mx-auto mb-2 h-8 w-8 animate-pulse text-ink-400" aria-hidden="true" />
+                    )}
+                    <span className="text-xs font-bold block text-ink-700 dark:text-ink-300">
+                      {pendingImageUploads > 0
+                        ? `Optimizing and uploading ${pendingImageUploads} image${pendingImageUploads === 1 ? '' : 's'}…`
+                        : 'Drag & Drop pictures or Click to upload'}
+                    </span>
+                    <span className="text-xs text-ink-400 block mt-0.5 font-sans">
+                      {pendingImageUploads > 0
+                        ? 'Photos are compressed on your device first for a faster upload.'
+                        : 'Select physical images from your device. Real-time rendering enabled.'}
+                    </span>
                   </label>
 
                   {/* Photo assets editor */}
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
                       <label className="text-xs font-bold text-ink-400 tracking-wider">Asset Catalog ({uploadedImages.length}/15)</label>
-                      <span className="text-xs text-jade-500 font-bold bg-jade-500/10 px-2 py-0.5 rounded-full">Minimum 3 Required</span>
+                      <span className="text-xs text-jade-500 font-bold bg-jade-500/10 px-2 py-0.5 rounded-full">
+                        {pendingImageUploads > 0 ? `Uploading ${pendingImageUploads}…` : 'Minimum 3 Required'}
+                      </span>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -2173,6 +1936,7 @@ export default function DashboardView({
                           onChange={(e) => {
                             const file = e.target.files?.[0];
                             if (!file) return;
+                            setPendingVideoUpload(true);
                             void (async () => {
                               try {
                                 const { uploadMedia } = await import('@/lib/upload');
@@ -2185,12 +1949,18 @@ export default function DashboardView({
                                 reader.onloadend = () => setUploadedVideo(reader.result as string);
                                 reader.readAsDataURL(file);
                                 toast.info('Cloud upload unavailable — using a local preview for now.');
+                              } finally {
+                                setPendingVideoUpload(false);
                               }
                             })();
                           }}
                           className="hidden"
                         />
-                        {uploadedVideo ? 'Replace Video' : 'Add Video Demo'}
+                        {pendingVideoUpload ? (
+                          <span className="inline-flex items-center gap-1">
+                            <Loader2 className="h-3 w-3 animate-spin" /> Uploading…
+                          </span>
+                        ) : uploadedVideo ? 'Replace Video' : 'Add Video Demo'}
                       </label>
                     </div>
                     {uploadedVideo ? (
@@ -2781,6 +2551,8 @@ export default function DashboardView({
         )}
 
         {/* TAB 5: BARCODE AUTO FILL AUTO SPEC */}
+        {activeTab === 'shipping' && <SellerShippingPanel />}
+
         {activeTab === 'barcode_scanner' && (
           <div className="max-w-2xl mx-auto bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-[32px] p-6 shadow-sm space-y-6">
             <div className="text-center">
@@ -2844,6 +2616,9 @@ export default function DashboardView({
             )}
           </div>
         )}
+
+        {/* Sponsored: seller-hub placement */}
+        <AdSlot placement="DASHBOARD" className="mt-8" />
 
       </div>
     </div>

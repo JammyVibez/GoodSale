@@ -1,10 +1,22 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { absoluteUrl } from '@/lib/seo/site';
+
+const description =
+  'The rules for buying, selling, escrow payments, and GoodDispatch delivery on GoodSale.';
 
 export const metadata: Metadata = {
   title: 'Terms of Service',
-  description:
-    'The rules for buying, selling, escrow payments, and GoodDispatch delivery on GoodSale.',
+  description,
+  alternates: { canonical: '/terms' },
+  openGraph: {
+    title: 'Terms of Service | GoodSale',
+    description,
+    url: absoluteUrl('/terms'),
+    siteName: 'GoodSale',
+    type: 'website',
+  },
+  twitter: { card: 'summary', title: 'Terms of Service | GoodSale', description },
 };
 
 const SECTIONS: { heading: string; body: string[] }[] = [

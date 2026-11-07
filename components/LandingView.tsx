@@ -17,7 +17,9 @@ import {
   Shirt, Cpu, Smartphone, Laptop, Armchair, Apple, Car, BookOpen, LayoutGrid,
   Package, SlidersHorizontal,
 } from 'lucide-react';
-import { Product, UserRole, useDBState } from '../lib/store';
+import { Product, useDBState } from '../lib/store';
+import { isVerifiedSeller } from '@/lib/verification';
+import VerifiedBadge from './verification/VerifiedBadge';
 import { trackProductMetric } from '@/lib/productMetrics';
 import { useWishlist } from '@/lib/hooks/useWishlist';
 import { SmartImage } from './ui/SmartImage';
@@ -120,6 +122,8 @@ function ProductCard({
   rating,
   reviewCount,
   compact = false,
+  sellerName,
+  sellerVerified = false,
   isFavorite,
   onToggleFavorite,
   onSelect,
@@ -129,6 +133,8 @@ function ProductCard({
   rating: number | null;
   reviewCount: number;
   compact?: boolean;
+  sellerName?: string;
+  sellerVerified?: boolean;
   isFavorite: boolean;
   onToggleFavorite: () => void;
   onSelect: () => void;
@@ -183,6 +189,21 @@ function ProductCard({
         <h3 className={`line-clamp-2 font-bold leading-snug text-ink-900 dark:text-white ${compact ? 'text-[11px]' : 'text-xs'}`}>
           {product.title}
         </h3>
+
+        {sellerName && (
+          <div className="flex min-w-0 items-center gap-1 text-[10px] text-ink-500 dark:text-ink-400">
+            <span className="truncate">{sellerName}</span>
+            {sellerVerified && (
+              <VerifiedBadge
+                sellerId={product.sellerId}
+                status="VERIFIED"
+                variant="icon"
+                fallbackName={sellerName}
+                className="shrink-0"
+              />
+            )}
+          </div>
+        )}
 
         <div className="mt-auto space-y-1">
           <div className="flex flex-wrap items-baseline gap-1.5">
@@ -311,17 +332,14 @@ export default function LandingView({
         if (!haystack.includes(query)) return false;
       }
       if (selectedCategory && product.category.toLowerCase() !== selectedCategory.toLowerCase()) return false;
-      if (selectedState && stateOf(product.sellerId) !== selectedState) return false;
-      if (onlyVerified) {
-        const seller = usersById.get(product.sellerId);
-        if (
-          seller?.role !== UserRole.VERIFIED_SELLER &&
-          seller?.role !== UserRole.VERIFIED_BUSINESS &&
-          seller?.role !== UserRole.BUSINESS
-        ) {
-          return false;
-        }
-      }
+      if (selectedState && stateOf(product.sellerId) !== selectedState) return false;          if (onlyVerified) {
+            const sellerProfile = profilesByUserId.get(product.sellerId);
+            const verified = isVerifiedSeller({
+              verificationStatus: sellerProfile?.verificationStatus,
+              verificationExpiresAt: sellerProfile?.verificationExpiresAt,
+            });
+            if (!verified) return false;
+          }
       if (wishlistOnly && !favorites.includes(product.id)) return false;
       if (dealsOnly && discountPercent(product) === null) return false;
       return true;
@@ -344,7 +362,7 @@ export default function LandingView({
     return list;
   }, [
     db.products, searchQuery, selectedCategory, selectedState, onlyVerified, wishlistOnly,
-    dealsOnly, favorites, usersById, stateOf, sortMode, ratingOf,
+    dealsOnly, favorites, profilesByUserId, stateOf, sortMode, ratingOf,
   ]);
 
   /* ---- flash deals: real discounts first, then low stock ---- */
@@ -383,10 +401,31 @@ export default function LandingView({
   const auctions = useMemo(() => db.products.filter((p) => p.isAuction).slice(0, 4), [db.products]);
 
   const verifiedSellers = useMemo(() => {
-    return db.users.filter(
-      (u) => u.role === UserRole.VERIFIED_SELLER || u.role === UserRole.VERIFIED_BUSINESS || u.role === UserRole.BUSINESS
-    ).slice(0, 6);
-  }, [db.users]);
+    return db.users
+      .filter((user) => {
+        const profile = profilesByUserId.get(user.id);
+        return isVerifiedSeller({
+          verificationStatus: profile?.verificationStatus,
+          verificationExpiresAt: profile?.verificationExpiresAt,
+        });
+      })
+      .slice(0, 6);
+  }, [db.users, profilesByUserId]);
+
+  const sellerProps = useCallback(
+    (sellerId: number) => {
+      const seller = usersById.get(sellerId);
+      const profile = profilesByUserId.get(sellerId);
+      return {
+        sellerName: seller?.fullName || 'GoodSale seller',
+        sellerVerified: isVerifiedSeller({
+          verificationStatus: profile?.verificationStatus,
+          verificationExpiresAt: profile?.verificationExpiresAt,
+        }),
+      };
+    },
+    [profilesByUserId, usersById]
+  );
 
   /* ---- hero ---- */
   const heroSlides = useMemo(
@@ -665,6 +704,7 @@ export default function LandingView({
                   product={product}
                   rating={ratingOf(product.id)}
                   reviewCount={reviewCountOf(product.id)}
+                  {...sellerProps(product.sellerId)}
                   isFavorite={favorites.includes(product.id)}
                   onToggleFavorite={() => toggleFavorite(product.id)}
                   onSelect={() => onSelectProduct(product.id)}
@@ -704,6 +744,7 @@ export default function LandingView({
                   product={product}
                   rating={ratingOf(product.id)}
                   reviewCount={reviewCountOf(product.id)}
+                  {...sellerProps(product.sellerId)}
                   isFavorite={favorites.includes(product.id)}
                   onToggleFavorite={() => toggleFavorite(product.id)}
                   onSelect={() => onSelectProduct(product.id)}
@@ -859,6 +900,7 @@ export default function LandingView({
                   product={product}
                   rating={ratingOf(product.id)}
                   reviewCount={reviewCountOf(product.id)}
+                  {...sellerProps(product.sellerId)}
                   isFavorite={favorites.includes(product.id)}
                   onToggleFavorite={() => toggleFavorite(product.id)}
                   onSelect={() => onSelectProduct(product.id)}
@@ -951,9 +993,16 @@ export default function LandingView({
                         className="h-full w-full"
                       />
                     </div>
-                    <span className="flex items-center gap-1 text-[11px] font-bold text-ink-900 dark:text-white">
+                    <span className="flex min-w-0 items-center gap-1 text-[11px] font-bold text-ink-900 dark:text-white">
                       <span className="truncate">{seller.fullName}</span>
-                      <BadgeCheck className="h-3 w-3 shrink-0 text-jade-500" />
+                      <VerifiedBadge
+                        sellerId={seller.id}
+                        status={profile?.verificationStatus}
+                        expiresAt={profile?.verificationExpiresAt}
+                        variant="icon"
+                        fallbackName={seller.fullName}
+                        className="shrink-0"
+                      />
                     </span>
                     <span className="text-[10px] text-ink-400">{listings} listings</span>
                     {profile?.state && <span className="text-[10px] text-ink-400">{profile.state}</span>}

@@ -3,7 +3,14 @@
  */
 import type { SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
 import type { GoodSaleDBState, User } from '@/lib/types';
-import { createEmptyState, DEFAULT_REVENUE_SETTINGS, DEFAULT_PAYMENT_SETTINGS } from './empty-state';
+import {
+  createEmptyState,
+  DEFAULT_REVENUE_SETTINGS,
+  DEFAULT_PAYMENT_SETTINGS,
+  DEFAULT_SHIPPING_SETTINGS,
+  DEFAULT_SHIPPING_TIERS,
+  DEFAULT_DELIVERY_SETTINGS,
+} from './empty-state';
 import * as M from './mappers';
 
 /**
@@ -18,11 +25,22 @@ const ROW_LIMITS: Record<string, number> = {
   calls: 400,
   notifications: 200,
   delivery_jobs: 500,
+  deliveries: 600,
+  delivery_events: 2000,
+  delivery_audit_logs: 500,
+  delivery_assignment_offers: 1000,
+  delivery_failures: 500,
+  delivery_returns: 500,
+  courier_shipments: 500,
+  rider_earnings: 500,
+  rider_earning_audit_logs: 500,
   chat_rooms: 300,
   wallet_transactions: 300,
   good_points_transactions: 300,
   payment_logs: 200,
   audit_logs: 200,
+  shipping_audit_logs: 300,
+  shipping_quotes: 100,
 };
 
 async function selectAll(client: SupabaseClient, table: string) {
@@ -67,7 +85,19 @@ export async function loadMarketplaceState(
     followerRelations,
     productBundles,
     deliveryPartners,
+    deliveryPartnerDirectory,
     deliveryJobs,
+    deliveries,
+    deliveryEvents,
+    deliveryAuditRows,
+    deliverySettingsRows,
+    deliveryAssignmentOfferRows,
+    deliveryLiveLocationRows,
+    deliveryFailureRows,
+    deliveryReturnRows,
+    courierShipmentRows,
+    riderEarnings,
+    riderEarningAudits,
     revenueSettingsRows,
     sponsoredAds,
     featuredListings,
@@ -83,6 +113,14 @@ export async function loadMarketplaceState(
     withdrawalRequests,
     paymentSettingsRows,
     paymentLogs,
+    shippingSettingsRows,
+    shippingTiers,
+    shippingZones,
+    shippingRules,
+    shippingCouriers,
+    sellerShippingRows,
+    shippingManualQuoteRows,
+    shippingAuditRows,
   ] = await Promise.all([
     selectAll(client, 'profiles'),
     selectAll(client, 'businesses'),
@@ -109,7 +147,19 @@ export async function loadMarketplaceState(
     selectAll(client, 'follower_relations'),
     selectAll(client, 'product_bundles'),
     selectAll(client, 'delivery_partners'),
+    selectAll(client, 'delivery_partners_directory'),
     selectAll(client, 'delivery_jobs'),
+    selectAll(client, 'deliveries'),
+    selectAll(client, 'delivery_events'),
+    selectAll(client, 'delivery_audit_logs'),
+    selectAll(client, 'delivery_settings'),
+    selectAll(client, 'delivery_assignment_offers'),
+    selectAll(client, 'delivery_live_locations'),
+    selectAll(client, 'delivery_failures'),
+    selectAll(client, 'delivery_returns'),
+    selectAll(client, 'courier_shipments'),
+    selectAll(client, 'rider_earnings'),
+    selectAll(client, 'rider_earning_audit_logs'),
     selectAll(client, 'revenue_settings'),
     selectAll(client, 'sponsored_ads'),
     selectAll(client, 'featured_listings'),
@@ -125,6 +175,14 @@ export async function loadMarketplaceState(
     selectAll(client, 'withdrawal_requests'),
     selectAll(client, 'payment_settings'),
     selectAll(client, 'payment_logs'),
+    selectAll(client, 'shipping_settings'),
+    selectAll(client, 'shipping_distance_tiers'),
+    selectAll(client, 'shipping_zones'),
+    selectAll(client, 'shipping_rules'),
+    selectAll(client, 'shipping_couriers'),
+    selectAll(client, 'seller_shipping_settings'),
+    selectAll(client, 'shipping_manual_quotes'),
+    selectAll(client, 'shipping_audit_logs'),
   ]);
 
   state.users = profiles.map(M.profileToUser);
@@ -151,8 +209,42 @@ export async function loadMarketplaceState(
   state.safeMeetMeetups = safeMeetMeetups.map(M.mapSafeMeetMeetup);
   state.followerRelations = followerRelations.map(M.mapFollower);
   state.productBundles = productBundles.map(M.mapBundle);
-  state.deliveryPartners = deliveryPartners.map(M.mapDeliveryPartner);
+  // The directory view is safe for every signed-in user; the private table only
+  // returns the rider's own row (or every row for admins). Sensitive rows win.
+  const partnerRows = new Map<number, Record<string, unknown>>();
+  for (const row of deliveryPartnerDirectory) partnerRows.set(Number(row.id), row);
+  for (const row of deliveryPartners) partnerRows.set(Number(row.id), row);
+  state.deliveryPartners = Array.from(partnerRows.values()).map(M.mapDeliveryPartner);
   state.deliveryJobs = deliveryJobs.map(M.mapDeliveryJob);
+  state.deliveries = deliveries.map(M.mapDelivery);
+  state.deliveryEvents = deliveryEvents
+    .map(M.mapDeliveryEvent)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  state.deliveryAuditLogs = deliveryAuditRows
+    .map(M.mapDeliveryAuditLog)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  state.deliverySettings = deliverySettingsRows[0]
+    ? M.mapDeliverySettings(deliverySettingsRows[0])
+    : { ...DEFAULT_DELIVERY_SETTINGS };
+  state.deliveryAssignmentOffers = deliveryAssignmentOfferRows
+    .map(M.mapDeliveryAssignmentOffer)
+    .sort((a, b) => b.offeredAt.localeCompare(a.offeredAt));
+  state.deliveryLiveLocations = deliveryLiveLocationRows.map(M.mapDeliveryLiveLocation);
+  state.deliveryFailures = deliveryFailureRows
+    .map(M.mapDeliveryFailure)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  state.deliveryReturns = deliveryReturnRows
+    .map(M.mapDeliveryReturn)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  state.courierShipments = courierShipmentRows
+    .map(M.mapCourierShipment)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  state.riderEarnings = riderEarnings
+    .map(M.mapRiderEarning)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  state.riderEarningAuditLogs = riderEarningAudits
+    .map(M.mapRiderEarningAuditLog)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   state.sponsoredAds = sponsoredAds.map(M.mapSponsoredAd);
   state.featuredListings = featuredListings.map(M.mapFeaturedListing);
   state.announcements = announcements.map(M.mapAnnouncement);
@@ -166,6 +258,23 @@ export async function loadMarketplaceState(
   state.refunds = refunds.map(M.mapRefund);
   state.withdrawalRequests = withdrawalRequests.map(M.mapWithdrawal);
   state.paymentLogs = paymentLogs.map(M.mapPaymentLog);
+  state.shippingTiers = shippingTiers.length
+    ? shippingTiers.map(M.mapShippingTier).sort((a, b) => a.minKm - b.minKm)
+    : DEFAULT_SHIPPING_TIERS.map((tier) => ({ ...tier }));
+  state.shippingZones = shippingZones.map(M.mapShippingZone);
+  state.shippingRules = shippingRules.map(M.mapShippingRule);
+  state.shippingCouriers = shippingCouriers.map(M.mapShippingCourier);
+  state.sellerShippingSettings = sellerShippingRows.map(M.mapSellerShippingSettings);
+  state.shippingManualQuotes = shippingManualQuoteRows.map(M.mapShippingManualQuote);
+  state.shippingAuditLogs = shippingAuditRows
+    .map(M.mapShippingAuditLog)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  if (shippingSettingsRows[0]) {
+    state.shippingSettings = M.mapShippingSettings(shippingSettingsRows[0]);
+  } else {
+    state.shippingSettings = { ...DEFAULT_SHIPPING_SETTINGS };
+  }
 
   if (revenueSettingsRows[0]) {
     state.revenueSettings = M.mapRevenueSettings(revenueSettingsRows[0]);
@@ -219,6 +328,13 @@ export function subscribeMarketplaceRealtime(
     .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, handlers.onChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, handlers.onChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_jobs' }, handlers.onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_partners' }, handlers.onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'deliveries' }, handlers.onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_events' }, handlers.onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_assignment_offers' }, handlers.onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_failures' }, handlers.onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'courier_shipments' }, handlers.onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'rider_earnings' }, handlers.onChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, handlers.onChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_rooms' }, handlers.onChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'bids' }, handlers.onChange)

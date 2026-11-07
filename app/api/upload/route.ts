@@ -9,6 +9,35 @@ const BUCKETS = new Set(['product-images', 'chat-media', 'government-ids', 'avat
 const IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 const VIDEO_MAX_BYTES = 25 * 1024 * 1024;
 
+// Checking storage on every upload adds a network round trip to every image.
+// Buckets change rarely, so remember successful checks for this server process.
+const ensuredBuckets = new Set<string>();
+const bucketChecks = new Map<string, Promise<void>>();
+
+async function ensureBucket(admin: ReturnType<typeof createAdminClient>, bucket: string): Promise<void> {
+  if (!admin || ensuredBuckets.has(bucket)) return;
+  const inFlight = bucketChecks.get(bucket);
+  if (inFlight) return inFlight;
+
+  const check = (async () => {
+    try {
+      const { data: buckets } = await admin.storage.listBuckets();
+      if (!buckets?.some((entry) => entry.name === bucket)) {
+        await admin.storage.createBucket(bucket, { public: bucket !== 'government-ids' });
+      }
+      ensuredBuckets.add(bucket);
+    } catch (error) {
+      // Uploading can still succeed with existing buckets; don't block it.
+      logger.warn('Could not ensure storage bucket', { bucket, error: String(error) });
+    } finally {
+      bucketChecks.delete(bucket);
+    }
+  })();
+
+  bucketChecks.set(bucket, check);
+  return check;
+}
+
 /**
  * Cloudinary is enabled when all three keys are present. Uploads are signed
  * server-side with HMAC-SHA1 so the secret never reaches the browser, and no
@@ -76,7 +105,9 @@ async function uploadToCloudinary(
   }
   const data = (await res.json()) as { secure_url?: string; public_id?: string };
   if (!data?.secure_url) return null;
-  return { url: data.secure_url, publicId: data.public_id || '' };
+  // Deliver an auto-format, auto-quality variant instead of the full original.
+  const optimized = data.secure_url.replace('/upload/', '/upload/f_auto,q_auto/');
+  return { url: optimized, publicId: data.public_id || '' };
 }
 
 /**
@@ -117,20 +148,6 @@ export async function POST(req: NextRequest) {
 
     const admin = createAdminClient();
 
-    // First-run safety: make sure the bucket exists so uploads never 400 with
-    // "Bucket not found" on a fresh project.
-    if (admin) {
-      try {
-        const { data: buckets } = await admin.storage.listBuckets();
-        const exists = buckets?.some((b) => b.name === bucket);
-        if (!exists) {
-          await admin.storage.createBucket(bucket, { public: bucket !== 'government-ids' });
-        }
-      } catch (bucketError) {
-        logger.warn('Could not ensure storage bucket', { bucket, error: String(bucketError) });
-      }
-    }
-
     const isVideo = file.type.startsWith('video/');
     const maxBytes = isVideo ? VIDEO_MAX_BYTES : IMAGE_MAX_BYTES;
     if (file.size <= 0 || file.size > maxBytes) {
@@ -139,6 +156,9 @@ export async function POST(req: NextRequest) {
         { status: 413 }
       );
     }
+
+    // First-run safety, cached for the life of the server process.
+    await ensureBucket(admin, bucket);
 
     const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
     const path = `${user.id}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
@@ -160,23 +180,17 @@ export async function POST(req: NextRequest) {
     }
 
     // --- Supabase Storage (fallback + private buckets) ---
-    let uploader = supabase;
+    // The route has already authenticated the user and owns the object path, so
+    // the service client writes directly. This avoids a failed RLS attempt and
+    // a second upload on every request.
+    const uploader = admin || supabase;
     const { error: uploadError } = await uploader.storage.from(bucket).upload(path, buffer, {
       contentType: file.type || 'application/octet-stream',
+      cacheControl: '31536000',
       upsert: false,
     });
 
-    if (uploadError && admin) {
-      logger.warn('User upload failed, retrying with admin', { message: uploadError.message });
-      uploader = admin;
-      const retry = await uploader.storage.from(bucket).upload(path, buffer, {
-        contentType: file.type || 'application/octet-stream',
-        upsert: false,
-      });
-      if (retry.error) {
-        return NextResponse.json({ success: false, error: retry.error.message }, { status: 502 });
-      }
-    } else if (uploadError) {
+    if (uploadError) {
       return NextResponse.json({ success: false, error: uploadError.message }, { status: 502 });
     }
 

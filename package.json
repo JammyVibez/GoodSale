@@ -15,7 +15,9 @@
     "migrate": "node scripts/apply-migrations.mjs",
     "seed": "tsx scripts/seed-marketplace.ts",
     "seed:reset": "tsx scripts/seed-marketplace.ts --force",
-    "verify:realtime": "tsx scripts/verify-realtime.ts"
+    "verify:realtime": "tsx scripts/verify-realtime.ts",
+    "verify:tracking": "node scripts/verify-premium-tracking.mjs",
+    "verify:wallet": "node scripts/verify-wallet-ledger.mjs"
   },
   "engines": {
     "node": ">=20"
