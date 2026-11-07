@@ -34,6 +34,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Delivery jobs failed' }, { status: 500 });
     }
 
+    // The delivery scheduler is the existing always-on heartbeat. Run the
+    // premium lifecycle in the same protected tick so membership reminders,
+    // credit expiry, Flash Sales and campaign completion do not need a second
+    // scheduler to be configured.
+    let premiumJobs: unknown = null;
+    try {
+      const premium = await client.rpc('run_premium_jobs');
+      if (premium.error) logger.warn('Premium lifecycle jobs failed', { error: premium.error.message });
+      else premiumJobs = premium.data;
+    } catch (premiumError) {
+      logger.warn('Premium lifecycle jobs failed', { error: String(premiumError) });
+    }
+
     let outbox;
     try {
       outbox = await processDeliveryOutbox(25);
@@ -42,7 +55,7 @@ export async function POST(req: NextRequest) {
       outbox = { error: 'Notification outbox could not be processed' };
     }
 
-    return NextResponse.json({ success: true, data: { jobs: data, notifications: outbox } });
+    return NextResponse.json({ success: true, data: { jobs: data, premiumJobs, notifications: outbox } });
   } catch (error) {
     logger.error('Delivery jobs route failed', { error: String(error) });
     return NextResponse.json({ success: false, error: 'Delivery jobs failed' }, { status: 500 });

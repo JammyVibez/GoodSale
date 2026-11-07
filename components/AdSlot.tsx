@@ -1,22 +1,28 @@
 // components/AdSlot.tsx
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X, Play, Sparkles } from 'lucide-react';
-import { getDBState } from '../lib/store';
-import type { AdPlacement } from '../lib/types';
+import type { AdPlacement, SponsoredAd } from '../lib/types';
 
 export interface AdSlotProps {
-  /** Where this slot lives in the app; matches the admin-chosen placements. */
+  /** Where this slot lives in the app; matches the campaign placements. */
   placement: AdPlacement;
   /** Optional navigation callback so the ad can deep-link into a view. */
   onNavigate?: (view: string, payload?: Record<string, unknown>) => void;
+  /** Buyer delivery state used for server-side targeting. */
+  state?: string;
+  /** Buyer delivery city used for server-side targeting. */
+  city?: string;
+  /** Current catalog category used for server-side targeting. */
+  category?: string;
   /** Override the card shape (e.g. compact rail vs full-width banner). */
   variant?: 'banner' | 'rail';
   className?: string;
 }
 
 const DISMISS_KEY = 'goodsale_dismissed_ads';
+const CLICK_KEY = 'goodsale_ad_click';
 
 function readDismissed(): Set<number> {
   try {
@@ -27,35 +33,62 @@ function readDismissed(): Set<number> {
   }
 }
 
+export function rememberAdClick(adId: number, targetId = 0) {
+  try {
+    window.sessionStorage.setItem(CLICK_KEY, JSON.stringify({ adId, targetId, clickedAt: Date.now() }));
+  } catch {
+    // Storage unavailable — conversion attribution is skipped, never fabricated.
+  }
+}
+
+export function readRecentAdClick(maxAgeMs = 30 * 60_000): { adId: number; targetId: number } | null {
+  try {
+    const raw = window.sessionStorage.getItem(CLICK_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { adId?: number; targetId?: number; clickedAt?: number };
+    if (!parsed.adId || !parsed.clickedAt || Date.now() - parsed.clickedAt > maxAgeMs) return null;
+    return { adId: Number(parsed.adId), targetId: Number(parsed.targetId) || 0 };
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Renders the highest-engagement active sponsored ad configured to show in this
- * placement. Returns nothing when no ad targets the slot or the visitor closed
- * it, so the surrounding layout never jumps.
+ * Renders the highest-priority campaign the server approves for this visitor,
+ * placement and catalog context. Returns nothing when no eligible ad exists.
  */
-export default function AdSlot({ placement, onNavigate, variant = 'banner', className = '' }: AdSlotProps) {
-  const [db, setDb] = useState(getDBState());
+export default function AdSlot({
+  placement,
+  onNavigate,
+  state = '',
+  city = '',
+  category = '',
+  variant = 'banner',
+  className = '',
+}: AdSlotProps) {
+  const [ad, setAd] = useState<SponsoredAd | null>(null);
   const [dismissedIds, setDismissedIds] = useState<Set<number>>(() => readDismissed());
   const [videoError, setVideoError] = useState(false);
   const impressionsRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
-    const handleStateChange = () => setDb(getDBState());
-    window.addEventListener('goodsale_db_state_change', handleStateChange);
-    return () => window.removeEventListener('goodsale_db_state_change', handleStateChange);
-  }, []);
-
-  const ad = useMemo(() => {
-    const active = (db.sponsoredAds || []).filter((a) => {
-      if (a.status !== 'ACTIVE') return false;
-      const placements = (a.placements && a.placements.length ? a.placements : ['HOME']) as string[];
-      return placements.includes(placement);
-    });
-    if (!active.length) return null;
-    // Prefer the ad that still has budget left, then the most recently created.
-    const spendable = active.filter((a) => a.spent < a.budget);
-    const pool = spendable.length ? spendable : active;
-    return [...pool].sort((a, b) => b.id - a.id)[0];
-  }, [db.sponsoredAds, placement]);
+    let cancelled = false;
+    const query = new URLSearchParams({ placement });
+    if (state) query.set('state', state);
+    if (city) query.set('city', city);
+    if (category) query.set('category', category);
+    void fetch(`/api/ads/serve?${query.toString()}`, { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((payload) => {
+        if (!cancelled) setAd(payload?.success && payload?.ad ? (payload.ad as SponsoredAd) : null);
+      })
+      .catch(() => {
+        if (!cancelled) setAd(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [placement, state, city, category]);
 
   const closed = ad ? dismissedIds.has(ad.id) : false;
 
@@ -63,7 +96,6 @@ export default function AdSlot({ placement, onNavigate, variant = 'banner', clas
     setVideoError(false);
   }, [ad?.id]);
 
-  // One impression per ad per session per slot.
   useEffect(() => {
     if (!ad || dismissedIds.has(ad.id)) return;
     if (impressionsRef.current.has(ad.id)) return;
@@ -71,9 +103,9 @@ export default function AdSlot({ placement, onNavigate, variant = 'banner', clas
     void fetch('/api/ads/event', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ adId: ad.id, type: 'IMPRESSION' }),
+      body: JSON.stringify({ adId: ad.id, type: 'IMPRESSION', state, city, category }),
     }).catch(() => undefined);
-  }, [ad, dismissedIds]);
+  }, [ad, dismissedIds, state, city, category]);
 
   if (!ad || closed) return null;
 
@@ -96,8 +128,9 @@ export default function AdSlot({ placement, onNavigate, variant = 'banner', clas
     void fetch('/api/ads/event', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ adId: ad.id, type: 'CLICK' }),
+      body: JSON.stringify({ adId: ad.id, type: 'CLICK', state, city, category }),
     }).catch(() => undefined);
+    rememberAdClick(ad.id, ad.targetId);
     if (ad.clickView && onNavigate) {
       onNavigate(ad.clickView);
     }

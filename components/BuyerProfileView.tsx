@@ -693,6 +693,36 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                           )}
                         </div>
 
+                        {order.hasGoodSaleProtect &&
+                          [OrderStatus.PAID_ESCROW, OrderStatus.SHIPPED, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.PARTIAL_DEPOSIT_PAID, OrderStatus.DELIVERED_SUCCESS].includes(order.status) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const reason = window.prompt(
+                                  'Describe the problem for your GoodSale Protect claim (15+ characters). Escrow stays protected while it is reviewed.'
+                                );
+                                if (!reason?.trim()) return;
+                                void (async () => {
+                                  const res = await fetch('/api/buyer-protection/claims', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ orderId: order.id, reason }),
+                                  });
+                                  const payload = await res.json().catch(() => ({}));
+                                  if (!res.ok || !payload.success) {
+                                    toast.error(payload.error || 'Could not file the protection claim');
+                                    return;
+                                  }
+                                  toast.success(`Protection claim ${payload.claim?.reference || ''} is under priority review.`);
+                                })();
+                              }}
+                              className="flex items-center gap-1.5 rounded-xl border border-jade-500/30 bg-jade-500/10 px-3.5 py-1.5 text-xs font-bold text-jade-700 transition-colors hover:bg-jade-500/15 dark:text-jade-300"
+                            >
+                              <ShieldCheck className="h-3.5 w-3.5" />
+                              GoodSale Protect claim
+                            </button>
+                          )}
+
                         {order.status === OrderStatus.PENDING && (
                           <button
                             onClick={() => {

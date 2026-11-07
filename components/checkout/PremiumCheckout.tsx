@@ -20,6 +20,8 @@ import type {
   DeliveryPartner,
 } from '@/lib/types';
 import { computePlatformFee } from '@/lib/fees';
+import { effectiveProductPrice } from '@/lib/productPricing';
+import { recordSponsoredConversion } from '@/lib/ads/conversion';
 import { bestCoords, rankPartnersByProximity } from '@/lib/geo';
 import { makeCheckoutGroupId } from '@/lib/ids';
 import { dbOperations } from '@/lib/store';
@@ -220,7 +222,7 @@ export default function PremiumCheckout({
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [payOrderIds, setPayOrderIds] = useState<number[]>([]);
   const [payAmount, setPayAmount] = useState(0);
-  const [placedOrders, setPlacedOrders] = useState<{ id: number; orderNumber: string; trackingId?: string }[]>([]);
+  const [placedOrders, setPlacedOrders] = useState<{ id: number; orderNumber: string; productId?: number; trackingId?: string }[]>([]);
   const [success, setSuccess] = useState(false);
   const quoteControllers = useRef<AbortController[]>([]);
   const trackingLookups = useRef<Set<number>>(new Set());
@@ -408,11 +410,11 @@ export default function PremiumCheckout({
   }, [selectedQuote, quoteReady, optionForGroup]);
 
   const subtotal = useMemo(
-    () => items.reduce((sum, item) => sum + item.product.price * item.quantity, 0),
+    () => items.reduce((sum, item) => sum + effectiveProductPrice(item.product) * item.quantity, 0),
     [items]
   );
   const serviceFee = useMemo(
-    () => items.reduce((sum, item) => sum + computePlatformFee(revenueSettings, item.product.price * item.quantity).amount, 0),
+    () => items.reduce((sum, item) => sum + computePlatformFee(revenueSettings, effectiveProductPrice(item.product) * item.quantity).amount, 0),
     [items, revenueSettings]
   );
   const protectFee = protect ? revenueSettings?.goodSaleProtectFee || 1500 : 0;
@@ -578,7 +580,7 @@ export default function PremiumCheckout({
       }
 
       const checkoutGroupId = makeCheckoutGroupId();
-      const created: { id: number; orderNumber: string }[] = [];
+      const created: { id: number; orderNumber: string; productId: number }[] = [];
       let amount = 0;
       const chargedSellers = new Set<number>();
 
@@ -635,7 +637,7 @@ export default function PremiumCheckout({
 
         if (!order?.id) throw new Error(`Could not create the order for ${item.product.title}.`);
         chargedSellers.add(item.product.sellerId);
-        created.push({ id: order.id, orderNumber: order.orderNumber });
+        created.push({ id: order.id, orderNumber: order.orderNumber, productId: item.product.id });
         amount += order.totalAmount;
       }
 
@@ -648,6 +650,7 @@ export default function PremiumCheckout({
         ...order,
         id: verified.orders.find((entry) => entry.orderId === order.id)?.orderId || order.id,
       }));
+      setPlacedOrders(ordersWithIds);
 
       if (['escrow', 'card', 'partial'].includes(methodForPayment)) {
         setPlacedOrders(ordersWithIds);
@@ -657,7 +660,7 @@ export default function PremiumCheckout({
         return;
       }
 
-      setPlacedOrders(ordersWithIds);
+      void recordSponsoredConversion(ordersWithIds);
       setSuccess(true);
       onClearCart();
     } catch (error) {
@@ -669,6 +672,7 @@ export default function PremiumCheckout({
 
   const handlePaid = () => {
     setPaymentOpen(false);
+    void recordSponsoredConversion(placedOrders);
     setSuccess(true);
     onClearCart();
   };
@@ -1043,7 +1047,7 @@ export default function PremiumCheckout({
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-xs font-bold text-ink-900 dark:text-white">{product.title}</p>
                       <p className="mt-0.5 text-[10px] text-ink-400">Qty {quantity} · {product.sellerId === items[0]?.product.sellerId ? 'Shipment 1' : 'Separate seller shipment'}</p>
-                      <p className="mt-1 text-xs font-bold text-jade-700 dark:text-jade-300">{money(product.price * quantity)}</p>
+                      <p className="mt-1 text-xs font-bold text-jade-700 dark:text-jade-300">{money(effectiveProductPrice(product) * quantity)}</p>
                     </div>
                     {sellerCount > 1 && (
                       <span className="self-start rounded-full bg-gold-300/20 px-2 py-0.5 text-[9px] font-bold text-ink-500 dark:text-gold-200">Multi-shipment</span>

@@ -22,6 +22,7 @@ import {
 } from '@/lib/notificationPrefs';
 import type { NotificationPreferences } from '@/lib/types';
 import { salesStates, salesCitiesFor } from '@/lib/serviceAreas';
+import { resolveEntitlements, membershipLabel } from '@/lib/entitlements';
 
 /** Human-readable description of the current browser/OS for the session list. */
 function describeDevice(): string {
@@ -67,6 +68,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
   const currentBusiness = currentUser
     ? db.businesses.find(b => b.ownerId === currentUser.id)
     : null;
+  const entitlements = resolveEntitlements(db, currentUser?.id);
 
   // Server-backed preferences (Supabase auth metadata via /api/account/settings)
   const { settings, ready: settingsReady, update: persistSettings } = useUserSettings();
@@ -789,8 +791,15 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
     { id: 'privacy', label: 'Privacy Control', icon: Lock, color: 'text-jade-500' },
     { id: 'buying', label: 'Buying Preferences', icon: ShoppingBag, color: 'text-jade-500' },
     { id: 'selling', label: 'Selling Settings', icon: Grid, color: 'text-jade-500' },
-    ...(currentUser.role === UserRole.VERIFIED_BUSINESS || currentUser.role === UserRole.VERIFIED_SELLER
-      ? [{ id: 'business', label: 'Business Console', icon: Building, color: 'text-ink-500' }]
+    ...([
+      UserRole.SELLER,
+      UserRole.VERIFIED_SELLER,
+      UserRole.BUSINESS,
+      UserRole.VERIFIED_BUSINESS,
+      UserRole.ADMIN,
+      UserRole.SUPER_ADMIN,
+    ].includes(currentUser.role)
+      ? [{ id: 'business', label: entitlements.businessTools ? 'Business Console' : 'Business (locked)', icon: Building, color: 'text-ink-500' }]
       : []),
     { id: 'goodpoints', label: 'GoodPoints Rewards', icon: Sparkles, color: 'text-ink-500' },
     { id: 'referrals', label: 'Referral Center', icon: Gift, color: 'text-jade-400' },
@@ -2117,8 +2126,26 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
             </div>
           )}
 
-          {/* TAB 8: BUSINESS CONSOLE (conditional block) */}
-          {activeTab === 'business' && (
+          {/* TAB 8: BUSINESS CONSOLE (paid Business membership) */}
+          {activeTab === 'business' && !entitlements.businessTools && (
+            <div className="animate-fade-in rounded-[32px] border border-gold-300/40 bg-gold-50/60 p-8 text-center dark:border-gold-300/20 dark:bg-gold-300/5">
+              <Building className="mx-auto h-10 w-10 text-gold-500" />
+              <h2 className="mt-3 font-display text-xl font-bold text-ink-900 dark:text-white">Business Console is a paid membership tool</h2>
+              <p className="mx-auto mt-2 max-w-lg text-xs leading-relaxed text-ink-500 dark:text-ink-300">
+                Business membership unlocks storefront branding, the staff access list and bulk inventory tools. It is separate from business verification and does not change your trust score.
+              </p>
+              <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-ink-400">Current access: {membershipLabel(entitlements)}</p>
+              <button
+                type="button"
+                onClick={() => onNavigate?.('revenue')}
+                className="mt-4 rounded-xl bg-jade-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-jade-700"
+              >
+                View Business membership
+              </button>
+            </div>
+          )}
+
+          {activeTab === 'business' && entitlements.businessTools && (
             <form onSubmit={handleSave} className="space-y-6 animate-fade-in">
               <div className="bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 p-6 sm:p-8 rounded-[32px] shadow-sm space-y-6">
                 <div>

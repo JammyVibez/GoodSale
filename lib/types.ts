@@ -222,6 +222,10 @@ export interface Product {
   price: number;
   /** Optional reference price (original retail). Only then is a discount shown. */
   compareAtPrice?: number;
+  /** Active moderated Flash Sale price; null outside the scheduled window. */
+  flashSalePrice?: number;
+  flashSaleStartsAt?: string;
+  flashSaleEndsAt?: string;
   isNegotiable: boolean;
   quantity: number;
   stockStatus: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK' | 'SOLD' | 'UNAVAILABLE';
@@ -1452,6 +1456,12 @@ export interface RevenueSettings {
   verifiedPlusPrice: number;
   /** Admin-configured membership period; defaults to a 30-day manual renewal. */
   premiumDurationDays: number;
+  premiumReminderDays: number;
+  premiumCreditExpiryDays: number;
+  verifiedPlusMonthlyCredits: number;
+  businessProMonthlyCredits: number;
+  businessPremiumMonthlyCredits: number;
+  businessEnterpriseMonthlyCredits: number;
   /** Ranking points are additive tie-breakers after relevance filters. */
   featuredRankingBoost: number;
   verifiedPlusRankingBoost: number;
@@ -1489,6 +1499,15 @@ export interface SponsoredAd {
   spent: number;
   clicks: number;
   impressions: number;
+  targetState?: string;
+  targetCity?: string;
+  targetCategory?: string;
+  dailyBudget?: number;
+  cpcBid?: number;
+  startsAt?: string;
+  endsAt?: string;
+  conversions?: number;
+  conversionValue?: number;
   createdAt: string;
 }
 
@@ -1512,10 +1531,36 @@ export interface FeaturedListing {
   sellerId: number;
   durationDays: number;
   expiresAt: string;
-  status: 'ACTIVE' | 'EXPIRED';
+  status: 'PENDING_REVIEW' | 'SCHEDULED' | 'ACTIVE' | 'EXPIRED' | 'REJECTED' | 'CANCELLED';
   featureType?: 'FEATURED' | 'FLASH_SALE';
   startsAt?: string;
   amountPaid?: number;
+  salePrice?: number;
+  quantityLimit?: number;
+  quantitySold?: number;
+  moderationStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  moderationReason?: string;
+  creditsApplied?: number;
+  walletCharge?: number;
+  createdAt: string;
+}
+
+export interface MembershipPlanBenefit {
+  id: number;
+  planCode: 'VERIFIED_PLUS' | 'BUSINESS_PRO' | 'BUSINESS_PREMIUM' | 'BUSINESS_ENTERPRISE';
+  label: string;
+  description: string;
+  included: boolean;
+  sortOrder: number;
+  active: boolean;
+}
+
+export interface PremiumCreditLedgerEntry {
+  id: number;
+  type: 'ISSUED' | 'REDEEMED' | 'EXPIRED' | 'ADJUSTED' | 'REFUNDED';
+  amount: number;
+  reference: string;
+  description: string;
   createdAt: string;
 }
 

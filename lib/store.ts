@@ -68,6 +68,7 @@ import { resolveCityCoords, bestCoords } from '@/lib/geo';
 import { makeOrderNumber } from '@/lib/ids';
 import { notificationAllowed } from '@/lib/notificationPrefs';
 import { computePlatformFee } from '@/lib/fees';
+import { effectiveProductPrice } from '@/lib/productPricing';
 import type {
   GoodSaleDBState,
   User,
@@ -711,7 +712,7 @@ export const dbOperations = {
 
     // Cart quantity is bounded by the seller's remaining stock at order time.
     const qty = Math.max(1, Math.min(Math.floor(quantity) || 1, product.quantity));
-    const itemsSubtotal = product.price * qty;
+    const itemsSubtotal = effectiveProductPrice(product) * qty;
 
     // Per-item platform fee — admin-controlled, OFF by default at launch.
     const taxAmount = computePlatformFee(state.revenueSettings, itemsSubtotal).amount;
@@ -3649,6 +3650,12 @@ export const dbOperations = {
         sub_enterprise_price: state.revenueSettings.subEnterprisePrice,
         verified_plus_price: state.revenueSettings.verifiedPlusPrice,
         premium_duration_days: state.revenueSettings.premiumDurationDays,
+        premium_reminder_days: state.revenueSettings.premiumReminderDays,
+        premium_credit_expiry_days: state.revenueSettings.premiumCreditExpiryDays,
+        verified_plus_monthly_credits: state.revenueSettings.verifiedPlusMonthlyCredits,
+        business_pro_monthly_credits: state.revenueSettings.businessProMonthlyCredits,
+        business_premium_monthly_credits: state.revenueSettings.businessPremiumMonthlyCredits,
+        business_enterprise_monthly_credits: state.revenueSettings.businessEnterpriseMonthlyCredits,
         featured_ranking_boost: state.revenueSettings.featuredRankingBoost,
         verified_plus_ranking_boost: state.revenueSettings.verifiedPlusRankingBoost,
         flash_sale_feature_price: state.revenueSettings.flashSaleFeaturePrice,

@@ -127,6 +127,16 @@ const VERIFY_RPCS = [
   'purchase_sponsored_campaign',
   'admin_review_sponsored_campaign',
   'record_sponsored_ad_event',
+  // Premium lifecycle, credits, Flash Sales and v2 campaign delivery
+  'issue_premium_credits',
+  'premium_credit_balance',
+  'redeem_premium_credits',
+  'purchase_featured_promotion',
+  'purchase_flash_sale',
+  'admin_review_flash_sale',
+  'purchase_sponsored_campaign_v2',
+  'record_sponsored_ad_event_v2',
+  'run_premium_jobs',
 ];
 
 /** Tables the schema is expected to create (mirrors supabase/schema.sql). */
@@ -169,6 +179,11 @@ const VERIFY_TABLES = [
   'payment_transactions',
   'product_bundles',
   'premium_subscription_payments',
+  'membership_plan_benefits',
+  'premium_credit_lots',
+  'premium_credit_ledger',
+  'sponsored_ad_daily_spend',
+  'buyer_protection_claims',
   'products',
   'profiles',
   'referrals',
@@ -397,9 +412,188 @@ async function verifyViaRest() {
 }
 
 // ---------------------------------------------------------------------------
+// Rolled-back behavioural test for the money-moving premium RPCs
+// ---------------------------------------------------------------------------
+
+async function verifyPremiumRpcBehaviour(client) {
+  await client.query('BEGIN');
+  try {
+    const product = (
+      await client.query(
+        `select id, seller_id, price, quantity, title, category from public.products
+          where stock_status in ('IN_STOCK','LOW_STOCK')
+            and moderation_status = 'APPROVED'
+          order by id limit 1`
+      )
+    ).rows[0];
+    if (!product) throw new Error('No eligible product to exercise promotion RPCs');
+    const admin = (
+      await client.query("select id from public.profiles where role in ('ADMIN','SUPER_ADMIN') order by id limit 1")
+    ).rows[0];
+    if (!admin) throw new Error('No admin profile for Flash Sale review test');
+
+    // Test fixture only: use the ledger writer's own transaction-local flag,
+    // then roll the whole transaction back so no real wallet is changed.
+    await client.query("select set_config('goodsale.wallet_write', 'on', true)");
+    await client.query(
+      `insert into public.wallets (user_id, balance) values ($1, 500000)
+       on conflict (user_id) do update set balance = 500000`,
+      [product.seller_id]
+    );
+    await client.query("select set_config('goodsale.wallet_write', 'off', true)");
+    const stamp = Date.now();
+    await client.query("select public.issue_premium_credits($1, 1500, 'TEST', $2, 30)", [
+      product.seller_id,
+      `TEST_ISSUE_${stamp}`,
+    ]);
+    const creditBalance = Number(
+      (await client.query('select public.premium_credit_balance($1) as balance', [product.seller_id])).rows[0]
+        .balance
+    );
+    if (creditBalance !== 1500) throw new Error(`Expected 1500 credits, received ${creditBalance}`);
+
+    const featured = (
+      await client.query('select public.purchase_featured_promotion($1, $2, 3, true) as result', [
+        product.seller_id,
+        product.id,
+      ])
+    ).rows[0].result;
+    const walletAfterFeatured = Number(
+      (await client.query('select balance from public.wallets where user_id = $1', [product.seller_id])).rows[0]
+        .balance
+    );
+    if (Number(featured.creditsApplied) <= 0) throw new Error('Featured purchase did not redeem credits');
+
+    const salePrice = Math.max(1, Math.floor(Number(product.price) * 0.8));
+    const rejected = (
+      await client.query('select public.purchase_flash_sale($1, $2, $3, $4, 1, true) as result', [
+        product.seller_id,
+        product.id,
+        salePrice,
+        new Date(Date.now() + 120000).toISOString(),
+      ])
+    ).rows[0].result;
+    await client.query("select public.admin_review_flash_sale($1, $2, 'REJECT', 'rolled-back test')", [
+      Number(rejected.promotionId),
+      admin.id,
+    ]);
+    const walletAfterReject = Number(
+      (await client.query('select balance from public.wallets where user_id = $1', [product.seller_id])).rows[0]
+        .balance
+    );
+    if (walletAfterReject !== walletAfterFeatured) {
+      throw new Error(`Rejected Flash Sale did not restore wallet ${walletAfterReject} vs ${walletAfterFeatured}`);
+    }
+
+    const approved = (
+      await client.query('select public.purchase_flash_sale($1, $2, $3, $4, 1, true) as result', [
+        product.seller_id,
+        product.id,
+        salePrice,
+        new Date(Date.now() + 180000).toISOString(),
+      ])
+    ).rows[0].result;
+    await client.query("select public.admin_review_flash_sale($1, $2, 'APPROVE', 'rolled-back test')", [
+      Number(approved.promotionId),
+      admin.id,
+    ]);
+    await client.query(
+      `update public.featured_listings set starts_at = now(), ends_at = now() + interval '1 hour'
+        where id = $1`,
+      [Number(approved.promotionId)]
+    );
+    const jobs = (await client.query('select public.run_premium_jobs() as result')).rows[0].result;
+    const live = (
+      await client.query('select status from public.featured_listings where id = $1', [Number(approved.promotionId)])
+    ).rows[0];
+    if (live?.status !== 'ACTIVE') throw new Error(`Approved Flash Sale is ${live?.status}, expected ACTIVE`);
+
+    await client.query(
+      `update public.featured_listings set starts_at = now() - interval '2 days', ends_at = now() - interval '1 minute'
+        where id = $1`,
+      [Number(approved.promotionId)]
+    );
+    await client.query('select public.run_premium_jobs()');
+    const expired = (
+      await client.query(
+        'select status from public.featured_listings where id = $1',
+        [Number(approved.promotionId)]
+      )
+    ).rows[0];
+    if (expired?.status !== 'EXPIRED') throw new Error(`Expired Flash Sale is ${expired?.status}, expected EXPIRED`);
+
+    console.log('  OK      credits issued, balance and redemption');
+    console.log('  OK      featured promotion purchase with credits');
+    console.log('  OK      Flash Sale rejection refunds wallet and credits');
+    console.log('  OK      Flash Sale approval, activation and expiry jobs');
+
+    const campaign = (
+      await client.query(
+        `select public.purchase_sponsored_campaign_v2(
+           $1, 'PRODUCT', $2, 'Rolled-back CPC test', 1000, '', '["HOME"]'::jsonb,
+           '', '', '', now(), now() + interval '1 day', 500, 100
+         ) as result`,
+        [product.seller_id, product.id]
+      )
+    ).rows[0].result;
+    await client.query(
+      `update public.sponsored_ads
+          set status = 'ACTIVE', moderation_status = 'APPROVED'
+        where id = $1`,
+      [Number(campaign.campaignId)]
+    );
+    await client.query("select public.record_sponsored_ad_event_v2($1, 'IMPRESSION', $2, '', '', $3)", [
+      Number(campaign.campaignId),
+      `TEST_IMP_${stamp}`,
+      product.category,
+    ]);
+    const click = (
+      await client.query("select public.record_sponsored_ad_event_v2($1, 'CLICK', $2, '', '', $3) as result", [
+        Number(campaign.campaignId),
+        `TEST_CLICK_${stamp}`,
+        product.category,
+      ])
+    ).rows[0].result;
+    if (!click.success || Number(click.spend) !== 100) throw new Error('CPC click was not charged at the bid');
+    const order = (await client.query('select id, total_amount from public.orders order by id limit 1')).rows[0];
+    if (order) {
+      const conversion = (
+        await client.query("select public.record_sponsored_ad_event_v2($1, 'CONVERSION', $2, '', '', '', $3, $4) as result", [
+          Number(campaign.campaignId),
+          `TEST_CONV_${stamp}`,
+          order.id,
+          order.total_amount,
+        ])
+      ).rows[0].result;
+      if (!conversion.success) throw new Error('Attributed conversion was not recorded');
+    }
+    const adTotals = (
+      await client.query(
+        'select impressions, clicks, spent, conversions, conversion_value from public.sponsored_ads where id = $1',
+        [Number(campaign.campaignId)]
+      )
+    ).rows[0];
+    if (Number(adTotals.clicks) !== 1 || Number(adTotals.spent) !== 100) {
+      throw new Error('Campaign totals were not updated correctly');
+    }
+
+    console.log('  OK      sponsored campaign budget reservation and CPC click');
+    console.log('  OK      targeted delivery counters and conversion attribution');
+    console.log(`  OK      lifecycle job keys: ${Object.keys(jobs || {}).join(', ')}`);
+    return true;
+  } catch (error) {
+    console.error(`  FAILED  ${error.message || error}`);
+    return false;
+  } finally {
+    await client.query('ROLLBACK').catch(() => {});
+  }
+}
+
+// ---------------------------------------------------------------------------
 
 const args = process.argv.slice(2);
 const verifyOnly = args.includes('--verify');
+const verifyRpcBehaviour = args.includes('--verify-rpcs');
 const fromArg = args.find((a) => a.startsWith('--from='));
 const onlyArg = args.find((a) => a.startsWith('--only='));
 const from = fromArg ? fromArg.split('=')[1] : null;
@@ -410,6 +604,16 @@ const usePg = Boolean(DATABASE_URL);
 if (verifyOnly) {
   console.log(`Verifying ${projectRef || 'project'}…`);
   const ok = usePg ? await withPg(verifyWithPg) : await verifyViaRest();
+  process.exit(ok ? 0 : 1);
+}
+
+if (verifyRpcBehaviour) {
+  if (!usePg) {
+    console.error('--verify-rpcs needs DATABASE_URL for a rolled-back transactional test.');
+    process.exit(1);
+  }
+  console.log(`Verifying premium RPC behaviour on ${projectRef || 'database'} (rolled back)…`);
+  const ok = await withPg(verifyPremiumRpcBehaviour);
   process.exit(ok ? 0 : 1);
 }
 

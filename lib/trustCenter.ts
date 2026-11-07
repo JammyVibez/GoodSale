@@ -275,8 +275,31 @@ export function resolveProductAppeal(appealId: number, status: 'APPROVED' | 'REJ
   const appeals = getProductAppeals();
   const index = appeals.findIndex((a) => a.id === appealId);
   if (index === -1) return { error: 'Appeal not found.' };
-  appeals[index] = { ...appeals[index], status, adminNotes, resolvedAt: new Date().toISOString() };
+  const resolvedAt = new Date().toISOString();
+  const appeal = appeals[index];
+  appeals[index] = { ...appeal, status, adminNotes, resolvedAt };
   writeList(APPEALS_KEY, appeals);
+
+  const client = createClient();
+  if (client) {
+    void (async () => {
+      try {
+        await client
+          .from('product_appeals')
+          .update({ status, admin_notes: adminNotes ?? null, resolved_at: resolvedAt })
+          .eq('reference', appeal.reference);
+        await client
+          .from('products')
+          .update({
+            moderation_status: status === 'APPROVED' ? 'APPROVED' : 'REJECTED',
+            rejection_reason: status === 'REJECTED' ? adminNotes ?? 'Appeal rejected' : null,
+          })
+          .eq('id', appeal.productId);
+      } catch {
+        // The local decision remains visible; the admin can retry from the queue.
+      }
+    })();
+  }
   return {};
 }
 

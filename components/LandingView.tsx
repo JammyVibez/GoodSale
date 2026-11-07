@@ -21,6 +21,8 @@ import { Product, useDBState } from '../lib/store';
 import { isVerifiedSeller } from '@/lib/verification';
 import VerifiedBadge from './verification/VerifiedBadge';
 import { trackProductMetric } from '@/lib/productMetrics';
+import { activeFlashSale } from '@/lib/productPricing';
+import { discoveryScore } from '@/lib/ranking';
 import { useWishlist } from '@/lib/hooks/useWishlist';
 import { SmartImage } from './ui/SmartImage';
 import EmptyState from './ui/EmptyState';
@@ -71,20 +73,20 @@ function discountPercent(product: Product): number | null {
   return Math.round(((compareAt - product.price) / compareAt) * 100);
 }
 
-function useCountdownToMidnight() {
+function useCountdownTo(endsAt?: string | null) {
   const read = useCallback(() => {
-    const now = new Date();
-    const end = new Date(now);
-    end.setHours(23, 59, 59, 999);
-    const diff = Math.max(0, end.getTime() - now.getTime());
+    const end = endsAt ? new Date(endsAt).getTime() : 0;
+    const diff = Math.max(0, end - Date.now());
     return {
       hours: Math.floor(diff / 3.6e6),
       minutes: Math.floor((diff % 3.6e6) / 60000),
       seconds: Math.floor((diff % 60000) / 1000),
+      ended: Boolean(endsAt) && diff <= 0,
     };
-  }, []);
+  }, [endsAt]);
   const [left, setLeft] = useState(read);
   useEffect(() => {
+    setLeft(read());
     const id = setInterval(() => setLeft(read()), 1000);
     return () => clearInterval(id);
   }, [read]);
@@ -142,7 +144,10 @@ function ProductCard({
   onSelect: () => void;
   onAdd: () => void;
 }) {
-  const discount = discountPercent(product);
+  const flashSale = activeFlashSale(product);
+  const displayedPrice = flashSale?.price ?? product.price;
+  const discount = flashSale?.discountPercent ?? discountPercent(product);
+  const comparePrice = flashSale ? product.price : Number(product.compareAtPrice || 0);
   const lowStock = product.quantity > 0 && product.quantity <= 8;
 
   useEffect(() => {
@@ -176,6 +181,11 @@ function ProductCard({
         {isFeatured && (
           <span className="absolute bottom-2 left-2 rounded-md bg-gold-300 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-ink-950 shadow-sm">
             Featured
+          </span>
+        )}
+        {flashSale && (
+          <span className="absolute bottom-2 right-2 rounded-md bg-rose-600 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-white shadow-sm">
+            Flash Sale
           </span>
         )}
 
@@ -215,11 +225,11 @@ function ProductCard({
         <div className="mt-auto space-y-1">
           <div className="flex flex-wrap items-baseline gap-1.5">
             <span className={`font-black tracking-tight text-ink-900 dark:text-white ${compact ? 'text-[13px]' : 'text-sm'}`}>
-              {naira(product.price)}
+              {naira(displayedPrice)}
             </span>
-            {discount !== null && (
+            {discount !== null && comparePrice > displayedPrice && (
               <span className="text-[10px] font-medium text-ink-400 line-through">
-                {naira(Number(product.compareAtPrice))}
+                {naira(comparePrice)}
               </span>
             )}
           </div>
@@ -257,7 +267,6 @@ export default function LandingView({
   onWishlistOnlyChange,
 }: LandingViewProps) {
   const db = useDBState();
-  const countdown = useCountdownToMidnight();
   const { favorites, toggle: toggleFavorite } = useWishlist();
 
   const [activeSlide, setActiveSlide] = useState(0);
@@ -336,7 +345,11 @@ export default function LandingView({
         db.featuredListings
           .filter(
             (entry) =>
-              entry.status === 'ACTIVE' && new Date(entry.expiresAt).getTime() > Date.now()
+              (entry.featureType || 'FEATURED') === 'FEATURED' &&
+              entry.status === 'ACTIVE' &&
+              (entry.moderationStatus || 'APPROVED') === 'APPROVED' &&
+              (!entry.startsAt || new Date(entry.startsAt).getTime() <= Date.now()) &&
+              new Date(entry.expiresAt).getTime() > Date.now()
           )
           .map((entry) => entry.productId)
       ),
@@ -371,7 +384,7 @@ export default function LandingView({
             if (!verified) return false;
           }
       if (wishlistOnly && !favorites.includes(product.id)) return false;
-      if (dealsOnly && discountPercent(product) === null) return false;
+      if (dealsOnly && discountPercent(product) === null && !activeFlashSale(product)) return false;
       return true;
     });
 
@@ -386,40 +399,44 @@ export default function LandingView({
         case 'rating':
           return (ratingOf(b.id) || 0) - (ratingOf(a.id) || 0);
         default: {
-          const score = (product: Product) =>
-            (ratingOf(product.id) || 0) * 10 +
-            product.viewCount / 100 +
-            (['IN_STOCK', 'LOW_STOCK'].includes(product.stockStatus) &&
-            activeFeaturedIds.has(product.id)
-              ? Number(db.revenueSettings.featuredRankingBoost) || 0
-              : 0) +
-            (activeVerifiedPlusSellers.has(product.sellerId)
-              ? Number(db.revenueSettings.verifiedPlusRankingBoost) || 0
-              : 0);
-          return score(b) - score(a);
+          const ratings = new Map<number, number>();
+          reviewStats.forEach((value, key) => ratings.set(key, value.average));
+          const context = {
+            ratings,
+            featuredProductIds: activeFeaturedIds,
+            verifiedPlusSellerIds: activeVerifiedPlusSellers,
+            featuredBoost: db.revenueSettings.featuredRankingBoost,
+            verifiedPlusBoost: db.revenueSettings.verifiedPlusRankingBoost,
+          };
+          return discoveryScore(b, context) - discoveryScore(a, context);
         }
       }
     });
     return list;
   }, [
     db.products, db.revenueSettings, searchQuery, selectedCategory, selectedState, onlyVerified,
-    wishlistOnly, dealsOnly, favorites, profilesByUserId, stateOf, sortMode, ratingOf,
+    wishlistOnly, dealsOnly, favorites, profilesByUserId, stateOf, sortMode, ratingOf, reviewStats,
     activeFeaturedIds, activeVerifiedPlusSellers,
   ]);
 
-  /* ---- flash deals: real discounts first, then low stock ---- */
-  const flashDeals = useMemo(() => {
-    const discounted = db.products
-      .filter((p) => discountPercent(p) !== null)
-      .sort((a, b) => (discountPercent(b) || 0) - (discountPercent(a) || 0))
-      .slice(0, 6);
-    if (discounted.length >= 3) return discounted;
-    const filler = db.products
-      .filter((p) => !discounted.some((d) => d.id === p.id))
-      .sort((a, b) => a.quantity - b.quantity)
-      .slice(0, 6 - discounted.length);
-    return [...discounted, ...filler];
-  }, [db.products]);
+  /* ---- Flash Deals come only from approved, currently running sales. ---- */
+  const flashDeals = useMemo(
+    () =>
+      db.products
+        .filter((product) => activeFlashSale(product) && ['IN_STOCK', 'LOW_STOCK'].includes(product.stockStatus))
+        .sort((a, b) => (activeFlashSale(b)?.discountPercent || 0) - (activeFlashSale(a)?.discountPercent || 0))
+        .slice(0, 6),
+    [db.products]
+  );
+  const flashEndsAt = useMemo(
+    () =>
+      flashDeals
+        .map((product) => activeFlashSale(product)?.endsAt)
+        .filter((value): value is string => Boolean(value))
+        .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0] || null,
+    [flashDeals]
+  );
+  const countdown = useCountdownTo(flashEndsAt);
 
   /* ---- recommended: personalised by city + wishlist + rating ---- */
   const recommended = useMemo(() => {
@@ -626,7 +643,14 @@ export default function LandingView({
       </section>
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <AdSlot placement="HOME" onNavigate={onNavigate} className="mt-4" />
+        <AdSlot
+          placement="HOME"
+          onNavigate={onNavigate}
+          state={selectedState || db.profiles.find((profile) => profile.userId === db.currentUser?.id)?.state || ''}
+          city={db.profiles.find((profile) => profile.userId === db.currentUser?.id)?.city || ''}
+          category={selectedCategory || ''}
+          className="mt-4"
+        />
 
         {/* ───────────────────── Categories ───────────────────── */}
         <section className="mt-5 rounded-3xl border border-ink-150 bg-white p-3 shadow-sm dark:border-ink-800 dark:bg-ink-900 sm:p-4">
@@ -704,8 +728,8 @@ export default function LandingView({
           </div>
         </section>
 
-        {/* ───────────────────── Flash deals ───────────────────── */}
-        {flashDeals.length > 0 && (
+        {/* ───────────────────── Flash sales ───────────────────── */}
+        {flashDeals.length > 0 && !countdown.ended && (
           <section className="mt-6" id="flash-deals-section">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
@@ -713,8 +737,11 @@ export default function LandingView({
                   <Zap className="h-4 w-4 fill-gold-400 text-gold-500" />
                 </span>
                 <h2 className="font-display text-lg font-black tracking-tight text-ink-900 dark:text-white sm:text-xl">
-                  Flash Deals
+                  Flash Sales
                 </h2>
+                <span className="hidden text-[10px] font-semibold text-ink-400 sm:inline">
+                  Ends {flashEndsAt ? new Date(flashEndsAt).toLocaleString('en-NG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'soon'}
+                </span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -956,7 +983,13 @@ export default function LandingView({
             </div>
           )}
 
-          <AdSlot placement="SEARCH" onNavigate={onNavigate} className="mt-6" />
+          <AdSlot
+            placement="SEARCH"
+            onNavigate={onNavigate}
+            state={selectedState}
+            category={selectedCategory || searchQuery}
+            className="mt-6"
+          />
         </section>
 
         {/* ───────────────────── Auctions (only when live) ───────────────────── */}

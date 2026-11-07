@@ -9,6 +9,7 @@
 import { cache } from 'react';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { rankProducts } from '@/lib/ranking';
 import { categorySlug } from './site';
 
 export interface SeoReview {
@@ -140,11 +141,16 @@ function publicCatalogClient(): SupabaseClient | null {
 
 const loadSnapshot = cache(async () => {
   const client = publicCatalogClient();
-  if (!client) return { products: [] as Row[], profiles: [] as Row[], businesses: [] as Row[], reviews: [] as Row[], featured: [] as Row[] };
+  if (!client) {
+    return {
+      products: [] as Row[], profiles: [] as Row[], businesses: [] as Row[], reviews: [] as Row[],
+      featured: [] as Row[], verifiedPlus: [] as Row[], revenueSettings: null as Row | null,
+    };
+  }
 
   // Select only public catalog columns. Profile email, phone, address and
   // preferences must never be fetched into a public page or its RSC payload.
-  const [products, profiles, businesses, reviews, featured] = await Promise.all([
+  const [products, profiles, businesses, reviews, featured, verifiedPlus, revenueSettings] = await Promise.all([
     // Products contain no private account data. `*` keeps this resilient to
     // optional migrations (for example moderation_status / compare_at_price)
     // while the mapper below reads only public marketing fields.
@@ -162,10 +168,24 @@ const loadSnapshot = cache(async () => {
       .from('reviews')
       .select('id, product_id, reviewer_name, reviewee_id, rating, comment, created_at')
       .limit(2000),
-    client.from('featured_listings').select('product_id, status, expires_at').limit(500),
+    client
+      .from('featured_listings')
+      .select('product_id, status, feature_type, starts_at, ends_at, expires_at, moderation_status')
+      .limit(500),
+    client
+      .from('verified_plus_subscriptions')
+      .select('user_id, expires_at')
+      .gt('expires_at', new Date().toISOString())
+      .limit(1000),
+    client
+      .from('revenue_settings')
+      .select('featured_ranking_boost,verified_plus_ranking_boost')
+      .order('id')
+      .limit(1)
+      .maybeSingle(),
   ]);
 
-  for (const [label, result] of Object.entries({ products, profiles, businesses, reviews, featured })) {
+  for (const [label, result] of Object.entries({ products, profiles, businesses, reviews, featured, verifiedPlus, revenueSettings })) {
     if (result.error) {
       console.warn(`[GoodSale SEO] ${label} unavailable:`, result.error.message);
     }
@@ -177,6 +197,8 @@ const loadSnapshot = cache(async () => {
     businesses: (businesses.data || []) as Row[],
     reviews: (reviews.data || []) as Row[],
     featured: (featured.data || []) as Row[],
+    verifiedPlus: (verifiedPlus.data || []) as Row[],
+    revenueSettings: (revenueSettings.data || null) as Row | null,
   };
 });
 
@@ -193,7 +215,7 @@ export const getPublicProducts = cache(async (): Promise<SeoProduct[]> => {
     reviewsByProduct.set(num(row.product_id), list);
   }
 
-  return snap.products
+  const mapped = snap.products
     .filter((row) => str(row.moderation_status, 'APPROVED') === 'APPROVED')
     .map((row): SeoProduct => {
       const sellerId = num(row.seller_id);
@@ -236,8 +258,33 @@ export const getPublicProducts = cache(async (): Promise<SeoProduct[]> => {
         reviewCount: stats.reviewCount,
         reviews: productReviews,
       };
-    })
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    });
+
+  const ratings = new Map(mapped.map((product) => [product.id, product.rating || 0]));
+  const featuredIds = new Set(
+    snap.featured
+      .filter(
+        (row) =>
+          str(row.status, 'ACTIVE') === 'ACTIVE' &&
+          str(row.moderation_status, 'APPROVED') === 'APPROVED' &&
+          (!str(row.starts_at) || new Date(str(row.starts_at)).getTime() <= Date.now()) &&
+          new Date(str(row.ends_at) || str(row.expires_at)).getTime() > Date.now()
+      )
+      .map((row) => num(row.product_id))
+  );
+  const verifiedSellerIds = new Set(
+    snap.verifiedPlus
+      .filter((row) => new Date(str(row.expires_at)).getTime() > Date.now())
+      .map((row) => num(row.user_id))
+  );
+
+  return rankProducts(mapped, {
+    ratings,
+    featuredProductIds: featuredIds,
+    verifiedPlusSellerIds: verifiedSellerIds,
+    featuredBoost: num(snap.revenueSettings?.featured_ranking_boost, 30),
+    verifiedPlusBoost: num(snap.revenueSettings?.verified_plus_ranking_boost, 8),
+  });
 });
 
 export const getProductById = cache(async (id: number): Promise<SeoProduct | null> => {
@@ -355,7 +402,13 @@ export const getFeaturedProducts = cache(async (): Promise<SeoProduct[]> => {
   const now = Date.now();
   const ids = new Set(
     snap.featured
-      .filter((row) => str(row.status, 'ACTIVE') === 'ACTIVE' && new Date(str(row.expires_at)).getTime() > now)
+      .filter(
+        (row) =>
+          str(row.status, 'ACTIVE') === 'ACTIVE' &&
+          str(row.moderation_status, 'APPROVED') === 'APPROVED' &&
+          (!str(row.starts_at) || new Date(str(row.starts_at)).getTime() <= now) &&
+          new Date(str(row.ends_at) || str(row.expires_at)).getTime() > now
+      )
       .map((row) => num(row.product_id))
   );
   // Only real, unexpired placements for currently purchasable listings are

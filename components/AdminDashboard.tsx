@@ -26,6 +26,7 @@ import AdminDeliveryPanel from './AdminDeliveryPanel';
 import AdminRiderPanel from './AdminRiderPanel';
 import AdminFinancePanel from './admin/AdminFinancePanel';
 import AdminReferralPanel from './admin/AdminReferralPanel';
+import AdminPremiumPanel from './admin/AdminPremiumPanel';
 import { SmartImage } from './ui/SmartImage';
 
 type Tab =
@@ -36,6 +37,7 @@ type Tab =
   | 'orders_escrow'
   | 'finance'
   | 'referrals'
+  | 'premium'
   | 'disputes'
   | 'dispatch'
   | 'riders'
@@ -110,6 +112,8 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
     escrowPercentageFee: '1.5', escrowMinFee: '100', escrowMaxFee: '15000',
     deliveryCommissionPercentage: '10', subProPrice: '15000', subPremiumPrice: '35000',
     subEnterprisePrice: '85000', verifiedPlusPrice: '10000', premiumDurationDays: '30', flashSaleFeaturePrice: '7500',
+    premiumReminderDays: '3', premiumCreditExpiryDays: '90', verifiedPlusMonthlyCredits: '1500',
+    businessProMonthlyCredits: '3000', businessPremiumMonthlyCredits: '7000', businessEnterpriseMonthlyCredits: '15000',
     featured3DaysPrice: '2500', featured7DaysPrice: '5000', featured14DaysPrice: '9000',
     featuredRankingBoost: '30', verifiedPlusRankingBoost: '8',
     auctionSuccessFeePercentage: '2.5', adCpcPrice: '150', goodSaleProtectFee: '1500',
@@ -138,6 +142,12 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
       verifiedPlusRankingBoost: String(rs.verifiedPlusRankingBoost ?? 8),
       verifiedPlusPrice: String(rs.verifiedPlusPrice ?? 10000),
       premiumDurationDays: String(rs.premiumDurationDays ?? 30),
+      premiumReminderDays: String(rs.premiumReminderDays ?? 3),
+      premiumCreditExpiryDays: String(rs.premiumCreditExpiryDays ?? 90),
+      verifiedPlusMonthlyCredits: String(rs.verifiedPlusMonthlyCredits ?? 1500),
+      businessProMonthlyCredits: String(rs.businessProMonthlyCredits ?? 3000),
+      businessPremiumMonthlyCredits: String(rs.businessPremiumMonthlyCredits ?? 7000),
+      businessEnterpriseMonthlyCredits: String(rs.businessEnterpriseMonthlyCredits ?? 15000),
       flashSaleFeaturePrice: String(rs.flashSaleFeaturePrice ?? 7500),
       auctionSuccessFeePercentage: String(rs.auctionSuccessFeePercentage ?? 2.5),
       adCpcPrice: String(rs.adCpcPrice ?? 150),
@@ -243,6 +253,7 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
     { id: 'orders_escrow', label: 'Orders / Escrow' },
     { id: 'finance', label: 'Finance & Wallet' },
     { id: 'referrals', label: 'Referrals & Rewards' },
+    { id: 'premium', label: 'Premium Ops' },
     { id: 'disputes', label: 'Disputes', count: openDisputes.length },
     { id: 'riders', label: 'Rider Management', count: pendingPartners.length },
     { id: 'dispatch', label: 'Partner Applications' },
@@ -441,6 +452,7 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
 
         {/* Referral campaigns, attribution, fraud review and coin rewards */}
         {activeTab === 'referrals' && <AdminReferralPanel />}
+        {activeTab === 'premium' && <AdminPremiumPanel />}
 
         {/* Orders / Escrow */}
         {activeTab === 'orders_escrow' && (
@@ -1017,6 +1029,12 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
                     verifiedPlusRankingBoost: num('verifiedPlusRankingBoost'),
                     verifiedPlusPrice: num('verifiedPlusPrice'),
                     premiumDurationDays: num('premiumDurationDays'),
+                    premiumReminderDays: num('premiumReminderDays'),
+                    premiumCreditExpiryDays: num('premiumCreditExpiryDays'),
+                    verifiedPlusMonthlyCredits: num('verifiedPlusMonthlyCredits'),
+                    businessProMonthlyCredits: num('businessProMonthlyCredits'),
+                    businessPremiumMonthlyCredits: num('businessPremiumMonthlyCredits'),
+                    businessEnterpriseMonthlyCredits: num('businessEnterpriseMonthlyCredits'),
                     flashSaleFeaturePrice: num('flashSaleFeaturePrice'),
                     auctionSuccessFeePercentage: num('auctionSuccessFeePercentage'),
                     adCpcPrice: num('adCpcPrice'),
@@ -1095,6 +1113,19 @@ export default function AdminDashboard({ onOpenAuth }: { onOpenAuth?: () => void
                     <Field label="Ads CPC ₦"><input type="number" value={fees.adCpcPrice} onChange={(e) => setFee('adCpcPrice', e.target.value)} className={inp} required /></Field>
                     <Field label="Featured rank pts"><input type="number" min="0" value={fees.featuredRankingBoost} onChange={(e) => setFee('featuredRankingBoost', e.target.value)} className={inp} required /></Field>
                     <Field label="Verified+ rank pts"><input type="number" min="0" value={fees.verifiedPlusRankingBoost} onChange={(e) => setFee('verifiedPlusRankingBoost', e.target.value)} className={inp} required /></Field>
+                  </div>
+                </div>
+                <div className={`${card} p-5 space-y-3 md:col-span-2`}>
+                  <div className="flex items-center gap-2 border-b border-ink-100 dark:border-ink-800 pb-2">
+                    <Coins className="w-4 h-4 text-jade-500" /><h4 className="font-bold text-sm text-ink-900 dark:text-white">Membership lifecycle & credits</h4>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                    <Field label="Reminder days"><input type="number" min="1" max="30" value={fees.premiumReminderDays} onChange={(e) => setFee('premiumReminderDays', e.target.value)} className={inp} required /></Field>
+                    <Field label="Credit expiry days"><input type="number" min="1" max="365" value={fees.premiumCreditExpiryDays} onChange={(e) => setFee('premiumCreditExpiryDays', e.target.value)} className={inp} required /></Field>
+                    <Field label="Verified+ credits"><input type="number" min="0" value={fees.verifiedPlusMonthlyCredits} onChange={(e) => setFee('verifiedPlusMonthlyCredits', e.target.value)} className={inp} required /></Field>
+                    <Field label="Pro credits"><input type="number" min="0" value={fees.businessProMonthlyCredits} onChange={(e) => setFee('businessProMonthlyCredits', e.target.value)} className={inp} required /></Field>
+                    <Field label="Premium credits"><input type="number" min="0" value={fees.businessPremiumMonthlyCredits} onChange={(e) => setFee('businessPremiumMonthlyCredits', e.target.value)} className={inp} required /></Field>
+                    <Field label="Enterprise credits"><input type="number" min="0" value={fees.businessEnterpriseMonthlyCredits} onChange={(e) => setFee('businessEnterpriseMonthlyCredits', e.target.value)} className={inp} required /></Field>
                   </div>
                 </div>
                 <div className={`${card} p-5 space-y-3 md:col-span-2`}>

@@ -28,7 +28,9 @@ import {
   formatDistanceKm,
 } from '@/lib/geo';
 import { computePlatformFee } from '@/lib/fees';
+import { effectiveProductPrice } from '@/lib/productPricing';
 import { isVerifiedSeller } from '@/lib/verification';
+import { recordSponsoredConversion } from '@/lib/ads/conversion';
 import type { ShippingQuoteResult } from '@/lib/types';
 
 interface CartCheckoutViewProps {
@@ -416,11 +418,11 @@ export default function CartCheckoutView({
     );
   }
 
-  const subtotal = checkoutItems.reduce((acc, p) => acc + p.price * qtyFor(p), 0);
+  const subtotal = checkoutItems.reduce((acc, p) => acc + effectiveProductPrice(p) * qtyFor(p), 0);
   // Per-item platform fee — mirrors Order.taxAmount (admin-toggleable, OFF at launch).
   const platformFeeMeta = computePlatformFee(db.revenueSettings, subtotal);
   const escrowFee = checkoutItems.reduce(
-    (acc, p) => acc + computePlatformFee(db.revenueSettings, p.price * qtyFor(p)).amount,
+    (acc, p) => acc + computePlatformFee(db.revenueSettings, effectiveProductPrice(p) * qtyFor(p)).amount,
     0
   );
   
@@ -569,13 +571,21 @@ export default function CartCheckoutView({
     }
 
     onClearCart();
+    void recordSponsoredConversion(
+      createdIds.map((id) => ({ id, productId: getDBState().orders.find((order) => order.id === id)?.productId }))
+    );
     setActiveStep('orders');
   };
 
   const handlePaystackSuccess = async () => {
+    const paidOrders = pendingPayOrderIds.map((id) => ({
+      id,
+      productId: getDBState().orders.find((order) => order.id === id)?.productId,
+    }));
     setShowPaystackModal(false);
     setPendingPayOrderIds([]);
     setPendingPayAmount(0);
+    void recordSponsoredConversion(paidOrders);
     if (!payingExistingOrder) onClearCart();
     setPayingExistingOrder(false);
     setActiveStep('orders');
@@ -848,7 +858,7 @@ export default function CartCheckoutView({
 
                             <div className="mt-2 flex flex-wrap items-baseline gap-1.5">
                               <span className="text-base font-black tracking-tight text-jade-700 dark:text-jade-300">
-                                ₦{(item.price * qty).toLocaleString()}
+                                ₦{(effectiveProductPrice(item) * qty).toLocaleString()}
                               </span>
                               {item.compareAtPrice && item.compareAtPrice > item.price && (
                                 <span className="text-[11px] text-ink-400 line-through">

@@ -40,6 +40,12 @@ import {
 import { computeEscrowFee } from '@/lib/payments/helpers';
 import { toast } from '@/lib/feedback';
 import { dbOperations, reloadFromSupabase, useDBState } from '../lib/store';
+import {
+  AD_PLACEMENTS,
+  type AdPlacement,
+  type MembershipPlanBenefit,
+  type PremiumCreditLedgerEntry,
+} from '../lib/types';
 import AddFundsDialog from './wallet/AddFundsDialog';
 import WithdrawReviewDialog from './wallet/WithdrawReviewDialog';
 import SubscriptionCheckoutDialog, {
@@ -218,6 +224,13 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
   const [selectedProductId, setSelectedProductId] = useState('');
   const [featuredDuration, setFeaturedDuration] = useState<'3' | '7' | '14'>('7');
   const [purchasingPromotion, setPurchasingPromotion] = useState(false);
+  const [usePromoCredits, setUsePromoCredits] = useState(true);
+  const [flashSalePrice, setFlashSalePrice] = useState('');
+  const [flashStartsAt, setFlashStartsAt] = useState('');
+  const [flashQuantity, setFlashQuantity] = useState('');
+  const [creditBalance, setCreditBalance] = useState(0);
+  const [creditLedger, setCreditLedger] = useState<PremiumCreditLedgerEntry[]>([]);
+  const [planBenefits, setPlanBenefits] = useState<MembershipPlanBenefit[]>([]);
 
   const [adTitle, setAdTitle] = useState('');
   const [adType, setAdType] = useState<'PRODUCT' | 'BUSINESS' | 'BANNER_HOME' | 'BANNER_CATEGORY'>(
@@ -227,6 +240,14 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
   const [creatingAd, setCreatingAd] = useState(false);
   const [adTargetId, setAdTargetId] = useState('');
   const [adBannerUrl, setAdBannerUrl] = useState('');
+  const [adPlacements, setAdPlacements] = useState<AdPlacement[]>(['HOME']);
+  const [adStartsAt, setAdStartsAt] = useState('');
+  const [adEndsAt, setAdEndsAt] = useState('');
+  const [adDailyBudget, setAdDailyBudget] = useState('');
+  const [adCpcBid, setAdCpcBid] = useState('');
+  const [adTargetState, setAdTargetState] = useState('');
+  const [adTargetCity, setAdTargetCity] = useState('');
+  const [adTargetCategory, setAdTargetCategory] = useState('');
 
   const [txFilter, setTxFilter] = useState<TxFilter>('all');
   const [showAllTx, setShowAllTx] = useState(false);
@@ -284,6 +305,17 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
               entry.status === 'ACTIVE' &&
               new Date(entry.expiresAt).getTime() > Date.now()
           )
+        : [],
+    [db.featuredListings, user]
+  );
+
+  const myPromotions = useMemo(
+    () =>
+      user
+        ? db.featuredListings
+            .filter((entry) => entry.sellerId === user.id)
+            .slice()
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         : [],
     [db.featuredListings, user]
   );
@@ -417,10 +449,37 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
     }
   }, [userId]);
 
+  const loadPremiumExtras = useCallback(async () => {
+    if (!userId) {
+      setCreditBalance(0);
+      setCreditLedger([]);
+      setPlanBenefits([]);
+      return;
+    }
+    try {
+      const [creditsRes, benefitsRes] = await Promise.all([
+        fetch('/api/premium/credits', { cache: 'no-store' }),
+        fetch('/api/premium/benefits', { cache: 'no-store' }),
+      ]);
+      const credits = await creditsRes.json().catch(() => null);
+      const benefits = await benefitsRes.json().catch(() => null);
+      if (creditsRes.ok && credits?.success) {
+        setCreditBalance(Number(credits.balance) || 0);
+        setCreditLedger(Array.isArray(credits.ledger) ? credits.ledger : []);
+      }
+      if (benefitsRes.ok && benefits?.success) {
+        setPlanBenefits(Array.isArray(benefits.benefits) ? benefits.benefits : []);
+      }
+    } catch {
+      // Membership remains usable even if the extra summaries are unavailable.
+    }
+  }, [userId]);
+
   useEffect(() => {
     void refreshWalletStatus();
     void loadPremiumAccount();
-  }, [refreshWalletStatus, loadPremiumAccount]);
+    void loadPremiumExtras();
+  }, [refreshWalletStatus, loadPremiumAccount, loadPremiumExtras]);
 
   useEffect(() => {
     if (!wallet) return;
@@ -582,6 +641,17 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
       });
       return;
     }
+    if (type === 'FLASH_SALE') {
+      const price = Number(flashSalePrice);
+      if (!Number.isFinite(price) || price <= 0) {
+        setFeedback({ tone: 'error', message: 'Enter the discounted Flash Sale price.' });
+        return;
+      }
+      if (selectedProduct && price >= selectedProduct.price) {
+        setFeedback({ tone: 'error', message: 'The Flash Sale price must be lower than the listing price.' });
+        return;
+      }
+    }
 
     setPurchasingPromotion(true);
     setFeedback(null);
@@ -593,6 +663,10 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
           productId: Number(selectedProductId),
           featureType: type,
           durationDays: type === 'FEATURED' ? Number(featuredDuration) : 1,
+          useCredits: usePromoCredits,
+          salePrice: type === 'FLASH_SALE' ? Number(flashSalePrice) : undefined,
+          startsAt: type === 'FLASH_SALE' && flashStartsAt ? new Date(flashStartsAt).toISOString() : undefined,
+          quantityLimit: type === 'FLASH_SALE' && flashQuantity ? Number(flashQuantity) : undefined,
         }),
       });
       const payload = await res.json().catch(() => ({}));
@@ -609,11 +683,15 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
         tone: 'success',
         message:
           type === 'FEATURED'
-            ? `Your listing is featured for ${featuredDuration} days in eligible category and search feeds.`
-            : 'Your Flash Sale placement is recorded and active for 24 hours.',
+            ? `Your listing is featured for ${featuredDuration} days. ${Number(payload.promotion?.creditsApplied) > 0 ? `${naira(Number(payload.promotion.creditsApplied))} in promotional credits were applied.` : 'The promotion was charged to your wallet.'}`
+            : `Your Flash Sale is awaiting moderation. It will run for 24 hours from the approved start time, with a real ₦${Number(flashSalePrice).toLocaleString()} sale price and a ${Number(flashQuantity) || selectedProduct?.quantity || 0}-unit limit.`,
       });
-      toast.success('Promotion purchased from your verified wallet.', 'Listing boosted');
+      toast.success('Promotion purchase recorded on the server.', 'Promotion updated');
       setSelectedProductId('');
+      setFlashSalePrice('');
+      setFlashStartsAt('');
+      setFlashQuantity('');
+      await Promise.all([loadPremiumExtras(), refreshWalletStatus()]);
     } catch {
       setFeedback({
         tone: 'error',
@@ -650,6 +728,14 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
       setFeedback({ tone: 'error', message: 'Choose the product this campaign should promote.' });
       return;
     }
+    if (!adPlacements.length) {
+      setFeedback({ tone: 'error', message: 'Choose at least one ad placement.' });
+      return;
+    }
+    if (adDailyBudget && Number(adDailyBudget) > budget) {
+      setFeedback({ tone: 'error', message: 'Daily budget cannot exceed the total campaign budget.' });
+      return;
+    }
 
     setCreatingAd(true);
     setFeedback(null);
@@ -663,6 +749,14 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
           title: adTitle.trim(),
           budget,
           bannerUrl: adBannerUrl.trim() || undefined,
+          placements: adPlacements,
+          startsAt: adStartsAt ? new Date(adStartsAt).toISOString() : undefined,
+          endsAt: adEndsAt ? new Date(adEndsAt).toISOString() : undefined,
+          dailyBudget: adDailyBudget ? Number(adDailyBudget) : undefined,
+          cpcBid: adCpcBid ? Number(adCpcBid) : undefined,
+          targetState: adTargetState.trim() || undefined,
+          targetCity: adTargetCity.trim() || undefined,
+          targetCategory: adTargetCategory.trim() || undefined,
         }),
       });
       const payload = await res.json().catch(() => ({}));
@@ -684,6 +778,14 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
       setAdBudget('5000');
       setAdTargetId('');
       setAdBannerUrl('');
+      setAdPlacements(['HOME']);
+      setAdStartsAt('');
+      setAdEndsAt('');
+      setAdDailyBudget('');
+      setAdCpcBid('');
+      setAdTargetState('');
+      setAdTargetCity('');
+      setAdTargetCategory('');
     } catch {
       setFeedback({
         tone: 'error',
@@ -707,6 +809,8 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
     '14': settings.featured14DaysPrice,
   }[featuredDuration];
   const selectedProduct = products.find((product) => product.id === Number(selectedProductId));
+  const benefitsForPlan = (code: MembershipPlanBenefit['planCode']) =>
+    planBenefits.filter((benefit) => benefit.planCode === code && benefit.included).map((benefit) => benefit.label);
 
   if (!user) {
     return (
@@ -1389,6 +1493,31 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
                   }
                 />
 
+                <div className="rounded-3xl border border-jade-500/25 bg-white p-4 dark:border-jade-500/20 dark:bg-ink-900 sm:p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-ink-400">Promotional credits</p>
+                      <p className="mt-1 font-display text-2xl font-extrabold text-ink-950 dark:text-white">{naira(creditBalance)}</p>
+                      <p className="mt-1 text-[10px] text-ink-400">Spend on Featured or Flash Sale placements. Credits expire on their own schedule and are never cash.</p>
+                    </div>
+                    <span className="rounded-full bg-jade-500/10 px-3 py-1 text-[10px] font-bold text-jade-700 dark:text-jade-300">
+                      Applied automatically when you opt in
+                    </span>
+                  </div>
+                  {creditLedger.length > 0 && (
+                    <ul className="mt-3 divide-y divide-ink-100 border-t border-ink-100 pt-2 dark:divide-ink-800 dark:border-ink-800">
+                      {creditLedger.slice(0, 4).map((entry) => (
+                        <li key={entry.id} className="flex items-center justify-between gap-3 py-2 text-[11px]">
+                          <span className="min-w-0 truncate text-ink-500 dark:text-ink-300">{entry.description || entry.type.replace(/_/g, ' ')}</span>
+                          <span className={entry.amount >= 0 ? 'font-bold text-jade-700 dark:text-jade-300' : 'font-bold text-ink-600 dark:text-ink-300'}>
+                            {entry.amount >= 0 ? '+' : '-'}{naira(Math.abs(entry.amount))}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
                 <div className="grid gap-4 lg:grid-cols-2">
                   <div className="relative overflow-hidden rounded-3xl border border-gold-400/30 bg-gradient-to-br from-gold-50 via-white to-white p-5 dark:border-gold-300/20 dark:from-gold-300/10 dark:via-ink-900 dark:to-ink-900 sm:p-6">
                     <div className="absolute -right-5 -top-8 text-[10rem] font-black leading-none text-gold-400/[0.08]">
@@ -1411,12 +1540,15 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
                         It is not identity verification and does not alter your trust score.
                       </p>
                       <ul className="mt-4 space-y-2">
-                        {[
-                          'Gold Verified+ member badge',
-                          'Configurable visibility for eligible listings',
-                          'Seller analytics and priority-support access',
-                          'No automatic trust-score change',
-                        ].map((item) => (
+                        {(benefitsForPlan('VERIFIED_PLUS').length
+                          ? benefitsForPlan('VERIFIED_PLUS')
+                          : [
+                              'Gold Verified+ member badge',
+                              'Configurable visibility for eligible listings',
+                              'Seller analytics access',
+                              'No automatic trust-score change',
+                            ]
+                        ).map((item) => (
                           <li key={item} className="flex items-start gap-2 text-xs text-ink-600 dark:text-ink-300">
                             <BadgeCheck className="mt-0.5 h-4 w-4 shrink-0 text-gold-500" />
                             {item}
@@ -1473,12 +1605,15 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
                         tools. Business verification remains a separate review.
                       </p>
                       <ul className="mt-4 space-y-2">
-                        {[
-                          'Business storefront and catalog operations',
-                          'Deeper seller analytics and performance views',
-                          'Bulk listing and inventory workflows where enabled',
-                          'No automatic business verification',
-                        ].map((item) => (
+                        {(benefitsForPlan(`BUSINESS_${businessPlan}` as MembershipPlanBenefit['planCode']).length
+                          ? benefitsForPlan(`BUSINESS_${businessPlan}` as MembershipPlanBenefit['planCode'])
+                          : [
+                              'Business storefront and catalog operations',
+                              'Advanced seller analytics',
+                              'Bulk inventory tools',
+                              'No automatic business verification',
+                            ]
+                        ).map((item) => (
                           <li key={item} className="flex items-start gap-2 text-xs text-white/70">
                             <Check className="mt-0.5 h-4 w-4 shrink-0 text-jade-300" />
                             {item}
@@ -1735,6 +1870,17 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
                         );
                       })}
                     </div>
+                    <label className="mt-4 flex items-start gap-2 rounded-xl border border-jade-500/20 bg-jade-500/5 p-3 text-[11px] text-ink-600 dark:text-ink-300">
+                      <input
+                        type="checkbox"
+                        checked={usePromoCredits}
+                        onChange={(event) => setUsePromoCredits(event.target.checked)}
+                        className="mt-0.5 h-3.5 w-3.5 accent-jade-600"
+                      />
+                      <span>
+                        Apply promotional credits first ({naira(creditBalance)} available). Any remainder is charged to your wallet.
+                      </span>
+                    </label>
                     <div className="mt-5 flex flex-col gap-2.5 border-t border-ink-150 pt-4 dark:border-ink-800 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <p className="text-[10px] font-bold uppercase tracking-wide text-ink-400">
@@ -1772,10 +1918,49 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
                       Flash Sale placement
                     </h3>
                     <p className="mt-1.5 text-xs leading-relaxed text-ink-500 dark:text-ink-400">
-                      Record a 24-hour Flash Sale placement for this listing in promotions and
-                      eligible discovery feeds. No fake countdown or scarcity is shown.
+                      Schedule a real 24-hour discount with a moderated sale price and optional unit
+                      limit. Buyers only see it while the approved window is live.
                     </p>
-                    <div className="mt-5 rounded-2xl border border-ink-200 bg-white p-3.5 dark:border-ink-800 dark:bg-ink-900">
+                    <div className="mt-4 space-y-3">
+                      <label className="block text-[10px] font-bold uppercase tracking-wide text-ink-500 dark:text-ink-400">
+                        Sale price (₦)
+                        <input
+                          type="number"
+                          min={1}
+                          max={selectedProduct ? Math.max(1, selectedProduct.price - 1) : undefined}
+                          value={flashSalePrice}
+                          onChange={(event) => setFlashSalePrice(event.target.value)}
+                          placeholder={selectedProduct ? `Below ${naira(selectedProduct.price)}` : 'Choose a listing first'}
+                          className="mt-1 h-10 w-full rounded-xl border border-ink-200 bg-white px-3 text-xs font-semibold text-ink-900 dark:border-ink-800 dark:bg-ink-900 dark:text-white"
+                        />
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="block text-[10px] font-bold uppercase tracking-wide text-ink-500 dark:text-ink-400">
+                          Starts at
+                          <input
+                            type="datetime-local"
+                            value={flashStartsAt}
+                            onChange={(event) => setFlashStartsAt(event.target.value)}
+                            className="mt-1 h-10 w-full rounded-xl border border-ink-200 bg-white px-2 text-[10px] font-semibold text-ink-900 dark:border-ink-800 dark:bg-ink-900 dark:text-white"
+                          />
+                        </label>
+                        <label className="block text-[10px] font-bold uppercase tracking-wide text-ink-500 dark:text-ink-400">
+                          Unit limit
+                          <input
+                            type="number"
+                            min={1}
+                            value={flashQuantity}
+                            onChange={(event) => setFlashQuantity(event.target.value)}
+                            placeholder={selectedProduct ? String(selectedProduct.quantity) : 'Optional'}
+                            className="mt-1 h-10 w-full rounded-xl border border-ink-200 bg-white px-3 text-xs font-semibold text-ink-900 dark:border-ink-800 dark:bg-ink-900 dark:text-white"
+                          />
+                        </label>
+                      </div>
+                      <p className="text-[10px] leading-relaxed text-ink-400">
+                        Starts immediately when left blank. Every Flash Sale is reviewed before it can go live; rejected purchases are refunded.
+                      </p>
+                    </div>
+                    <div className="mt-4 rounded-2xl border border-ink-200 bg-white p-3.5 dark:border-ink-800 dark:bg-ink-900">
                       <div className="flex items-center justify-between gap-2 text-xs">
                         <span className="text-ink-500 dark:text-ink-400">Fixed price</span>
                         <span className="font-bold text-ink-900 dark:text-white">
@@ -1789,10 +1974,19 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
                         </span>
                       </div>
                     </div>
+                    <label className="mt-3 flex items-start gap-2 rounded-xl border border-jade-500/20 bg-jade-500/5 p-3 text-[11px] text-ink-600 dark:text-ink-300">
+                      <input
+                        type="checkbox"
+                        checked={usePromoCredits}
+                        onChange={(event) => setUsePromoCredits(event.target.checked)}
+                        className="mt-0.5 h-3.5 w-3.5 accent-jade-600"
+                      />
+                      <span>Apply {naira(creditBalance)} promotional credits first.</span>
+                    </label>
                     <Button
                       variant="secondary"
                       onClick={() => void handlePromoteProduct('FLASH_SALE')}
-                      disabled={purchasingPromotion || !selectedProductId}
+                      disabled={purchasingPromotion || !selectedProductId || !flashSalePrice}
                       className="mt-4 w-full"
                     >
                       {purchasingPromotion ? (
@@ -1809,17 +2003,17 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
                   <div className="flex items-center justify-between gap-3 border-b border-ink-150 p-4 dark:border-ink-800 sm:p-5">
                     <div>
                       <h3 className="font-display text-base font-bold text-ink-950 dark:text-white">
-                        Active promotions
+                        Your promotions
                       </h3>
                       <p className="mt-0.5 text-[10px] text-ink-400">
-                        Listings currently receiving boosted placement.
+                        Pending review, scheduled, live and completed placements.
                       </p>
                     </div>
                     <span className="rounded-full bg-ink-100 px-2.5 py-1 text-[10px] font-bold text-ink-600 dark:bg-ink-800 dark:text-ink-300">
-                      {featuredListings.length}
+                      {featuredListings.length} live
                     </span>
                   </div>
-                  {featuredListings.length === 0 ? (
+                  {myPromotions.length === 0 ? (
                     <div className="px-5 py-8 text-center">
                       <Flame className="mx-auto h-6 w-6 text-ink-300" />
                       <p className="mt-2 text-xs font-bold text-ink-700 dark:text-white/80">
@@ -1831,7 +2025,7 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
                     </div>
                   ) : (
                     <ul className="divide-y divide-ink-100 dark:divide-ink-800">
-                      {featuredListings.map((entry) => {
+                      {myPromotions.map((entry) => {
                         const product = products.find((item) => item.id === entry.productId);
                         const daysLeft = Math.max(
                           0,
@@ -1853,13 +2047,25 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
                                   {product?.title || `Listing #${entry.productId}`}
                                 </p>
                                 <p className="mt-0.5 text-[10px] text-ink-400">
-                                  {entry.featureType === 'FLASH_SALE' ? 'Flash Sale' : 'Featured'} · Ends{' '}
+                                  {entry.featureType === 'FLASH_SALE' ? 'Flash Sale' : 'Featured'} · {entry.status.replace(/_/g, ' ')} · Ends{' '}
                                   {dateLabel(entry.expiresAt)}
                                 </p>
                               </div>
                             </div>
-                            <span className="shrink-0 rounded-full bg-jade-500/10 px-2.5 py-1 text-[10px] font-bold text-jade-700 dark:text-jade-300">
-                              {daysLeft} days left
+                            <span
+                              className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${
+                                entry.status === 'ACTIVE'
+                                  ? 'bg-jade-500/10 text-jade-700 dark:text-jade-300'
+                                  : entry.status === 'PENDING_REVIEW'
+                                    ? 'bg-gold-400/15 text-gold-700 dark:text-gold-200'
+                                    : 'bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-300'
+                              }`}
+                            >
+                              {entry.status === 'ACTIVE'
+                                ? `${daysLeft} days left`
+                                : entry.status === 'PENDING_REVIEW'
+                                  ? 'Awaiting review'
+                                  : entry.status.replace(/_/g, ' ')}
                             </span>
                           </li>
                         );
@@ -2000,13 +2206,115 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
                           className="mt-1.5 h-11 w-full rounded-xl border border-ink-200 bg-white px-3 text-[11px] text-ink-900 focus-ring dark:border-ink-800 dark:bg-ink-900 dark:text-white"
                         />
                       </div>
+
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-ink-500 dark:text-ink-400">
+                          Delivery placements
+                        </p>
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {AD_PLACEMENTS.map((placement) => {
+                            const selected = adPlacements.includes(placement);
+                            return (
+                              <button
+                                key={placement}
+                                type="button"
+                                onClick={() =>
+                                  setAdPlacements((current) =>
+                                    selected
+                                      ? current.filter((item) => item !== placement)
+                                      : [...current, placement]
+                                  )
+                                }
+                                aria-pressed={selected}
+                                className={`rounded-lg border px-2.5 py-1.5 text-[9px] font-bold tracking-wide ${
+                                  selected
+                                    ? 'border-jade-500 bg-jade-500/10 text-jade-700 dark:text-jade-300'
+                                    : 'border-ink-200 text-ink-400 dark:border-ink-800'
+                                }`}
+                              >
+                                {placement}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <label className="text-[10px] font-bold uppercase tracking-wide text-ink-500 dark:text-ink-400">
+                          Starts
+                          <input
+                            type="datetime-local"
+                            value={adStartsAt}
+                            onChange={(event) => setAdStartsAt(event.target.value)}
+                            className="mt-1.5 h-10 w-full rounded-xl border border-ink-200 bg-white px-2 text-[10px] font-semibold dark:border-ink-800 dark:bg-ink-900 dark:text-white"
+                          />
+                        </label>
+                        <label className="text-[10px] font-bold uppercase tracking-wide text-ink-500 dark:text-ink-400">
+                          Ends
+                          <input
+                            type="datetime-local"
+                            value={adEndsAt}
+                            onChange={(event) => setAdEndsAt(event.target.value)}
+                            className="mt-1.5 h-10 w-full rounded-xl border border-ink-200 bg-white px-2 text-[10px] font-semibold dark:border-ink-800 dark:bg-ink-900 dark:text-white"
+                          />
+                        </label>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <label className="text-[10px] font-bold uppercase tracking-wide text-ink-500 dark:text-ink-400">
+                          Daily budget (₦)
+                          <input
+                            type="number"
+                            min={1}
+                            value={adDailyBudget}
+                            onChange={(event) => setAdDailyBudget(event.target.value)}
+                            placeholder="No daily cap"
+                            className="mt-1.5 h-10 w-full rounded-xl border border-ink-200 bg-white px-3 text-xs font-semibold dark:border-ink-800 dark:bg-ink-900 dark:text-white"
+                          />
+                        </label>
+                        <label className="text-[10px] font-bold uppercase tracking-wide text-ink-500 dark:text-ink-400">
+                          Max CPC bid (₦)
+                          <input
+                            type="number"
+                            min={settings.adCpcPrice}
+                            value={adCpcBid}
+                            onChange={(event) => setAdCpcBid(event.target.value)}
+                            placeholder={String(settings.adCpcPrice)}
+                            className="mt-1.5 h-10 w-full rounded-xl border border-ink-200 bg-white px-3 text-xs font-semibold dark:border-ink-800 dark:bg-ink-900 dark:text-white"
+                          />
+                        </label>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <input
+                          value={adTargetState}
+                          onChange={(event) => setAdTargetState(event.target.value)}
+                          placeholder="State"
+                          aria-label="Target state"
+                          className="h-10 w-full rounded-xl border border-ink-200 bg-white px-2 text-[10px] font-semibold dark:border-ink-800 dark:bg-ink-900 dark:text-white"
+                        />
+                        <input
+                          value={adTargetCity}
+                          onChange={(event) => setAdTargetCity(event.target.value)}
+                          placeholder="City"
+                          aria-label="Target city"
+                          className="h-10 w-full rounded-xl border border-ink-200 bg-white px-2 text-[10px] font-semibold dark:border-ink-800 dark:bg-ink-900 dark:text-white"
+                        />
+                        <input
+                          value={adTargetCategory}
+                          onChange={(event) => setAdTargetCategory(event.target.value)}
+                          placeholder="Category"
+                          aria-label="Target category"
+                          className="h-10 w-full rounded-xl border border-ink-200 bg-white px-2 text-[10px] font-semibold dark:border-ink-800 dark:bg-ink-900 dark:text-white"
+                        />
+                      </div>
                     </div>
 
                     <div className="mt-4 flex items-center justify-between gap-2 rounded-2xl border border-ink-200 bg-white px-3.5 py-3 text-[10px] dark:border-ink-800 dark:bg-ink-900">
                       <span className="text-ink-400">Estimated clicks</span>
                       <span className="font-bold text-ink-800 dark:text-white">
                         {Number(adBudget) > 0
-                          ? Math.floor(Number(adBudget) / Math.max(1, settings.adCpcPrice))
+                          ? Math.floor(Number(adBudget) / Math.max(1, Number(adCpcBid) || settings.adCpcPrice))
                           : 0}{' '}
                         clicks
                       </span>
@@ -2089,7 +2397,7 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
                                     {ad.status.replace(/_/g, ' ')}
                                   </span>
                                 </div>
-                                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                                <div className="mt-3 grid grid-cols-4 gap-1.5 text-center">
                                   <div>
                                     <p className="text-xs font-extrabold text-ink-900 dark:text-white">
                                       {compactNumber(ad.impressions)}
@@ -2108,7 +2416,18 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
                                     </p>
                                     <p className="text-[9px] text-ink-400">CTR</p>
                                   </div>
+                                  <div>
+                                    <p className="text-xs font-extrabold text-ink-900 dark:text-white">
+                                      {compactNumber(ad.conversions || 0)}
+                                    </p>
+                                    <p className="text-[9px] text-ink-400">Sales</p>
+                                  </div>
                                 </div>
+                                {(ad.conversionValue || 0) > 0 && (
+                                  <p className="mt-2 text-[9px] font-bold text-jade-600 dark:text-jade-300">
+                                    {naira(Number(ad.conversionValue))} attributed order value
+                                  </p>
+                                )}
                                 <div className="mt-3">
                                   <div className="flex items-center justify-between text-[9px] text-ink-400">
                                     <span>{naira(ad.spent)} spent</span>

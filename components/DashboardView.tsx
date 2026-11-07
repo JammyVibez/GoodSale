@@ -20,6 +20,8 @@ import LiveSafeMeetMap from './LiveSafeMeetMap';
 import OrderTrackingCard, { hasLiveTracking } from './OrderTrackingCard';
 import SellerAnalyticsPanel from './SellerAnalyticsPanel';
 import SellerShippingPanel from './SellerShippingPanel';
+import BulkInventoryTools from './seller/BulkInventoryTools';
+import { resolveEntitlements, membershipLabel } from '@/lib/entitlements';
 import SellerDeliveryPanel from './SellerDeliveryPanel';
 import { createProductAppeal } from '@/lib/trustCenter';
 import { bestCoords, rankPartnersByProximity, formatDistanceKm } from '@/lib/geo';
@@ -156,6 +158,7 @@ export default function DashboardView({
     verificationExpiresAt: sellerProfile?.verificationExpiresAt,
   });
   const sellerProducts = db.products.filter(p => p.sellerId === user?.id);
+  const entitlements = resolveEntitlements(db, user?.id);
   const sellerOrders = db.orders.filter(o => o.sellerId === user?.id);
 
   // FINANCIALS: Calculate Escrow held and withdrawable balances
@@ -1013,7 +1016,18 @@ export default function DashboardView({
 
         {/* TAB: SELLER ANALYTICS */}
         {activeTab === 'analytics' && user && (
-          <SellerAnalyticsPanel sellerId={user.id} onNavigate={onNavigate} />
+          entitlements.analytics ? (
+            <SellerAnalyticsPanel sellerId={user.id} onNavigate={onNavigate} />
+          ) : (
+            <div className="rounded-[32px] border border-gold-300/40 bg-gold-50/60 p-8 text-center dark:border-gold-300/20 dark:bg-gold-300/5">
+              <TrendingUp className="mx-auto h-9 w-9 text-gold-500" />
+              <h3 className="mt-3 font-display text-lg font-bold text-ink-900 dark:text-white">Advanced analytics is a member benefit</h3>
+              <p className="mx-auto mt-2 max-w-md text-xs leading-relaxed text-ink-500 dark:text-ink-300">
+                Verified+ and Business members unlock the full funnel, promotion and fulfilment analytics. Paid membership is separate from identity verification and never changes trust scores.
+              </p>
+              <Button className="mt-4" onClick={() => onNavigate?.('revenue')}>See membership plans</Button>
+            </div>
+          )
         )}
 
         {/* TAB 2: ESCROW ORDERS & SHIPPING HUB */}
@@ -1501,6 +1515,9 @@ export default function DashboardView({
               <div>
                 <h3 className="font-display font-bold text-base text-ink-900 dark:text-white">Store Catalog Management</h3>
                 <p className="text-xs text-ink-400 font-sans mt-0.5">Edit pricing, toggle real-time stock levels, and delete stale listings instantly.</p>
+                <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-jade-600 dark:text-jade-400">
+                  {membershipLabel(entitlements)}
+                </p>
               </div>
               <button
                 onClick={() => setActiveTab('create_listing')}
@@ -1508,6 +1525,25 @@ export default function DashboardView({
               >
                 Add Product
               </button>
+            </div>
+
+            <div className="border-b border-ink-100 p-4 dark:border-ink-800">
+              {entitlements.businessTools ? (
+                <BulkInventoryTools products={sellerProducts} />
+              ) : (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gold-300/40 bg-gold-50/50 px-4 py-3 dark:border-gold-300/20 dark:bg-gold-300/5">
+                  <p className="text-[11px] leading-relaxed text-ink-500 dark:text-ink-300">
+                    CSV export/import and validated bulk stock updates are included with Business membership.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate?.('revenue')}
+                    className="rounded-xl bg-jade-600 px-3 py-2 text-[11px] font-bold text-white hover:bg-jade-700"
+                  >
+                    Unlock bulk tools
+                  </button>
+                </div>
+              )}
             </div>
 
             {sellerProducts.length === 0 ? (

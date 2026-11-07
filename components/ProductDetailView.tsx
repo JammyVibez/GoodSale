@@ -17,6 +17,7 @@ import { trackProductMetric } from '@/lib/productMetrics';
 import { computeSellerTrust } from '@/lib/trust';
 import VerifiedBadge, { VerifiedMark } from '@/components/verification/VerifiedBadge';
 import { isVerifiedSeller } from '@/lib/verification';
+import { activeFlashSale } from '@/lib/productPricing';
 import AdSlot from './AdSlot';
 
 interface ProductDetailViewProps {
@@ -413,10 +414,18 @@ export default function ProductDetailView({
   });
 
   // Reference layout helpers — honest, computed from the listing itself.
-  const discountPercent = product.compareAtPrice && product.compareAtPrice > product.price
-    ? Math.round(((product.compareAtPrice - product.price) / product.compareAtPrice) * 100)
-    : 0;
-  const savingsAmount = discountPercent > 0 ? Number(product.compareAtPrice) - product.price : 0;
+  const flashSale = activeFlashSale(product);
+  const displayedPrice = flashSale?.price ?? product.price;
+  const discountPercent = flashSale
+    ? flashSale.discountPercent
+    : product.compareAtPrice && product.compareAtPrice > product.price
+      ? Math.round(((product.compareAtPrice - product.price) / product.compareAtPrice) * 100)
+      : 0;
+  const savingsAmount = flashSale
+    ? product.price - displayedPrice
+    : discountPercent > 0
+      ? Number(product.compareAtPrice) - product.price
+      : 0;
   const stockLeft = product.quantity;
   const isLowStock = stockLeft > 0 && stockLeft <= 5;
   const unavailableStatus = product.stockStatus === 'SOLD'
@@ -599,12 +608,12 @@ export default function ProductDetailView({
                 {/* Price */}
                 <div className="mt-4 flex flex-wrap items-end gap-x-2.5 gap-y-1">
                   <span className="font-display text-4xl font-black tracking-tight text-jade-700 dark:text-jade-300">
-                    ₦{product.price.toLocaleString()}
+                    ₦{displayedPrice.toLocaleString()}
                   </span>
                   {discountPercent > 0 && (
                     <>
                       <span className="mb-1 text-lg font-semibold text-ink-400 line-through">
-                        ₦{Number(product.compareAtPrice).toLocaleString()}
+                        ₦{(flashSale ? product.price : Number(product.compareAtPrice)).toLocaleString()}
                       </span>
                       <span className="mb-1.5 rounded-full bg-jade-600 px-2.5 py-1 text-sm font-black leading-none text-white">
                         -{discountPercent}%
@@ -618,7 +627,8 @@ export default function ProductDetailView({
                   <div className="mt-3 flex items-center gap-2.5 rounded-2xl bg-jade-100 px-4 py-3 dark:bg-jade-950/70">
                     <Tag className="h-5 w-5 shrink-0 text-jade-700 dark:text-jade-300" />
                     <span className="flex-1 text-sm font-semibold text-jade-900 dark:text-jade-100">
-                      Save ₦{savingsAmount.toLocaleString()} with this deal!
+                      {flashSale ? 'Flash Sale' : 'Save'} ₦{savingsAmount.toLocaleString()}
+                      {flashSale ? ` until ${new Date(flashSale.endsAt).toLocaleString('en-NG', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}` : ' with this deal!'}
                     </span>
                     <ChevronRight className="h-4 w-4 shrink-0 text-jade-700 dark:text-jade-300" />
                   </div>
@@ -1409,7 +1419,14 @@ export default function ProductDetailView({
 
       {/* Sponsored: product-detail placement */}
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-        <AdSlot placement="DETAIL" onNavigate={onNavigate} className="mt-2" />
+        <AdSlot
+          placement="DETAIL"
+          onNavigate={onNavigate}
+          state={db.profiles.find((profile) => profile.userId === db.currentUser?.id)?.state || ''}
+          city={db.profiles.find((profile) => profile.userId === db.currentUser?.id)?.city || ''}
+          category={product.category}
+          className="mt-2"
+        />
       </div>
 
       {/* Context-aware Gemini Security Tip Banner */}
