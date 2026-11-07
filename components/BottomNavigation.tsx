@@ -9,7 +9,6 @@ import { totalUnreadMessages } from '../lib/chat';
 interface BottomNavigationProps {
   currentView: string;
   onNavigate: (view: string, payload?: any) => void;
-  cartCount: number;
   onOpenAuth: (mode?: 'login' | 'register') => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
@@ -152,9 +151,11 @@ export default function BottomNavigation({
     <nav
       id="persistent-bottom-nav"
       aria-label="Primary"
-      className="md:hidden fixed bottom-0 left-0 right-0 h-[72px] bg-white/95 dark:bg-ink-900/95 backdrop-blur-xl border-t border-ink-200 dark:border-ink-800 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-40 px-2 pb-safe-bottom"
+      className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-ink-900/95 backdrop-blur-xl border-t border-ink-200 dark:border-ink-800 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-40 px-2 pb-safe-bottom"
     >
-      <div className="grid grid-cols-5 h-full items-center">
+      {/* Fixed 72px row sits above the iPhone home-bar inset instead of being
+          squeezed by it (the old fixed height + safe-area padding clipped tabs). */}
+      <div className="grid grid-cols-5 h-[72px] items-center">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const showBadge = typeof tab.badge === 'number' && tab.badge > 0;

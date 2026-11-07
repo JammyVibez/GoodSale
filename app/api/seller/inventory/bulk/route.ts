@@ -35,18 +35,27 @@ export async function POST(req: NextRequest) {
     const profileId = await profileIdForAuth(admin, user.id);
     if (!profileId) return NextResponse.json({ success: false, error: 'Profile not found' }, { status: 404 });
 
+    const body = await req.json().catch(() => ({}));
+    const requestedOwner = Number(body.ownerId);
+
     // The owner needs Business membership; an active Inventory/Manager staff
     // member can act for that owner's listings without their own membership.
+    // A person may support more than one business, so the caller names the
+    // owner instead of relying on a single row.
     const entitlements = await loadEntitlements(admin, profileId);
     let sellerScopeId = profileId;
     let allowed = entitlements.businessTools;
     if (!allowed) {
-      const { data: staffRow } = await admin
+      let staffQuery = admin
         .from('business_staff')
         .select('owner_id,role,status')
         .eq('member_id', profileId)
-        .eq('status', 'ACTIVE')
-        .maybeSingle();
+        .eq('status', 'ACTIVE');
+      if (Number.isInteger(requestedOwner) && requestedOwner > 0) {
+        staffQuery = staffQuery.eq('owner_id', requestedOwner);
+      }
+      const { data: staffRows } = await staffQuery.limit(1);
+      const staffRow = staffRows?.[0];
       if (staffRow && staffCan(String(staffRow.role) as StaffRole, 'ACTIVE', 'inventory')) {
         const ownerId = Number(staffRow.owner_id);
         const ownerEntitlements = await loadEntitlements(admin, ownerId);
@@ -67,7 +76,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const body = await req.json().catch(() => ({}));
     const rows = Array.isArray(body.rows) ? (body.rows as BulkRow[]) : [];
     if (!rows.length || rows.length > 250) {
       return NextResponse.json({ success: false, error: 'Send between 1 and 250 inventory rows' }, { status: 400 });

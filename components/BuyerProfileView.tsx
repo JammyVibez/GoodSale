@@ -5,7 +5,8 @@ import React, { useState } from 'react';
 import { 
   Shield, Award, MapPin, CheckCircle, Package, Clock, AlertTriangle, 
   ChevronRight, Calendar, Star, ArrowLeft, Key, CreditCard, Lock,
-  Download, Check, Compass, Sliders, Truck, Store, Camera, Loader2, ShieldCheck, Gift
+  Download, Check, Compass, Sliders, Truck, Store, Camera, Loader2, ShieldCheck, Gift,
+  Heart, Pencil, Wallet, Sparkles, LayoutGrid,
 } from 'lucide-react';
 import { useDBState, dbOperations, OrderStatus, Order, UserRole } from '../lib/store';
 import LiveSafeMeetMap from './LiveSafeMeetMap';
@@ -18,6 +19,8 @@ import EmptyState from './ui/EmptyState';
 import { toast, confirmDialog } from '@/lib/feedback';
 import { computeSellerTrust } from '@/lib/trust';
 import { isVerifiedSeller } from '@/lib/verification';
+import { resolveEntitlements, membershipLabel } from '@/lib/entitlements';
+import { useWishlist } from '@/lib/hooks/useWishlist';
 import VerifiedBadge from '@/components/verification/VerifiedBadge';
 
 interface BuyerProfileViewProps {
@@ -26,8 +29,11 @@ interface BuyerProfileViewProps {
   onOpenAuth?: () => void;
 }
 
+type YouSection = 'you-overview' | 'you-saved' | 'you-listings' | 'you-orders' | 'you-reviews';
+
 export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: BuyerProfileViewProps) {
   const db = useDBState();
+  const wishlist = useWishlist();
   const currentUser = db.currentUser;
   const myTrust = currentUser ? computeSellerTrust(db, currentUser.id) : null;
   
@@ -61,6 +67,29 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
   const buyerReviews = currentUser 
     ? db.reviews.filter(r => r.reviewerId === currentUser.id) 
     : [];
+
+  // Everything else that belongs to this account, surfaced in one place.
+  const entitlements = resolveEntitlements(db, currentUser?.id);
+  const wallet = currentUser ? db.wallets.find((w) => w.userId === currentUser.id) : null;
+  const myListings = currentUser ? db.products.filter((p) => p.sellerId === currentUser.id) : [];
+  const savedProducts = db.products.filter((p) => wishlist.favorites.includes(p.id));
+  const memberSince = (() => {
+    const stamps = [
+      ...buyerOrders.map((o) => o.createdAt),
+      ...myListings.map((p) => p.createdAt),
+      ...buyerReviews.map((r) => r.createdAt),
+      currentProfile?.onboardingCompletedAt,
+    ].filter(Boolean) as string[];
+    if (!stamps.length) return null;
+    const earliest = stamps.reduce((a, b) => (new Date(a) < new Date(b) ? a : b));
+    const date = new Date(earliest);
+    return Number.isNaN(date.getTime())
+      ? null
+      : date.toLocaleDateString('en-NG', { month: 'short', year: 'numeric' });
+  })();
+  const jumpTo = (id: YouSection) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   // Active PIN verification state
   const [selectedOrderForPin, setSelectedOrderForPin] = useState<number | null>(null);
@@ -277,7 +306,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
+    <div className="mx-auto max-w-6xl px-4 py-8">
       
       {/* 1. Header with back link */}
       <div className="mb-8">
@@ -308,7 +337,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
 
             <div className="absolute right-4 top-4 flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-bold text-white backdrop-blur-md">
               <Calendar className="h-3.5 w-3.5" />
-              Member since {new Date().getFullYear()}
+              {memberSince ? `Member since ${memberSince}` : 'New GoodSale member'}
             </div>
 
             <label className="absolute left-4 top-4 inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-white/20 bg-white/90 px-3 py-1.5 text-xs font-bold text-ink-800 shadow-md backdrop-blur-md transition hover:bg-white dark:bg-ink-900/90 dark:text-ink-100">
@@ -374,14 +403,32 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
               </div>
             </div>
 
-            {/* Trust snapshot (full detail lives in the vitals grid below) */}
-            <Chip
-              tone="jade"
-              className="shrink-0 self-start sm:self-auto"
-              icon={<Shield className="h-3.5 w-3.5" />}
-            >
-              Trust {currentUser.trustScore}% · {currentUser.sellerLevel}
-            </Chip>
+            {/* Account snapshot — trust, membership and the way back into settings */}
+            <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:flex-col sm:items-end sm:self-auto">
+              {entitlements.tier !== 'NONE' && (
+                <Chip
+                  tone="neutral"
+                  icon={<Sparkles className="h-3.5 w-3.5 text-gold-600 dark:text-gold-300" />}
+                  className="border border-gold-400/30 bg-gold-300/10 tracking-tight text-ink-800 dark:text-gold-100"
+                >
+                  {membershipLabel(entitlements)}
+                </Chip>
+              )}
+              <Chip
+                tone="jade"
+                className="shrink-0"
+                icon={<Shield className="h-3.5 w-3.5" />}
+              >
+                Trust {myTrust?.score ?? currentUser.trustScore}% · {currentUser.sellerLevel}
+              </Chip>
+              <button
+                type="button"
+                onClick={() => onNavigate?.('settings')}
+                className="inline-flex items-center gap-1.5 rounded-full border border-ink-200 bg-white px-3 py-1.5 text-xs font-bold text-ink-700 transition-colors hover:border-jade-500 hover:text-jade-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200"
+              >
+                <Pencil className="h-3.5 w-3.5" /> Edit profile
+              </button>
+            </div>
           </div>
 
           {/* Location & delivery preference */}
@@ -405,13 +452,14 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
           </div>
         </Card>
 
-        {/* Account vitals */}
-        <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {/* Account vitals — the whole account at a glance */}
+        <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
           {[
-            { label: 'Trust score', value: myTrust ? `${myTrust.score}/100` : '—', icon: Shield },
+            { label: 'Orders', value: buyerOrders.length.toLocaleString(), icon: Package },
             { label: 'Escrow held', value: `₦${escrowHeldAsBuyer.toLocaleString()}`, icon: Lock },
-            { label: 'Escrow released', value: `₦${escrowReleasedAsBuyer.toLocaleString()}`, icon: CheckCircle },
+            { label: 'Wallet balance', value: `₦${(wallet?.balance || 0).toLocaleString()}`, icon: Wallet },
             { label: 'GoodPoints', value: currentUser.goodPoints.toLocaleString(), icon: Award },
+            { label: 'Saved items', value: wishlist.count.toLocaleString(), icon: Heart },
           ].map((stat) => (
             <Card key={stat.label} variant="muted" className="p-4">
               <stat.icon className="mb-2 h-4 w-4 text-jade-600 dark:text-jade-400" />
@@ -426,6 +474,59 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
         </div>
       </div>
 
+      {/* Section jump bar — the You page now holds every account surface */}
+      <nav
+        aria-label="Your account sections"
+        className="sticky top-[116px] z-30 mb-6 -mx-1 overflow-x-auto rounded-2xl border border-ink-200 bg-white/95 p-1.5 shadow-sm backdrop-blur-xl scrollbar-hide dark:border-ink-800 dark:bg-ink-900/95"
+      >
+        <div className="flex min-w-max items-center gap-1">
+          {([
+            { id: 'you-overview', label: 'Overview', icon: LayoutGrid },
+            { id: 'you-orders', label: 'Orders', icon: Package, count: buyerOrders.length },
+            { id: 'you-saved', label: 'Saved', icon: Heart, count: wishlist.count },
+            ...(canSell ? [{ id: 'you-listings', label: 'Listings', icon: Store, count: myListings.length }] : []),
+            { id: 'you-reviews', label: 'Reviews', icon: Star, count: buyerReviews.length },
+          ] as { id: YouSection; label: string; icon: React.ComponentType<{ className?: string }>; count?: number }[]).map(
+            (section) => (
+              <button
+                key={section.id}
+                type="button"
+                onClick={() => jumpTo(section.id)}
+                className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold text-ink-600 transition-colors hover:bg-jade-500/10 hover:text-jade-700 dark:text-ink-300 dark:hover:text-jade-300"
+              >
+                <section.icon className="h-3.5 w-3.5" />
+                {section.label}
+                {typeof section.count === 'number' && section.count > 0 && (
+                  <span className="rounded-full bg-ink-100 px-1.5 text-[10px] font-bold text-ink-600 dark:bg-ink-800 dark:text-ink-300">
+                    {section.count}
+                  </span>
+                )}
+              </button>
+            )
+          )}
+        </div>
+      </nav>
+
+      {/* Overview — membership, protection and shortcuts */}
+      <div id="you-overview" className="scroll-mt-32">
+        {(!entitlements.business || entitlements.businessPlan === 'PRO') && canSell && currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.SUPER_ADMIN && (
+          <Card className="mb-4 flex flex-wrap items-center justify-between gap-3 border-gold-400/30 bg-gold-300/10 p-4">
+            <div className="flex items-start gap-3">
+              <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-gold-600 dark:text-gold-300" />
+              <div>
+                <p className="text-sm font-bold text-ink-900 dark:text-white">
+                  {entitlements.business ? 'Upgrade to Business Premium' : 'Grow with a Business membership'}
+                </p>
+                <p className="mt-0.5 text-xs text-ink-600 dark:text-ink-500">
+                  Staff accounts, priority campaign review and deeper analytics — from the Revenue Hub.
+                </p>
+              </div>
+            </div>
+            <Button variant="secondary" onClick={() => onNavigate?.('revenue')}>
+              View plans <ChevronRight className="h-4 w-4" />
+            </Button>
+          </Card>
+        )}
 
       {/* Quick portals */}
       <Card className="mb-8 space-y-4 p-5">
@@ -533,9 +634,131 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
           </button>
         </div>
       </Card>
+      </div>
+
+      {/* Saved items — the same wishlist the header heart writes to */}
+      <Card id="you-saved" className="mb-8 scroll-mt-32 p-5 sm:p-6">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="flex items-center gap-2 font-display text-lg font-bold tracking-tight text-ink-900 dark:text-white">
+            <Heart className="h-5 w-5 text-jade-600 dark:text-jade-400" />
+            Saved items
+            <Chip tone="neutral">{savedProducts.length}</Chip>
+          </h2>
+          <button
+            type="button"
+            onClick={() => onNavigate?.('marketplace')}
+            className="text-xs font-bold text-jade-700 hover:underline dark:text-jade-300"
+          >
+            Browse more
+          </button>
+        </div>
+
+        {savedProducts.length === 0 ? (
+          <p className="rounded-2xl border border-dashed border-ink-200 px-4 py-6 text-center text-sm text-ink-500 dark:border-ink-700">
+            Tap the heart on any listing to keep it here for later.
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {savedProducts.map((product) => (
+              <div
+                key={product.id}
+                className="group overflow-hidden rounded-2xl border border-ink-150 bg-white dark:border-ink-800 dark:bg-ink-900"
+              >
+                <button
+                  type="button"
+                  onClick={() => onNavigate?.('product', { id: product.id })}
+                  className="block w-full text-left"
+                >
+                  <div className="relative aspect-[4/3] overflow-hidden bg-ink-100 dark:bg-ink-800">
+                    <SmartImage
+                      src={product.images?.[0]}
+                      alt={product.title}
+                      seed={`saved-${product.id}`}
+                      className="h-full w-full transition-transform duration-300 group-hover:scale-105"
+                    />
+                  </div>
+                  <div className="p-3">
+                    <p className="line-clamp-2 text-xs font-bold leading-snug text-ink-900 dark:text-white">
+                      {product.title}
+                    </p>
+                    <p className="mt-1 font-mono text-sm font-bold text-ink-900 dark:text-white">
+                      ₦{product.price.toLocaleString()}
+                    </p>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => wishlist.toggle(product.id)}
+                  className="flex w-full items-center justify-center gap-1.5 border-t border-ink-100 py-2 text-[11px] font-bold text-ink-500 hover:text-red-600 dark:border-ink-800"
+                >
+                  <Heart className="h-3 w-3" /> Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {/* Your listings — visible only to accounts that can sell */}
+      {canSell && (
+        <Card id="you-listings" className="mb-8 scroll-mt-32 p-5 sm:p-6">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 font-display text-lg font-bold tracking-tight text-ink-900 dark:text-white">
+              <Store className="h-5 w-5 text-jade-600 dark:text-jade-400" />
+              Your listings
+              <Chip tone="neutral">{myListings.length}</Chip>
+            </h2>
+            <button
+              type="button"
+              onClick={() => onNavigate?.('dashboard')}
+              className="inline-flex items-center gap-1 text-xs font-bold text-jade-700 hover:underline dark:text-jade-300"
+            >
+              Manage in Seller Hub <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          {myListings.length === 0 ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-dashed border-ink-200 px-4 py-5 dark:border-ink-700">
+              <p className="text-sm text-ink-500">You have not published a listing yet.</p>
+              <Button variant="secondary" onClick={() => onNavigate?.('dashboard')}>
+                Create a listing
+              </Button>
+            </div>
+          ) : (
+            <div className="divide-y divide-ink-100 dark:divide-ink-800">
+              {myListings.slice(0, 6).map((product) => (
+                <button
+                  key={product.id}
+                  type="button"
+                  onClick={() => onNavigate?.('product', { id: product.id })}
+                  className="flex w-full items-center gap-3 py-3 text-left"
+                >
+                  <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-ink-100 dark:bg-ink-800">
+                    <SmartImage
+                      src={product.images?.[0]}
+                      alt={product.title}
+                      seed={`listing-${product.id}`}
+                      className="h-full w-full"
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-bold text-ink-900 dark:text-white">{product.title}</p>
+                    <p className="mt-0.5 font-mono text-[11px] text-ink-500">
+                      ₦{product.price.toLocaleString()} · {product.quantity} in stock
+                    </p>
+                  </div>
+                  <Chip tone={product.quantity > 0 ? 'jade' : 'outline'} className="shrink-0">
+                    {product.stockStatus.replace(/_/g, ' ').toLowerCase()}
+                  </Chip>
+                </button>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* 2. Interactive Escrow Orders Tracking List */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div id="you-orders" className="grid scroll-mt-32 grid-cols-1 lg:grid-cols-3 gap-8">
         
         {/* Left Side: Orders list */}
         <div className="lg:col-span-2 space-y-6">
@@ -1129,8 +1352,16 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
 
               <dl className="space-y-2 font-mono text-xs text-ink-300">
                 <div className="flex justify-between gap-3">
+                  <dt>Available balance</dt>
+                  <dd className="font-bold text-white">₦{(wallet?.balance || 0).toLocaleString()}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
                   <dt>Purchases</dt>
                   <dd className="font-bold text-white">{buyerOrders.length}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt>Released to sellers</dt>
+                  <dd className="font-bold text-white">₦{escrowReleasedAsBuyer.toLocaleString()}</dd>
                 </div>
                 <div className="flex justify-between gap-3">
                   <dt>Released</dt>
@@ -1164,7 +1395,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
           </Card>
 
           {/* Reviews written */}
-          <Card className="p-6">
+          <Card id="you-reviews" className="scroll-mt-32 p-6">
             <h3 className="mb-4 flex items-center gap-2 font-display text-base font-bold tracking-tight text-ink-900 dark:text-white">
               <Star className="star-filled h-5 w-5" />
               Reviews you&apos;ve written

@@ -63,6 +63,13 @@ export default function Home() {
     return () => clearTimeout(t);
   }, []);
 
+  // Every in-app view starts at the top. Without this, opening Settings or the
+  // You page from halfway down the catalogue left the new page scrolled down.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [currentView]);
+
   // Public SEO pages deep-link into the interactive app without changing the
   // existing single-page view model: /?product=123 or /?seller=45.
   useEffect(() => {
@@ -112,8 +119,38 @@ export default function Home() {
   const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   
-  // Shopping Cart client State
+  // Shopping Cart client State — mirrored into localStorage so a refresh or a
+  // return visit keeps the basket (and the header badge) intact.
   const [cart, setCart] = useState<number[]>([]);
+  const [cartReady, setCartReady] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem('goodsale_cart');
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) setCart(parsed.filter((id) => typeof id === 'number'));
+    } catch {
+      /* storage blocked — start with an empty cart */
+    }
+    setCartReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!cartReady) return;
+    try {
+      window.localStorage.setItem('goodsale_cart', JSON.stringify(cart));
+    } catch {
+      /* storage blocked — keep the in-memory cart */
+    }
+  }, [cart, cartReady]);
+
+  // A saved cart can outlive a delisted product. Drop those ids once the
+  // catalogue is loaded so checkout never opens an empty/blank line item.
+  useEffect(() => {
+    if (!cartReady || db.products.length === 0) return;
+    const available = new Set(db.products.map((product) => product.id));
+    setCart((prev) => (prev.every((id) => available.has(id)) ? prev : prev.filter((id) => available.has(id))));
+  }, [cartReady, db.products]);
 
   // Dynamic payloads
   const [checkoutProductId, setCheckoutProductId] = useState<number | null>(null);
@@ -188,8 +225,12 @@ export default function Home() {
       return;
     }
 
-    // Save current view in history
-    setHistory(prev => [...prev, currentView]);
+    // A saved-items filter belongs to the catalogue screen only. Clearing it on
+    // the way out stops Home reopening filtered to the wishlist later.
+    if (view !== 'marketplace' && wishlistOnly) setWishlistOnly(false);
+
+    // Save current view in history (skip no-op taps on the current view)
+    if (view !== currentView) setHistory(prev => [...prev, currentView]);
 
     // Clear sub-states
     setCheckoutProductId(null);
@@ -271,7 +312,7 @@ export default function Home() {
       <AnnouncementModal />
 
       {/* Core Dynamic Content Container */}
-      <main className="min-h-[calc(100vh-4rem)] pb-[68px] md:pb-0">
+      <main className="min-h-[calc(100vh-4rem)] pb-[calc(72px+env(safe-area-inset-bottom,0px))] md:pb-0">
         {/* Screen-push transition: each view enters from the trailing edge */}
         <div key={currentView} className="animate-screen-push">
         {currentView === 'marketplace' && (
@@ -506,7 +547,6 @@ export default function Home() {
       <BottomNavigation
         currentView={currentView}
         onNavigate={handleNavigate}
-        cartCount={cart.length}
         onOpenAuth={(mode?: 'login' | 'register') => {
           setAuthModalMode(mode || 'login');
           setAuthModalOpen(true);

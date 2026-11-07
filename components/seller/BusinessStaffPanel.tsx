@@ -26,6 +26,15 @@ type Membership = {
   role: string;
   status: string;
 };
+type Snapshot = {
+  businessName: string;
+  location: string;
+  plan: string | null;
+  capabilities: string[];
+  stats: { listings: number; lowStock: number; openOrders: number; revenue: number };
+  lowStock: { id: number; title: string; quantity: number }[];
+  listings: { id: number; title: string; price: number; quantity: number; stockStatus: string }[];
+};
 
 export default function BusinessStaffPanel() {
   const [loading, setLoading] = useState(true);
@@ -33,6 +42,9 @@ export default function BusinessStaffPanel() {
   const [staff, setStaff] = useState<StaffRow[]>([]);
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [canManage, setCanManage] = useState(false);
+  const [snapshots, setSnapshots] = useState<Record<number, Snapshot>>({});
+  const [stockDrafts, setStockDrafts] = useState<Record<number, string>>({});
+  const [savingStock, setSavingStock] = useState<number | null>(null);
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<StaffRole>('ANALYST');
 
@@ -42,8 +54,20 @@ export default function BusinessStaffPanel() {
       const payload = await res.json().catch(() => null);
       if (!res.ok || !payload?.success) throw new Error(payload?.error || 'Could not load staff access');
       setStaff(Array.isArray(payload.staff) ? payload.staff : []);
-      setMemberships(Array.isArray(payload.memberships) ? payload.memberships : []);
+      const nextMemberships: Membership[] = Array.isArray(payload.memberships) ? payload.memberships : [];
+      setMemberships(nextMemberships);
       setCanManage(Boolean(payload.canManage));
+
+      // Read-only store snapshot for every business this person supports.
+      const active = nextMemberships.filter((entry) => entry.status === 'ACTIVE');
+      const loaded = await Promise.all(
+        active.map(async (entry) => {
+          const res = await fetch(`/api/business/staff/overview?ownerId=${entry.ownerId}`, { cache: 'no-store' });
+          const data = await res.json().catch(() => null);
+          return res.ok && data?.success ? ([entry.ownerId, data as Snapshot] as const) : null;
+        })
+      );
+      setSnapshots(Object.fromEntries(loaded.filter(Boolean) as (readonly [number, Snapshot])[]));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not load staff access');
     } finally {
@@ -91,6 +115,37 @@ export default function BusinessStaffPanel() {
       toast.error(error instanceof Error ? error.message : 'Could not update staff');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveStock = async (ownerId: number, productId: number) => {
+    const raw = stockDrafts[productId];
+    if (raw == null || raw === '') return;
+    const quantity = Number(raw);
+    if (!Number.isInteger(quantity) || quantity < 0) {
+      toast.error('Enter a whole number of units');
+      return;
+    }
+    setSavingStock(productId);
+    try {
+      const res = await fetch('/api/seller/inventory/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ownerId, rows: [{ productId, quantity }] }),
+      });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok || !payload?.success) throw new Error(payload?.error || 'Could not update stock');
+      toast.success('Stock updated');
+      setStockDrafts((prev) => {
+        const next = { ...prev };
+        delete next[productId];
+        return next;
+      });
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not update stock');
+    } finally {
+      setSavingStock(null);
     }
   };
 
@@ -218,6 +273,10 @@ export default function BusinessStaffPanel() {
               </div>
               <p className="text-[10px] text-ink-400">{staffRoleDescription(role)}</p>
             </div>
+          ) : memberships.length > 0 ? (
+            <p className="rounded-xl border border-ink-150 bg-ink-50 px-3 py-2 text-[10px] font-semibold text-ink-500 dark:border-ink-800 dark:bg-ink-950/40 dark:text-ink-400">
+              Only the business owner can add, suspend or remove staff.
+            </p>
           ) : (
             <p className="rounded-xl border border-gold-400/25 bg-gold-300/10 px-3 py-2 text-[10px] font-semibold text-ink-600 dark:text-gold-200">
               Staff access is included with Business membership. Subscribe in the Revenue Hub to add staff.
@@ -225,16 +284,85 @@ export default function BusinessStaffPanel() {
           )}
 
           {memberships.length > 0 && (
-            <div className="space-y-1.5 pt-2">
+            <div className="space-y-3 pt-2">
               <p className="text-[10px] font-bold uppercase tracking-wide text-ink-400">Businesses you support</p>
-              {memberships.map((entry) => (
-                <p key={entry.id} className="text-[11px] text-ink-600 dark:text-ink-300">
-                  {entry.businessName} · {staffRoleLabel(entry.role as StaffRole)} ·{' '}
-                  <span className={entry.status === 'ACTIVE' ? 'text-jade-700 dark:text-jade-300' : 'text-ink-400'}>
-                    {entry.status === 'ACTIVE' ? 'active' : 'suspended'}
-                  </span>
-                </p>
-              ))}
+              {memberships.map((entry) => {
+                const snap = snapshots[entry.ownerId];
+                return (
+                  <div
+                    key={entry.id}
+                    className="rounded-2xl border border-ink-150 bg-ink-50/60 p-3.5 dark:border-ink-800 dark:bg-ink-950/40"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-bold text-ink-800 dark:text-white">
+                          {snap?.businessName || entry.businessName}
+                        </p>
+                        <p className="text-[10px] text-ink-400">
+                          {staffRoleLabel(entry.role as StaffRole)}
+                          {snap?.location ? ` · ${snap.location}` : ''}
+                          {entry.status === 'ACTIVE' ? '' : ' · suspended'}
+                        </p>
+                      </div>
+                      {snap && (
+                        <div className="flex flex-wrap gap-1.5 font-mono text-[10px] font-bold text-ink-600 dark:text-ink-300">
+                          <span className="rounded-md bg-white px-1.5 py-0.5 dark:bg-ink-900">{snap.stats.listings} listings</span>
+                          <span className="rounded-md bg-white px-1.5 py-0.5 dark:bg-ink-900">{snap.stats.openOrders} open orders</span>
+                          <span className="rounded-md bg-white px-1.5 py-0.5 dark:bg-ink-900">
+                            ₦{snap.stats.revenue.toLocaleString()} settled
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {snap && snap.lowStock.length > 0 && (
+                      <div className="mt-2 rounded-xl bg-gold-300/10 px-2.5 py-2">
+                        <p className="text-[10px] font-bold text-gold-700 dark:text-gold-300">
+                          Low stock ({snap.stats.lowStock})
+                        </p>
+                        <p className="mt-0.5 text-[10px] text-ink-600 dark:text-ink-300">
+                          {snap.lowStock.map((item) => `${item.title} (${item.quantity})`).join(' · ')}
+                        </p>
+                      </div>
+                    )}
+
+                    {snap && entry.status === 'ACTIVE' && snap.capabilities.includes('inventory') && snap.listings.length > 0 && (
+                      <div className="mt-2 space-y-1.5">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-ink-400">Quick stock update</p>
+                        {snap.listings.slice(0, 4).map((listing) => (
+                          <div key={listing.id} className="flex items-center gap-2 text-[11px]">
+                            <span className="min-w-0 flex-1 truncate text-ink-600 dark:text-ink-300">
+                              {listing.title}
+                            </span>
+                            <input
+                              type="number"
+                              min={0}
+                              inputMode="numeric"
+                              value={stockDrafts[listing.id] ?? String(listing.quantity)}
+                              onChange={(event) =>
+                                setStockDrafts((prev) => ({ ...prev, [listing.id]: event.target.value }))
+                              }
+                              className="w-16 rounded-lg border border-ink-200 bg-white px-2 py-1 text-center font-mono text-[11px] dark:border-ink-700 dark:bg-ink-900 dark:text-white"
+                              aria-label={`Stock for ${listing.title}`}
+                            />
+                            <button
+                              type="button"
+                              disabled={
+                                savingStock === listing.id ||
+                                String(stockDrafts[listing.id] ?? listing.quantity) === String(listing.quantity)
+                              }
+                              onClick={() => void saveStock(entry.ownerId, listing.id)}
+                              className="rounded-lg bg-jade-600 px-2 py-1 text-[10px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              {savingStock === listing.id ? 'Saving…' : 'Save'}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </>

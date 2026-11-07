@@ -196,6 +196,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
     { id: string; type: string; message: string; status: string; createdAt: string }[]
   >([]);
   const [supportSuccess, setSupportSuccess] = useState(false);
+  const [lastSupportTicketId, setLastSupportTicketId] = useState<string | null>(null);
   const [redeemedVouchers, setRedeemedVouchers] = useState<string[]>([]);
 
   // 15. Account Management
@@ -588,6 +589,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
     const next = [ticket, ...supportTickets].slice(0, 25);
     setSupportTickets(next);
     void persistSettings({ supportTickets: next });
+    setLastSupportTicketId(ticket.id);
     setSupportSuccess(true);
     setTimeout(() => {
       setSupportSuccess(false);
@@ -2476,7 +2478,7 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                   
                   {supportSuccess ? (
                     <div className="p-3.5 bg-jade-100 text-jade-800 text-xs font-bold rounded-xl">
-                      <CheckCircle className="inline h-3.5 w-3.5 align-[-2px]" /> Inquiry successfully filed and logged with ticket ID: #GS-TK-{Math.floor(10000 + Math.random() * 90000)}!
+                      <CheckCircle className="inline h-3.5 w-3.5 align-[-2px]" /> Inquiry successfully filed and logged with ticket ID: #{lastSupportTicketId}!
                     </div>
                   ) : (
                     <div className="space-y-3 text-xs">
