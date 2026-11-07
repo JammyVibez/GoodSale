@@ -258,31 +258,24 @@ export default function DashboardView({
         })
       });
       const res = await response.json();
-      if (res.success && res.data) {
-        const item = res.data;
-        setTitle(item.title || '');
-        setCategory(item.category || 'Fashion');
-        setBrand(item.brand || '');
-        setPrice((item.price || '').toString());
-        setCondition((item.condition || ProductCondition.NEW) as ProductCondition);
-        setDescription(item.description || '');
-        setBarcode(barcodeQuery);
-        if (item.warranty) setWarranty(item.warranty);
-        if (item.returnPolicy) setReturnPolicy(item.returnPolicy);
-        
-        setAiReport({ success: true, message: 'Gemini successfully cataloged product specifications!' });
-        setActiveTab('create_listing');
+      if (!response.ok || !res.success || !res.data) {
+        setAiReport({ success: false, message: res.error || 'No catalog match found. Continue by entering product details manually.' });
+        return;
       }
+      const item = res.data;
+      setTitle(item.title || '');
+      setCategory(item.category || 'Food');
+      setBrand(item.brand || '');
+      setBarcode(barcodeQuery.trim());
+      if (item.quantity && !description.trim()) setDescription(`Package size: ${item.quantity}`);
+      setAiReport({ success: true, message: `Catalog match found from ${item.source}. Verify all details and enter price, condition, and description manually.` });
+      setActiveTab('create_listing');
     } catch (e) {
       console.error('Barcode lookup failure:', e);
       setAiReport({ success: false, message: 'Could not resolve barcode data automatically.' });
     } finally {
       setIsAiLoading(false);
     }
-  };
-
-  const handlePresetScan = (code: string) => {
-    setBarcodeQuery(code);
   };
 
   // Safety & Fraud moderation analysis via Gemini Server Endpoint
@@ -2595,36 +2588,8 @@ export default function DashboardView({
               <QrCode className="w-12 h-12 text-jade-500 mx-auto mb-3" />
               <h3 className="font-sans font-semibold text-base text-ink-900 dark:text-white">Barcode Auto-Fill Scanner</h3>
               <p className="text-xs text-ink-500 dark:text-ink-400 max-w-sm mx-auto mt-1 leading-relaxed">
-                Enter or click any popular barcode below. GoodSale sends the code to Gemini AI to lookup real commercial catalog specifications.
+                Scan or enter a food-product barcode to look up real catalog data. Lookup does not set a price or invent missing details; other products can be entered manually.
               </p>
-            </div>
-
-            {/* Quick selector presets */}
-            <div className="p-4 bg-ink-50 dark:bg-ink-800/40 rounded-2xl">
-              <span className="text-xs font-bold text-ink-400 tracking-widest block mb-2 text-center">Presets Barcodes (Click to Test)</span>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <button
-                  onClick={() => handlePresetScan('194253831814')}
-                  className="p-2.5 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-xl hover:border-jade-500 transition-colors text-left"
-                >
-                  <span className="text-xs block font-bold truncate">iPhone 15 Pro Max</span>
-                  <span className="text-xs font-mono text-ink-400">194253831814</span>
-                </button>
-                <button
-                  onClick={() => handlePresetScan('195949117604')}
-                  className="p-2.5 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-xl hover:border-jade-500 transition-colors text-left"
-                >
-                  <span className="text-xs block font-bold truncate">MacBook Pro M3</span>
-                  <span className="text-xs font-mono text-ink-400">195949117604</span>
-                </button>
-                <button
-                  onClick={() => handlePresetScan('493821039823')}
-                  className="p-2.5 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-xl hover:border-jade-500 transition-colors text-left"
-                >
-                  <span className="text-xs block font-bold truncate">Bespoke Agbada Set</span>
-                  <span className="text-xs font-mono text-ink-400">493821039823</span>
-                </button>
-              </div>
             </div>
 
             <div className="flex gap-2">
@@ -2632,7 +2597,7 @@ export default function DashboardView({
                 type="text"
                 value={barcodeQuery}
                 onChange={(e) => setBarcodeQuery(e.target.value)}
-                placeholder="Enter 12 digit UPC barcode number"
+                placeholder="Enter an 8–14 digit food barcode"
                 className="flex-1 px-3 py-2.5 bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-xl focus:ring-1 focus:ring-jade-500 focus:outline-none text-ink-800 dark:text-white font-mono text-xs"
               />
               <button

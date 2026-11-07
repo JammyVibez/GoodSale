@@ -7,6 +7,17 @@ export type ActiveFlashSale = {
   discountPercent: number;
 };
 
+/** Integer-kobo conversion used at payment/configuration boundaries. */
+export function nairaToKobo(amountNaira: number): number {
+  if (!Number.isFinite(amountNaira) || amountNaira < 0) throw new Error('Amount must be a non-negative Naira value');
+  return Math.round(amountNaira * 100);
+}
+
+export function koboToNaira(amountKobo: number): number {
+  if (!Number.isSafeInteger(amountKobo) || amountKobo < 0) throw new Error('Amount must be a non-negative integer number of kobo');
+  return amountKobo / 100;
+}
+
 /** Only a server-scheduled, currently running Flash Sale changes the price. */
 export function activeFlashSale(product: Pick<Product, 'price' | 'flashSalePrice' | 'flashSaleStartsAt' | 'flashSaleEndsAt'>, now = Date.now()): ActiveFlashSale | null {
   const price = Number(product.flashSalePrice) || 0;

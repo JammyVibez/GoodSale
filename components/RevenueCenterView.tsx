@@ -40,6 +40,7 @@ import {
 import { computeEscrowFee } from '@/lib/payments/helpers';
 import { toast } from '@/lib/feedback';
 import { dbOperations, reloadFromSupabase, useDBState } from '../lib/store';
+import { resolveEntitlements } from '@/lib/entitlements';
 import {
   AD_PLACEMENTS,
   type AdPlacement,
@@ -135,10 +136,6 @@ const dateLabel = (value: string, options?: Intl.DateTimeFormatOptions) => {
     options || { day: 'numeric', month: 'short', year: 'numeric' }
   );
 };
-
-const activeSubscription = (
-  subscription: { expiresAt: string } | undefined
-) => !!subscription && new Date(subscription.expiresAt).getTime() > Date.now();
 
 function StatusPill({
   available,
@@ -373,18 +370,11 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
   const balance = wallet?.balance ?? 0;
   const premiumDurationDays = Math.max(1, Number(settings.premiumDurationDays) || 30);
 
-  // Paid membership is derived only from a server-written, unexpired
-  // subscription. Roles and identity verification never imply Verified+.
-  const isBusinessSubbed =
-    !!currentBusiness &&
-    currentBusiness.plan !== 'FREE' &&
-    activeSubscription(currentBusiness);
-  const isVerifiedPlus = activeSubscription(currentVerifiedPlus);
-  const isCurrentBusinessPlan =
-    isBusinessSubbed &&
-    !!currentBusiness &&
-    activeSubscription(currentBusiness) &&
-    currentBusiness.plan === businessPlan;
+  // Use the shared membership policy for paid access on this page too.
+  const entitlements = resolveEntitlements(db, user?.id);
+  const isBusinessSubbed = entitlements.business;
+  const isVerifiedPlus = entitlements.verifiedPlus;
+  const isCurrentBusinessPlan = isBusinessSubbed && entitlements.businessPlan === businessPlan;
 
   const fundingAvailable = !!walletStatus?.fundingAvailable;
   const payoutsAvailable = !!walletStatus?.payoutsAvailable;
@@ -868,7 +858,7 @@ export default function RevenueCenterView({ onNavigate }: RevenueCenterViewProps
       title: 'Memberships',
       value: isVerifiedPlus ? 'Verified+' : isBusinessSubbed ? 'Business' : 'Free',
       hint: isVerifiedPlus
-        ? 'Trust badge & search boost'
+        ? 'Verified+ member label & search boost'
         : isBusinessSubbed
           ? 'Business growth tools'
           : 'Upgrade your storefront',

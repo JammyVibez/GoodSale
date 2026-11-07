@@ -122,58 +122,6 @@ function getHeuristicSecurityTip(category: string, title: string) {
   };
 }
 
-// 2. Barcode Autofill Heuristics
-function getHeuristicBarcode(barcode: string) {
-  const code = barcode.trim();
-  
-  if (code === "194253831814") {
-    return {
-      title: "iPhone 15 Pro Max (256GB, Titanium Gray)",
-      category: "Mobile Phones",
-      brand: "Apple",
-      price: 1350000,
-      condition: "NEW",
-      description: "Original US-spec iPhone 15 Pro Max with 100% Battery health. 256GB Storage, pristine Natural Titanium frame. Comes with Apple Care warranty and original high-speed charging cable. Secured via GoodSale Escrow.",
-      warranty: "1 Year Apple Manufacturer Warranty",
-      returnPolicy: "48 Hours GoodSale Escrow return window"
-    };
-  } else if (code === "195949117604") {
-    return {
-      title: "MacBook Pro 14\" M3 (8GB RAM, 512GB SSD, Space Gray)",
-      category: "Computing",
-      brand: "Apple",
-      price: 1850000,
-      condition: "NEW",
-      description: "Brand new sealed Space Gray 14-inch Apple MacBook Pro M3 chip. Features 8-core CPU, 10-core GPU, and gorgeous Liquid Retina XDR display. Battery cycle count 0. Shipped via secure GoodDispatch delivery partners.",
-      warranty: "12 Months Apple Nigeria Warranty Cover",
-      returnPolicy: "Return within 3 days if seal is broken"
-    };
-  } else if (code === "493821039823") {
-    return {
-      title: "Premium Handwoven Senator Agbada Set (Royal Blue)",
-      category: "Fashion",
-      brand: "Traditional Handcrafted",
-      price: 85000,
-      condition: "NEW",
-      description: "Exquisitely styled royal blue Senator style Agbada outfit. Crafted from premium cashmere fabric with gold breast embroidery details. Perfect for wedding ceremonies, coronations, and high-society Nigerian celebrations.",
-      warranty: "Lifetime custom tailoring seam warranty",
-      returnPolicy: "Free exchange within 48 hours if size mismatch occurs"
-    };
-  }
-
-  // Default fallback barcode data
-  return {
-    title: `Scanned Catalog Item (UPC #${code})`,
-    category: "Electronics",
-    brand: "Generic Brand",
-    price: 45000,
-    condition: "NEW",
-    description: `Pre-filled specification details for commercial item UPC barcode #${code}. Secure checkout and door-to-door GoodDispatch delivery applicable.`,
-    warranty: "6 Months local merchant warranty",
-    returnPolicy: "48 hours inspect-to-release escrow policy"
-  };
-}
-
 // 3. Moderate / Safety Check Heuristics
 function getHeuristicModeration(title: string, description: string, price: number) {
   const text = `${title} ${description}`.toLowerCase();
@@ -293,66 +241,46 @@ Deliver a highly tailored response containing:
       });
     }
 
-    // ACTION 2: BARCODE AUTOFILL LOOKUP
+    // Barcode lookup uses a real food-product catalog. Unknown or unsupported
+    // products remain manual-entry rather than receiving invented attributes.
     if (action === "barcode") {
-      const barcode = clip(payload.barcode, 64);
-      if (!client) {
+      const barcode = clip(payload.barcode, 32).trim();
+      if (!/^[0-9]{8,14}$/.test(barcode)) {
+        return NextResponse.json({ success: false, error: "Enter a valid 8–14 digit barcode." }, { status: 400 });
+      }
+      try {
+        const url = new URL(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}`);
+        url.searchParams.set("fields", "code,product_name,brands,categories,quantity,image_front_url");
+        const response = await fetch(url, {
+          headers: { "User-Agent": "GoodSale/1.0 (support@goodsale.ng)" },
+          cache: "no-store",
+          signal: AbortSignal.timeout(7000),
+        });
+        if (!response.ok) {
+          return NextResponse.json({ success: false, error: "Product catalog lookup is temporarily unavailable. Enter product details manually." }, { status: 502 });
+        }
+        const result = await response.json().catch(() => null);
+        const product = result?.status === 1 ? result.product : null;
+        const title = String(product?.product_name || "").trim();
+        if (!title) {
+          return NextResponse.json({ success: false, error: "No food product was found for this barcode. Enter product details manually." }, { status: 404 });
+        }
         return NextResponse.json({
           success: true,
-          data: getHeuristicBarcode(barcode)
+          data: {
+            title,
+            brand: String(product?.brands || "").split(",")[0].trim(),
+            category: String(product?.categories || "Food").split(",")[0].trim() || "Food",
+            barcode,
+            imageUrl: product?.image_front_url || undefined,
+            quantity: String(product?.quantity || ""),
+            source: "Open Food Facts",
+          },
         });
+      } catch (error) {
+        logger.warn("Barcode catalog lookup unavailable", { error: String(error) });
+        return NextResponse.json({ success: false, error: "Product catalog lookup failed. Enter product details manually." }, { status: 502 });
       }
-
-      try {
-        const prompt = `Identify the commercial item represented by the UPC barcode: "${barcode}".
-Return the metadata as a JSON object with:
-1. "title": descriptive title of the specific product
-2. "category": one of: "Mobile Phones", "Computing", "Fashion", "Automotive", "Electronics", "General"
-3. "brand": product manufacturer brand
-4. "price": estimate typical price in Nigerian Naira (number)
-5. "condition": "NEW"
-6. "description": detailed high-fidelity commercial specifications and description
-7. "warranty": brief description of warranty options
-8. "returnPolicy": description of buyer satisfaction guarantee or return windows
-
-If the barcode is unfamiliar, make up a realistic product of high quality fitting a standard UPC format.`;
-
-        const response = await client.models.generateContent({
-          model: "gemini-3.5-flash",
-          contents: prompt,
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                title: { type: Type.STRING },
-                category: { type: Type.STRING },
-                brand: { type: Type.STRING },
-                price: { type: Type.NUMBER },
-                condition: { type: Type.STRING },
-                description: { type: Type.STRING },
-                warranty: { type: Type.STRING },
-                returnPolicy: { type: Type.STRING }
-              },
-              required: ["title", "category", "brand", "price", "condition", "description"]
-            }
-          }
-        });
-
-        if (response.text) {
-          return NextResponse.json({
-            success: true,
-            data: JSON.parse(response.text.trim())
-          });
-        }
-      } catch (err) {
-        console.error("Gemini barcode query failed, using fallback:", err);
-      }
-
-      return NextResponse.json({
-        success: true,
-        data: getHeuristicBarcode(barcode)
-      });
     }
 
     // ACTION 3: AI SAFETY MODERATION

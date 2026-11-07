@@ -137,7 +137,7 @@ export default function SubscriptionCheckoutDialog({
       const handler = window.PaystackPop.setup({
         key: payload.publicKey,
         email: payload.email || email,
-        amount: Math.round(Number(payload.amount) * 100),
+        amount: Number(payload.amountKobo),
         currency: payload.currency || 'NGN',
         ref: payload.reference,
         metadata: {

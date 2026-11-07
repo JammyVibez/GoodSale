@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
     const recentCutoff = new Date(Date.now() - 15 * 60_000).toISOString();
     const { data: recent } = await admin
       .from('premium_subscription_payments')
-      .select('reference,amount,currency,plan_code')
+      .select('reference,amount,amount_kobo,duration_days,currency,plan_code')
       .eq('user_id', profileId)
       .eq('product', product)
       .eq('plan_code', planCode)
@@ -105,15 +105,16 @@ export async function POST(req: NextRequest) {
 
     if (
       recent &&
-      Number(recent.amount) === pricing.amount &&
+      Number(recent.amount_kobo ?? Math.round(Number(recent.amount) * 100)) === pricing.amountKobo &&
       String(recent.currency) === 'NGN'
     ) {
       return NextResponse.json({
         success: true,
         reference: recent.reference,
         amount: pricing.amount,
+        amountKobo: pricing.amountKobo,
         currency: 'NGN',
-        durationDays: pricing.durationDays,
+        durationDays: Number(recent.duration_days || pricing.durationDays),
         email: user.email,
         publicKey: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY,
         product,
@@ -131,11 +132,13 @@ export async function POST(req: NextRequest) {
         plan_code: planCode,
         reference,
         amount: pricing.amount,
+        amount_kobo: pricing.amountKobo,
+        duration_days: pricing.durationDays,
         currency: 'NGN',
         status: 'PENDING',
         provider: 'paystack',
       })
-      .select('id,reference,amount,currency,plan_code')
+      .select('id,reference,amount,amount_kobo,duration_days,currency,plan_code')
       .single();
 
     if (error || !intent) {
@@ -150,8 +153,9 @@ export async function POST(req: NextRequest) {
       success: true,
       reference,
       amount: pricing.amount,
+      amountKobo: pricing.amountKobo,
       currency: 'NGN',
-      durationDays: pricing.durationDays,
+      durationDays: Number(intent.duration_days || pricing.durationDays),
       email: user.email,
       publicKey: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY,
       product,

@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { premiumPaymentReference, resolvePremiumPrice } from '../../lib/premium/server';
+import { koboToNaira, nairaToKobo } from '../../lib/productPricing';
 
 const settings = {
-  verified_plus_price: 10_000,
+  verified_plus_price: 2_500,
   sub_pro_price: 15_000,
-  sub_premium_price: 35_000,
+  sub_premium_price: 12_500,
   sub_enterprise_price: 85_000,
   premium_duration_days: 30,
 };
@@ -12,7 +13,8 @@ const settings = {
 describe('premium pricing', () => {
   it('uses the admin-configured Verified+ price and duration', () => {
     expect(resolvePremiumPrice(settings, 'VERIFIED_PLUS')).toEqual({
-      amount: 10_000,
+      amount: 2_500,
+      amountKobo: 250_000,
       durationDays: 30,
     });
   });
@@ -20,14 +22,17 @@ describe('premium pricing', () => {
   it('resolves each Business plan from the settings row', () => {
     expect(resolvePremiumPrice(settings, 'BUSINESS', 'PRO')).toEqual({
       amount: 15_000,
+      amountKobo: 1_500_000,
       durationDays: 30,
     });
     expect(resolvePremiumPrice(settings, 'BUSINESS', 'PREMIUM')).toEqual({
-      amount: 35_000,
+      amount: 12_500,
+      amountKobo: 1_250_000,
       durationDays: 30,
     });
     expect(resolvePremiumPrice(settings, 'BUSINESS', 'ENTERPRISE')).toEqual({
       amount: 85_000,
+      amountKobo: 8_500_000,
       durationDays: 30,
     });
   });
@@ -39,6 +44,13 @@ describe('premium pricing', () => {
     expect(resolvePremiumPrice({ ...settings, verified_plus_price: 0 }, 'VERIFIED_PLUS')).toEqual({
       error: 'This membership is not available for purchase right now',
     });
+  });
+
+  it('converts Naira and kobo using integer provider amounts', () => {
+    expect(nairaToKobo(2_500)).toBe(250_000);
+    expect(nairaToKobo(12.34)).toBe(1_234);
+    expect(koboToNaira(1_234)).toBe(12.34);
+    expect(() => koboToNaira(1.5)).toThrow('integer number of kobo');
   });
 
   it('creates distinct provider-safe premium references', () => {

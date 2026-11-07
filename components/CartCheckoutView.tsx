@@ -28,6 +28,7 @@ import {
   formatDistanceKm,
 } from '@/lib/geo';
 import { computePlatformFee } from '@/lib/fees';
+import { orderPaymentDue } from '@/lib/payments/helpers';
 import { effectiveProductPrice } from '@/lib/productPricing';
 import { isVerifiedSeller } from '@/lib/verification';
 import { recordSponsoredConversion } from '@/lib/ads/conversion';
@@ -561,6 +562,10 @@ export default function CartCheckoutView({
       return;
     }
     payAmount = verified.orders.reduce((sum, order) => sum + order.totalAmount, 0) || payAmount;
+    // A partial checkout charges the deposit now; the balance is a later payment.
+    if (pm === 'partial') {
+      payAmount = Math.round(payAmount * ((currentCheckoutItem?.partialPercent || 30) / 100));
+    }
 
     if (needsPaystack) {
       setPayingExistingOrder(false);
@@ -594,7 +599,15 @@ export default function CartCheckoutView({
   const handlePayPendingOrder = (order: Order) => {
     setPayingExistingOrder(true);
     setPendingPayOrderIds([order.id]);
-    setPendingPayAmount(order.totalAmount);
+    setPendingPayAmount(
+      orderPaymentDue({
+        payment_method: order.paymentMethod,
+        status: order.status,
+        total_amount: order.totalAmount,
+        deposit_percent: order.depositPercent,
+        balance_remaining: order.balanceRemaining,
+      }).amount
+    );
     setShowPaystackModal(true);
   };
 

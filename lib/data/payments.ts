@@ -3,6 +3,7 @@ import { logger } from '@/lib/logger';
 import {
   parseOrderIdFromReference,
   amountsMatchNaira,
+  orderPaymentDue,
   isPayableOrderStatus,
   isAlreadyPaidStatus,
   isTerminalOrderStatus,
@@ -56,8 +57,11 @@ export async function reconcilePaystackPayment(opts: {
 
   // Multi-order: verify sum when amount provided
   if (orderIdList.length > 1 && opts.amountKobo != null && opts.amountKobo > 0) {
-    const { data: rows } = await admin.from('orders').select('id, total_amount, status').in('id', orderIdList);
-    const sum = (rows || []).reduce((acc, r) => acc + Number(r.total_amount || 0), 0);
+    const { data: rows } = await admin
+      .from('orders')
+      .select('id, total_amount, status, payment_method, deposit_percent, balance_remaining')
+      .in('id', orderIdList);
+    const sum = (rows || []).reduce((acc, r) => acc + orderPaymentDue(r).amount, 0);
     if (!amountsMatchNaira(sum, opts.amountKobo)) {
       return { reconciled: false, reason: 'amount_mismatch' as const, orderIds: orderIdList };
     }
@@ -67,7 +71,7 @@ export async function reconcilePaystackPayment(opts: {
     if (orderIdList.length === 1 && opts.amountKobo != null && opts.amountKobo > 0) {
       const { data: row } = await admin
         .from('orders')
-        .select('total_amount, status')
+        .select('total_amount, status, payment_method, deposit_percent, balance_remaining')
         .eq('id', orderId)
         .maybeSingle();
       if (!row) {
@@ -87,7 +91,7 @@ export async function reconcilePaystackPayment(opts: {
       }
       if (
         !isAlreadyPaidStatus(String(row.status)) &&
-        !amountsMatchNaira(Number(row.total_amount), opts.amountKobo)
+        !amountsMatchNaira(orderPaymentDue(row).amount, opts.amountKobo)
       ) {
         results.push({ orderId, ok: false, error: 'amount_mismatch' });
         continue;

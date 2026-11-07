@@ -137,6 +137,8 @@ const VERIFY_RPCS = [
   'purchase_sponsored_campaign_v2',
   'record_sponsored_ad_event_v2',
   'run_premium_jobs',
+  'create_marketplace_order',
+  'expire_unpaid_order_reservations',
 ];
 
 /** Tables the schema is expected to create (mirrors supabase/schema.sql). */
@@ -508,24 +510,84 @@ async function verifyPremiumRpcBehaviour(client) {
     ).rows[0];
     if (live?.status !== 'ACTIVE') throw new Error(`Approved Flash Sale is ${live?.status}, expected ACTIVE`);
 
+    console.log('  OK      credits issued, balance and redemption');
+    console.log('  OK      featured promotion purchase with credits');
+    console.log('  OK      Flash Sale rejection refunds wallet and credits');
+    console.log('  OK      Flash Sale approval and activation jobs');
+
+    const buyer = (
+      await client.query("select id from public.profiles where id <> $1 and role not in ('ADMIN','SUPER_ADMIN') order by id limit 1", [product.seller_id])
+    ).rows[0];
+    if (!buyer) throw new Error('No buyer profile for atomic marketplace order test');
+    await client.query("select set_config('request.jwt.claim.sub', $1, true)", [
+      (await client.query('select auth_id from public.profiles where id = $1', [buyer.id])).rows[0].auth_id,
+    ]);
+    await client.query(
+      `update public.featured_listings set quantity_limit = 1, quantity_reserved = 0, quantity_sold = 0
+        where id = $1`,
+      [Number(approved.promotionId)]
+    );
+    await client.query("update public.products set quantity = greatest(quantity, 2), stock_status = 'IN_STOCK' where id = $1", [product.id]);
+    const stockBeforeOrder = Number((await client.query('select quantity from public.products where id = $1', [product.id])).rows[0].quantity);
+    const buyerPoints = Number((await client.query('select good_points from public.profiles where id = $1', [buyer.id])).rows[0].good_points);
+    const orderPayload = {
+      product_id: product.id,
+      item_quantity: 1,
+      status: 'PENDING',
+      payment_method: 'ESCROW',
+      delivery_method: 'PICKUP',
+      delivery_address: 'Test Address',
+      delivery_city: 'Lagos',
+      delivery_state: 'Lagos',
+      delivery_pin: '123456',
+      qr_code_token: `QR-TEST-${stamp}`,
+      good_points_used: 0,
+      has_good_sale_protect: false,
+    };
+    const createdOrder = (await client.query(
+      'select public.create_marketplace_order($1::jsonb, $2) as result',
+      [JSON.stringify(orderPayload), salePrice]
+    )).rows[0].result;
+    if (Number(createdOrder.total_amount) !== salePrice) throw new Error('Atomic order did not use the approved Flash Sale price');
+    const stockAfterReserve = Number((await client.query('select quantity from public.products where id = $1', [product.id])).rows[0].quantity);
+    if (stockAfterReserve !== stockBeforeOrder - 1) throw new Error('Order did not atomically reserve listing stock');
+    const reservedSale = (await client.query('select quantity_reserved, quantity_sold from public.featured_listings where id = $1', [Number(approved.promotionId)])).rows[0];
+    if (Number(reservedSale.quantity_reserved) !== 1) throw new Error('Flash Sale campaign quantity was not reserved');
+    let capRejected = false;
+    try {
+      await client.query('select public.create_marketplace_order($1::jsonb, $2)', [JSON.stringify(orderPayload), salePrice]);
+    } catch (error) {
+      if (!String(error.message).includes('Flash Sale does not have enough campaign quantity')) throw error;
+      capRejected = true;
+    }
+    if (!capRejected) throw new Error('Flash Sale campaign limit did not reject a second unit');
+    await client.query("update public.orders set status = 'CANCELLED' where id = $1", [Number(createdOrder.id)]);
+    const releasedSale = (await client.query('select quantity_reserved, quantity_sold from public.featured_listings where id = $1', [Number(approved.promotionId)])).rows[0];
+    const releasedStock = Number((await client.query('select quantity from public.products where id = $1', [product.id])).rows[0].quantity);
+    if (Number(releasedSale.quantity_reserved) !== 0 || releasedStock !== stockBeforeOrder) throw new Error('Pending cancellation did not release reserved product and campaign stock');
+    const paidOrder = (await client.query(
+      'select public.create_marketplace_order($1::jsonb, $2) as result',
+      [JSON.stringify(orderPayload), salePrice]
+    )).rows[0].result;
+    await client.query("update public.orders set status = 'PAID_ESCROW' where id = $1", [Number(paidOrder.id)]);
+    const soldSale = (await client.query('select quantity_reserved, quantity_sold from public.featured_listings where id = $1', [Number(approved.promotionId)])).rows[0];
+    if (Number(soldSale.quantity_reserved) !== 0 || Number(soldSale.quantity_sold) !== 1) throw new Error('Payment did not commit the Flash Sale unit');
+    await client.query("update public.orders set status = 'CANCELLED' where id = $1", [Number(paidOrder.id)]);
+    const saleAfterCancel = (await client.query('select quantity_reserved, quantity_sold from public.featured_listings where id = $1', [Number(approved.promotionId)])).rows[0];
+    if (Number(saleAfterCancel.quantity_sold) !== 1) throw new Error('Paid cancellation incorrectly restocked the Flash Sale cap');
+    const pointsAfter = Number((await client.query('select good_points from public.profiles where id = $1', [buyer.id])).rows[0].good_points);
+    if (pointsAfter !== buyerPoints) throw new Error('Order creation changed GoodPoints when none were requested');
+    console.log('  OK      atomic order pricing, stock reserve/release, Flash Sale cap/payment lifecycle');
+
     await client.query(
       `update public.featured_listings set starts_at = now() - interval '2 days', ends_at = now() - interval '1 minute'
         where id = $1`,
       [Number(approved.promotionId)]
     );
     await client.query('select public.run_premium_jobs()');
-    const expired = (
-      await client.query(
-        'select status from public.featured_listings where id = $1',
-        [Number(approved.promotionId)]
-      )
-    ).rows[0];
+    const expired = (await client.query('select status from public.featured_listings where id = $1', [Number(approved.promotionId)])).rows[0];
     if (expired?.status !== 'EXPIRED') throw new Error(`Expired Flash Sale is ${expired?.status}, expected EXPIRED`);
-
-    console.log('  OK      credits issued, balance and redemption');
-    console.log('  OK      featured promotion purchase with credits');
-    console.log('  OK      Flash Sale rejection refunds wallet and credits');
-    console.log('  OK      Flash Sale approval, activation and expiry jobs');
+    console.log('  OK      Flash Sale expiry job');
 
     const campaign = (
       await client.query(

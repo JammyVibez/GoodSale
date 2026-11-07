@@ -453,6 +453,10 @@ export async function applyQuoteToOrders(
 
     const oldFee = Number(order.delivery_fee || 0);
     const newTotal = Math.max(0, Number(order.total_amount || 0) - oldFee + fee);
+    const isPartial = String(order.payment_method || '').toUpperCase() === 'PARTIAL';
+    const depositPercent = Number(order.deposit_percent) || 30;
+    // Nothing is paid yet at this point: only the expected deposit changes.
+    const depositAmount = isPartial ? Math.round(newTotal * depositPercent / 100) : null;
     const snapshot =
       fee === groupFee
         ? breakdown
@@ -462,6 +466,9 @@ export async function applyQuoteToOrders(
       .update({
         delivery_fee: fee,
         total_amount: newTotal,
+        ...(isPartial ? {
+          balance_remaining: newTotal - (depositAmount || 0),
+        } : {}),
         shipping_quote_id: quoteId,
         shipping_snapshot: snapshot,
         shipping_rule_id: breakdown.ruleId ?? null,
@@ -479,7 +486,9 @@ export async function applyQuoteToOrders(
       .maybeSingle();
     if (escrow && !escrow.is_released && !escrow.is_refunded) {
       const escrowTotal = Number(escrow.held_amount || 0);
-      if (escrowTotal > 0) {
+      if (isPartial) {
+        await client.from('escrows').update({ held_amount: depositAmount || 0 }).eq('id', escrow.id);
+      } else if (escrowTotal > 0) {
         const updatedHeld = Math.max(0, escrowTotal - oldFee + fee);
         await client.from('escrows').update({ held_amount: updatedHeld }).eq('id', escrow.id);
       }

@@ -312,6 +312,12 @@ export interface Order {
   productTitle: string;
   productImage: string;
   totalAmount: number;
+  itemQuantity?: number;
+  flashSaleId?: number;
+  inventoryReserved?: boolean;
+  inventoryCommitted?: boolean;
+  flashSaleCounted?: boolean;
+  expectedUnitPrice?: number;
   discountAmount: number;
   deliveryFee: number;
   taxAmount: number;
@@ -1623,6 +1629,9 @@ export interface BusinessSubscription {
   userId: number;
   plan: 'FREE' | 'PRO' | 'PREMIUM' | 'ENTERPRISE';
   expiresAt: string;
+  status?: 'PENDING' | 'ACTIVE' | 'EXPIRED' | 'CANCELLED' | 'PAYMENT_FAILED' | 'SUSPENDED';
+  autoRenew?: boolean;
+  cancelledAt?: string;
   createdAt: string;
 }
 
@@ -1630,6 +1639,9 @@ export interface VerifiedPlusSubscription {
   id: number;
   userId: number;
   expiresAt: string;
+  status?: 'PENDING' | 'ACTIVE' | 'EXPIRED' | 'CANCELLED' | 'PAYMENT_FAILED' | 'SUSPENDED';
+  autoRenew?: boolean;
+  cancelledAt?: string;
   createdAt: string;
 }
 

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { logger } from '@/lib/logger';
+import { koboToNaira, nairaToKobo } from '@/lib/productPricing';
 
 export type PremiumProduct = 'VERIFIED_PLUS' | 'BUSINESS';
 export type BusinessPlanCode = 'PRO' | 'PREMIUM' | 'ENTERPRISE';
@@ -9,6 +10,7 @@ export const BUSINESS_PLAN_CODES: BusinessPlanCode[] = ['PRO', 'PREMIUM', 'ENTER
 
 export type PremiumPrice = {
   amount: number;
+  amountKobo: number;
   durationDays: number;
 };
 
@@ -28,6 +30,7 @@ type PaystackCharge = {
   status?: string;
   reference?: string;
   amount?: number;
+  amountKobo?: number;
   currency?: string;
   metadata?: Record<string, unknown> | null;
 };
@@ -50,7 +53,7 @@ export function resolvePremiumPrice(
   let amount = 0;
 
   if (product === 'VERIFIED_PLUS') {
-    amount = Number(settings?.verified_plus_price ?? 10000);
+    amount = Number(settings?.verified_plus_price ?? 2500);
   } else {
     const plan = String(planCode || '').toUpperCase() as BusinessPlanCode;
     if (!BUSINESS_PLAN_CODES.includes(plan)) {
@@ -60,7 +63,7 @@ export function resolvePremiumPrice(
       plan === 'PRO'
         ? Number(settings?.sub_pro_price ?? 15000)
         : plan === 'PREMIUM'
-          ? Number(settings?.sub_premium_price ?? 35000)
+          ? Number(settings?.sub_premium_price ?? 12500)
           : Number(settings?.sub_enterprise_price ?? 85000);
   }
 
@@ -68,7 +71,8 @@ export function resolvePremiumPrice(
     return { error: 'This membership is not available for purchase right now' };
   }
 
-  return { amount, durationDays };
+  const amountKobo = nairaToKobo(amount);
+  return { amount: koboToNaira(amountKobo), amountKobo, durationDays };
 }
 
 export async function loadPremiumPrice(
@@ -129,7 +133,7 @@ export async function activateVerifiedPremiumPayment(
   const { data: payment, error } = await admin
     .from('premium_subscription_payments')
     .select(
-      'id,user_id,product,plan_code,reference,amount,currency,status,provider_reference,expires_at'
+      'id,user_id,product,plan_code,reference,amount,amount_kobo,currency,status,provider_reference,expires_at'
     )
     .eq('reference', reference)
     .maybeSingle();
@@ -167,10 +171,11 @@ export async function activateVerifiedPremiumPayment(
   if (!providerReference || providerReference !== reference) {
     return { success: false, error: 'Payment reference mismatch', status: 400 };
   }
-  if (Number(verified.amount) !== Math.round(Number(payment.amount) * 100)) {
+  const storedAmountKobo = Number(payment.amount_kobo ?? Math.round(Number(payment.amount) * 100));
+  if (Number(verified.amount) !== storedAmountKobo) {
     logger.warn('Premium payment amount mismatch', {
       reference,
-      expected: Math.round(Number(payment.amount) * 100),
+      expected: storedAmountKobo,
       actual: verified.amount,
     });
     return { success: false, error: 'Payment amount does not match the membership price', status: 400 };

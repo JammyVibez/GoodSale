@@ -645,6 +645,10 @@ export default function PremiumCheckout({
       const verified = await dbOperations.applyVerifiedShipping(fresh.quoteId, created.map((order) => order.id));
       if ('error' in verified) throw new Error(verified.error || 'Shipping could not be verified.');
       amount = verified.orders.reduce((sum, order) => sum + order.totalAmount, 0) || amount;
+      // A partial checkout charges the deposit now; the balance is a later payment.
+      if (methodForPayment === 'partial') {
+        amount = Math.round(amount * ((items[0]?.product.partialPercent || 30) / 100));
+      }
 
       const ordersWithIds = created.map((order) => ({
         ...order,

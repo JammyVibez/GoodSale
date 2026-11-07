@@ -779,6 +779,11 @@ export const dbOperations = {
       productTitle: product.title,
       productImage: product.images[0],
       totalAmount,
+      itemQuantity: qty,
+      expectedUnitPrice: effectiveProductPrice(product),
+      inventoryReserved: true,
+      inventoryCommitted: false,
+      flashSaleCounted: false,
       discountAmount: pointsDiscount,
       deliveryFee,
       taxAmount,
@@ -903,31 +908,6 @@ export const dbOperations = {
       });
     }
 
-    // Reduce product quantity and derive the new availability status.
-    product.quantity -= qty;
-    if (product.quantity <= 0) {
-      product.quantity = 0;
-      product.stockStatus = 'SOLD';
-    } else if (product.quantity <= 5) {
-      product.stockStatus = 'LOW_STOCK';
-    } else if (product.stockStatus === 'LOW_STOCK') {
-      product.stockStatus = 'IN_STOCK';
-    }
-
-    if (notificationAllowed('stock') && (product.stockStatus === 'SOLD' || product.stockStatus === 'LOW_STOCK')) {
-      state.notifications.push({
-        id: state.notifications.length + 1,
-        userId: product.sellerId,
-        title: product.stockStatus === 'SOLD' ? 'Listing sold out' : 'Low stock warning',
-        message: product.stockStatus === 'SOLD'
-          ? `"${product.title}" is now sold out and hidden from purchase until you restock.`
-          : `"${product.title}" has ${product.quantity} unit${product.quantity === 1 ? '' : 's'} left. Restock to keep it visible.`,
-        type: 'STOCK',
-        isRead: false,
-        createdAt: new Date().toISOString(),
-      });
-    }
-
     // Auto-create Delivery Job if using GoodDispatch network
     if (deliveryMethod === 'GOODSALE_PARTNER') {
       const commissionPercent = state.revenueSettings.deliveryCommissionPercentage;
@@ -1019,7 +999,12 @@ export const dbOperations = {
     const client = createClient();
     if (client) {
       try {
-        const saved = await insertOrderWithEscrow(client, newOrder, totalAmount);
+        const saved = await insertOrderWithEscrow(
+          client,
+          newOrder,
+          qty,
+          effectiveProductPrice(product)
+        );
         const oi = state.orders.findIndex((o) => o.id === newOrder.id);
         if (oi >= 0) state.orders[oi] = { ...newOrder, ...saved, id: saved.id };
         const ei = state.escrows.findIndex((e) => e.orderId === newOrder.id);
@@ -1044,6 +1029,8 @@ export const dbOperations = {
         return { ...newOrder, ...saved, id: saved.id };
       } catch (err) {
         console.error('Failed to persist order:', err);
+        await reloadFromSupabase();
+        return null;
       }
     }
     return newOrder;
@@ -1764,7 +1751,6 @@ export const dbOperations = {
       const biz = state.businesses.find(b => b.ownerId === user.id);
       if (biz) biz.isVerified = true;
 
-      user.trustScore = 100;
       user.goodPoints += 200;
 
       state.goodPoints.push({
@@ -1779,7 +1765,7 @@ export const dbOperations = {
         id: state.notifications.length + 1,
         userId: user.id,
         title: 'Identity Verification Approved!',
-        message: `Congratulations! Your identity has been verified as ${resolvedRole}. You received a gold trust badge and 200 GoodPoints!`,
+        message: `Congratulations! Your ${resolvedRole === UserRole.VERIFIED_BUSINESS ? 'business' : 'identity'} verification was approved. Your verification badge is active, and you received 200 GoodPoints. Verification is independent of paid membership and Trust Score.`,
         type: 'VERIFICATION',
         isRead: false,
         createdAt: new Date().toISOString(),
@@ -3766,7 +3752,6 @@ export const dbOperations = {
     const user = state.users.find((u) => u.id === userId);
     if (!user) return { error: 'User not found' };
     user.isSuspended = suspended;
-    if (suspended) user.trustScore = Math.min(user.trustScore, 20);
     dbOperations.addAuditLog(
       state.currentUser!.id,
       suspended ? 'ADMIN_SUSPEND_USER' : 'ADMIN_UNSUSPEND_USER',
@@ -3789,10 +3774,7 @@ export const dbOperations = {
 
     const client = createClient();
     if (client) {
-      await client.from('profiles').update({
-        trust_score: user.trustScore,
-        is_suspended: suspended,
-      }).eq('id', userId);
+      await client.from('profiles').update({ is_suspended: suspended }).eq('id', userId);
       await reloadFromSupabase();
     }
     return { success: true, user };

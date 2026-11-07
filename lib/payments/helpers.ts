@@ -57,3 +57,36 @@ export function isAlreadyPaidStatus(status: string): boolean {
 export function isTerminalOrderStatus(status: string): boolean {
   return ['DELIVERED_SUCCESS', 'REFUNDED', 'CANCELLED'].includes(status);
 }
+
+export interface OrderPaymentDue {
+  /** Naira the buyer must pay right now. */
+  amount: number;
+  /** Which part of a partial-payment order this charge settles. */
+  kind: 'FULL' | 'DEPOSIT' | 'BALANCE';
+}
+
+/**
+ * Amount a buyer owes for the next payment on an order. A PARTIAL order pays a
+ * deposit first and the remaining balance later; every other method is paid in
+ * full once. Kept pure so checkout and server reconciliation agree.
+ */
+export function orderPaymentDue(order: {
+  payment_method?: string | null;
+  status?: string | null;
+  total_amount?: number | string | null;
+  deposit_percent?: number | string | null;
+  balance_remaining?: number | string | null;
+}): OrderPaymentDue {
+  const total = Math.max(0, Number(order.total_amount) || 0);
+  const method = String(order.payment_method || '').toUpperCase();
+  const status = String(order.status || '').toUpperCase();
+  if (method !== 'PARTIAL') return { amount: total, kind: 'FULL' };
+  if (status === 'PARTIAL_DEPOSIT_PAID') {
+    const explicit = order.balance_remaining != null ? Number(order.balance_remaining) : NaN;
+    if (Number.isFinite(explicit)) return { amount: Math.max(0, explicit), kind: 'BALANCE' };
+    const percent = Math.min(100, Math.max(1, Number(order.deposit_percent) || 30));
+    return { amount: Math.max(0, total - Math.round((total * percent) / 100)), kind: 'BALANCE' };
+  }
+  const percent = Math.min(100, Math.max(1, Number(order.deposit_percent) || 30));
+  return { amount: Math.round((total * percent) / 100), kind: 'DEPOSIT' };
+}

@@ -27,8 +27,13 @@ async function run(req: NextRequest) {
     logger.error('Premium lifecycle jobs failed', { error: error.message });
     return NextResponse.json({ success: false, error: 'Premium lifecycle jobs failed' }, { status: 500 });
   }
+  const { data: expiredReservations, error: reservationError } = await admin.rpc('expire_unpaid_order_reservations');
+  if (reservationError) {
+    logger.error('Unpaid order reservation expiry failed', { error: reservationError.message });
+    return NextResponse.json({ success: false, error: 'Order inventory reservations could not be expired' }, { status: 500 });
+  }
 
-  return NextResponse.json({ success: true, jobs: data });
+  return NextResponse.json({ success: true, jobs: { ...data, unpaidInventoryReservationsReleased: expiredReservations } });
 }
 
 /** POST /api/internal/premium-jobs — scheduler entry point (secret protected). */

@@ -7,6 +7,7 @@ import {
   isPayableOrderStatus,
   isAlreadyPaidStatus,
   isTerminalOrderStatus,
+  orderPaymentDue,
 } from '../../lib/payments/helpers';
 
 describe('Paystack reference helpers', () => {
@@ -48,6 +49,46 @@ describe('escrow fee math', () => {
     const mid = computeEscrowFee(1_000_000, { pct: 1.5, min: 100, max: 15000, deliveryFee: 6000 });
     expect(mid.fee).toBe(15000);
     expect(mid.payout).toBe(1_000_000 - 6000 - 15000);
+  });
+});
+
+describe('order payment due', () => {
+  it('charges the full total once for non-partial methods', () => {
+    expect(
+      orderPaymentDue({ payment_method: 'ESCROW', status: 'PENDING', total_amount: 10_000 })
+    ).toEqual({ amount: 10_000, kind: 'FULL' });
+  });
+
+  it('charges the deposit first, then the remaining balance', () => {
+    expect(
+      orderPaymentDue({
+        payment_method: 'PARTIAL',
+        status: 'PENDING',
+        total_amount: 10_000,
+        deposit_percent: 30,
+      })
+    ).toEqual({ amount: 3_000, kind: 'DEPOSIT' });
+
+    expect(
+      orderPaymentDue({
+        payment_method: 'PARTIAL',
+        status: 'PARTIAL_DEPOSIT_PAID',
+        total_amount: 10_000,
+        deposit_percent: 30,
+        balance_remaining: 7_000,
+      })
+    ).toEqual({ amount: 7_000, kind: 'BALANCE' });
+  });
+
+  it('never charges a negative balance', () => {
+    expect(
+      orderPaymentDue({
+        payment_method: 'PARTIAL',
+        status: 'PARTIAL_DEPOSIT_PAID',
+        total_amount: 10_000,
+        balance_remaining: -50,
+      }).amount
+    ).toBe(0);
   });
 });
 

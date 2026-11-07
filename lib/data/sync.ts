@@ -366,26 +366,22 @@ export async function upsertProduct(client: SupabaseClient, product: Parameters<
 export async function insertOrderWithEscrow(
   client: SupabaseClient,
   order: Parameters<typeof M.orderToRow>[0],
-  heldAmount: number
+  quantity: number,
+  expectedUnitPrice: number
 ) {
   const row = M.orderToRow(order);
-  if (!order.id || order.id < 0) delete row.id;
-  const { data: orderData, error: orderError } = await client
-    .from('orders')
-    .insert(row)
-    .select('*')
-    .single();
-  if (orderError) throw orderError;
-
-  const mapped = M.mapOrder(orderData as Record<string, unknown>);
-  const { error: escrowError } = await client.from('escrows').insert({
-    order_id: mapped.id,
-    held_amount: heldAmount,
-    is_released: false,
-    is_refunded: false,
+  delete row.id;
+  delete row.order_number;
+  row.item_quantity = quantity;
+  row.inventory_reserved = true;
+  row.inventory_committed = false;
+  row.flash_sale_counted = false;
+  const { data, error } = await client.rpc('create_marketplace_order', {
+    p_order: row,
+    p_expected_unit_price: expectedUnitPrice,
   });
-  if (escrowError) throw escrowError;
-  return mapped;
+  if (error) throw error;
+  return M.mapOrder(data as Record<string, unknown>);
 }
 
 export async function insertMessage(
