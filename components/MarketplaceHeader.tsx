@@ -11,7 +11,7 @@
  */
 import React, { useMemo } from 'react';
 import {
-  Search, ShoppingCart, Heart, MapPin, X, ChevronDown,
+  Search, ShoppingCart, Heart, MapPin, X, ChevronDown, MessageSquare,
   User as UserIcon,
 } from 'lucide-react';
 import { useDBState } from '../lib/store';
@@ -19,6 +19,7 @@ import { SmartAvatar } from './ui/SmartImage';
 import Logo from './LogoIcon';
 import NotificationMenu from './NotificationMenu';
 import { isVerifiedSeller } from '@/lib/verification';
+import { totalUnreadMessages } from '@/lib/chat';
 import { VerifiedMark } from './verification/VerifiedBadge';
 
 interface MarketplaceHeaderProps {
@@ -54,6 +55,10 @@ export default function MarketplaceHeader({
     verificationStatus: profile?.verificationStatus,
     verificationExpiresAt: profile?.verificationExpiresAt,
   });
+  const unreadMessages = useMemo(
+    () => (user ? totalUnreadMessages(db.chatRooms, db.messages, user.id) : 0),
+    [db.chatRooms, db.messages, user]
+  );
 
   const states = useMemo(() => {
     const set = new Set<string>();
@@ -95,6 +100,21 @@ export default function MarketplaceHeader({
 
           <div className="flex items-center gap-1">
             <NotificationMenu onNavigate={onNavigate} onOpenAuth={onOpenAuth} />
+
+            {/* messages */}
+            <button
+              type="button"
+              aria-label={unreadMessages > 0 ? `Messages, ${unreadMessages} unread` : 'Messages'}
+              onClick={() => (user ? onNavigate('chats') : onOpenAuth?.('login'))}
+              className="relative grid h-10 w-10 place-items-center rounded-full transition-colors hover:bg-ink-100 dark:hover:bg-white/10"
+            >
+              <MessageSquare className="h-5 w-5" />
+              {unreadMessages > 0 && (
+                <span className="absolute right-0.5 top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-jade-600 px-1 text-[9px] font-black leading-none text-white dark:bg-gold-300 dark:text-jade-950">
+                  {unreadMessages > 9 ? '9+' : unreadMessages}
+                </span>
+              )}
+            </button>
 
             {/* wishlist */}
             <button

@@ -18,7 +18,8 @@
     "verify:realtime": "tsx scripts/verify-realtime.ts",
     "verify:tracking": "node scripts/verify-premium-tracking.mjs",
     "verify:wallet": "node scripts/verify-wallet-ledger.mjs",
-    "verify:referrals": "node scripts/verify-referrals.mjs"
+    "verify:referrals": "node scripts/verify-referrals.mjs",
+    "verify:chat": "node scripts/verify-chat.mjs"
   },
   "engines": {
     "node": ">=20"

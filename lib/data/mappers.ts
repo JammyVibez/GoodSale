@@ -408,6 +408,16 @@ export function mapChatRoom(row: Record<string, unknown>): ChatRoom {
     sellerName: s(row.seller_name),
     lastMessage: row.last_message != null ? s(row.last_message) : undefined,
     lastMessageTime: row.last_message_time != null ? s(row.last_message_time) : undefined,
+    lastMessageSenderId: row.last_message_sender_id != null ? n(row.last_message_sender_id) : undefined,
+    lastMessageKind: row.last_message_kind != null
+      ? (s(row.last_message_kind) as ChatRoom['lastMessageKind'])
+      : undefined,
+    buyerLastReadAt: row.buyer_last_read_at != null ? s(row.buyer_last_read_at) : undefined,
+    sellerLastReadAt: row.seller_last_read_at != null ? s(row.seller_last_read_at) : undefined,
+    buyerMuted: b(row.buyer_muted, false),
+    sellerMuted: b(row.seller_muted, false),
+    buyerArchivedAt: row.buyer_archived_at != null ? s(row.buyer_archived_at) : undefined,
+    sellerArchivedAt: row.seller_archived_at != null ? s(row.seller_archived_at) : undefined,
   };
 }
 

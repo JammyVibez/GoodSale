@@ -1856,13 +1856,29 @@ export const dbOperations = {
           replyToId,
         });
         state.messages.push(saved);
-        const preview = text || (imgUrl ? 'Sent an image' : videoUrl ? 'Sent a video' : 'Sent an attachment');
+        const preview = productDetails
+          ? 'Shared a listing'
+          : receiptDetails
+            ? 'Shared an escrow receipt'
+            : imgUrl
+              ? 'Sent a photo'
+              : videoUrl
+                ? 'Sent a video'
+                : text || 'New message';
         room.lastMessage = preview;
-        room.lastMessageTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        await client.from('chat_rooms').update({
-          last_message: preview,
-          last_message_time: new Date().toISOString(),
-        }).eq('id', roomId);
+        room.lastMessageTime = saved.createdAt;
+        room.lastMessageSenderId = state.currentUser.id;
+        room.lastMessageKind = productDetails
+          ? 'PRODUCT'
+          : receiptDetails
+            ? 'RECEIPT'
+            : imgUrl
+              ? 'PHOTO'
+              : videoUrl
+                ? 'VIDEO'
+                : 'TEXT';
+        // The database trigger writes the authoritative preview and notifies the
+        // recipient once per burst, so every client sees the same inbox state.
         saveDBState(state);
         return saved;
       } catch (err) {
@@ -1871,7 +1887,7 @@ export const dbOperations = {
     }
 
     const newMsg: Message = {
-      id: Math.max(...state.messages.map((m) => m.id), 0) + 1,
+      id: -Date.now(),
       roomId,
       senderId: state.currentUser.id,
       messageText: text,
@@ -1884,7 +1900,8 @@ export const dbOperations = {
     };
     state.messages.push(newMsg);
     room.lastMessage = text || 'Sent an attachment';
-    room.lastMessageTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    room.lastMessageTime = newMsg.createdAt;
+    room.lastMessageSenderId = state.currentUser.id;
     saveDBState(state);
   },
 
@@ -1906,9 +1923,9 @@ export const dbOperations = {
     );
 
     if (!room) {
-      const newRoomId = state.chatRooms.length + 1;
+      const now = new Date().toISOString();
       room = {
-        id: newRoomId,
+        id: -Date.now(),
         buyerId: state.currentUser.id,
         sellerId: product.sellerId,
         productId,
@@ -1917,10 +1934,14 @@ export const dbOperations = {
         productImage: product.images[0],
         sellerName: seller.fullName,
         buyerName: state.currentUser.fullName,
-        lastMessage: 'Chat started',
-        lastMessageTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        // No fabricated seller greeting: the thread starts empty until a real
+        // participant sends the first message.
+        buyerLastReadAt: now,
+        buyerMuted: false,
+        sellerMuted: false,
       };
       state.chatRooms.unshift(room);
+      saveDBState(state);
 
       const client = createClient();
       if (client) {
@@ -1934,30 +1955,99 @@ export const dbOperations = {
             product_image: room.productImage,
             seller_name: room.sellerName,
             buyer_name: room.buyerName,
-            last_message: 'Chat started',
-            last_message_time: new Date().toISOString(),
           }).select('*').single();
-          if (!error && data) {
+          if (error?.code === '23505') {
+            // Another tab created this exact buyer/seller/listing thread first.
+            const existing = await client
+              .from('chat_rooms')
+              .select('*')
+              .eq('buyer_id', room.buyerId)
+              .eq('seller_id', room.sellerId)
+              .eq('product_id', room.productId)
+              .maybeSingle();
+            if (existing.error) throw existing.error;
+            if (existing.data) {
+              room.id = Number(existing.data.id);
+              room.buyerLastReadAt = existing.data.buyer_last_read_at
+                ? String(existing.data.buyer_last_read_at)
+                : now;
+              saveDBState(state);
+              return room.id;
+            }
+          }
+          if (error) throw error;
+          if (data) {
             room.id = Number(data.id);
+            room.buyerLastReadAt = data.buyer_last_read_at
+              ? String(data.buyer_last_read_at)
+              : now;
+            saveDBState(state);
           }
         } catch (err) {
+          // Keep the optimistic room only when persistence genuinely failed; the
+          // user can retry rather than sending into a room that does not exist.
+          state.chatRooms = state.chatRooms.filter((entry) => entry !== room);
+          saveDBState(state);
           console.error('Failed to create chat room:', err);
+          return null;
         }
       }
-
-      // Add a welcoming automated first message
-      state.messages.push({
-        id: state.messages.length + 1,
-        roomId: newRoomId,
-        senderId: product.sellerId,
-        messageText: `Hello! Thanks for your interest in "${product.title}". Is there any specific detail or negotiation offer you would like to discuss? I support nationwide escrow shipping or pickup.`,
-        createdAt: new Date().toISOString(),
-      });
-
-      saveDBState(state);
     }
 
     return room.id;
+  },
+
+  async markChatRead(roomId: number) {
+    const state = getDBState();
+    const room = state.chatRooms.find((entry) => entry.id === roomId);
+    const user = state.currentUser;
+    if (!room || !user) return;
+
+    const readAt = new Date().toISOString();
+    if (room.buyerId === user.id) room.buyerLastReadAt = readAt;
+    if (room.sellerId === user.id) room.sellerLastReadAt = readAt;
+    saveDBState(state);
+
+    const client = createClient();
+    if (!client) return;
+    const { error } = await client.rpc('chat_mark_read', { p_room_id: roomId });
+    if (error) console.error('Failed to persist chat read position:', error.message);
+  },
+
+  async setChatPreferences(
+    roomId: number,
+    preferences: { muted?: boolean; archived?: boolean }
+  ): Promise<{ error?: string }> {
+    const state = getDBState();
+    const room = state.chatRooms.find((entry) => entry.id === roomId);
+    const user = state.currentUser;
+    if (!room || !user) return { error: 'Conversation not found.' };
+
+    const isBuyer = room.buyerId === user.id;
+    if (!isBuyer && room.sellerId !== user.id) return { error: 'Conversation not found.' };
+    if (preferences.muted !== undefined) {
+      if (isBuyer) room.buyerMuted = preferences.muted;
+      else room.sellerMuted = preferences.muted;
+    }
+    if (preferences.archived !== undefined) {
+      const archivedAt = preferences.archived ? new Date().toISOString() : undefined;
+      if (isBuyer) room.buyerArchivedAt = archivedAt;
+      else room.sellerArchivedAt = archivedAt;
+    }
+    saveDBState(state);
+
+    const client = createClient();
+    if (!client) return {};
+    const { error } = await client.rpc('chat_set_preferences', {
+      p_room_id: roomId,
+      p_muted: preferences.muted ?? null,
+      p_archived: preferences.archived ?? null,
+    });
+    if (error) {
+      console.error('Failed to save chat preferences:', error.message);
+      return { error: 'Could not save this conversation preference.' };
+    }
+    return {};
   },
 
   // Submit product review

@@ -17,12 +17,32 @@ import {
   FileText, Image as ImageIcon, Video as VideoIcon, Package,
   ExternalLink, Play, Handshake, Sparkles, Store, ShieldCheck, Receipt,
   Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, PhoneMissed, Video, SmilePlus, Reply, Flag, Clock, X,
+  Bell, BellOff, Archive, ArchiveRestore, Loader2, Info, ArrowDown,
+  PanelRightClose, PanelRightOpen, Check, Inbox,
 } from 'lucide-react';
 import {
   getDBState, dbOperations, ChatRoom, Message,
 } from '../lib/store';
-import { startCall } from '../lib/realtime-call';
-import { toast } from '../lib/feedback';
+import type { RealtimeChannel } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/client';
+import { startCall } from '@/lib/realtime-call';
+import { uploadMedia } from '@/lib/upload';
+import {
+  chatArchivedFor,
+  chatDayLabel,
+  chatMessagePreview,
+  chatMutedFor,
+  chatReadAt,
+  chatRelativeTime,
+  chatRoomPreview,
+  isChatParticipant,
+  isDifferentChatDay,
+  isMessageReadByPartner,
+  totalUnreadMessages,
+  unreadCountForRoom,
+  type ChatInboxFilter,
+} from '@/lib/chat';
+import { toast } from '@/lib/feedback';
 import { isVerifiedSeller } from '@/lib/verification';
 import { VerifiedMark } from '@/components/verification/VerifiedBadge';
 
@@ -46,16 +66,37 @@ interface ChatViewProps {
 
 const CAPTION_PHOTO = 'Photo attached for inspection';
 const CAPTION_VIDEO = 'Video attached for inspection';
+const IMAGE_UPLOAD_LIMIT = 8 * 1024 * 1024;
+const VIDEO_UPLOAD_LIMIT = 25 * 1024 * 1024;
+
+const INBOX_FILTERS: Array<{ id: ChatInboxFilter; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'unread', label: 'Unread' },
+  { id: 'buying', label: 'Buying' },
+  { id: 'selling', label: 'Selling' },
+  { id: 'archived', label: 'Archived' },
+];
 
 export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth }: ChatViewProps) {
   const [db, setDb] = useState(getDBState());
   const [activeRoomId, setActiveRoomId] = useState<number | null>(initialRoomId);
   const [typedMessage, setTypedMessage] = useState('');
   const [roomQuery, setRoomQuery] = useState('');
+  const [inboxFilter, setInboxFilter] = useState<ChatInboxFilter>('all');
+  const [threadSearch, setThreadSearch] = useState('');
+  const [threadSearchOpen, setThreadSearchOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(true);
+  const [threadMenuOpen, setThreadMenuOpen] = useState(false);
+  const [partnerTyping, setPartnerTyping] = useState(false);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [composerEmojiOpen, setComposerEmojiOpen] = useState(false);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const [unreadAnchor, setUnreadAnchor] = useState<string | null>(null);
+  const [showUnreadMarker, setShowUnreadMarker] = useState(false);
 
   // Attachment / trade sheets
   const [openSheet, setOpenSheet] = useState<
-    null | 'receipt' | 'photo' | 'video' | 'product' | 'offer' | 'calls' | 'report'
+    null | 'receipt' | 'photo' | 'video' | 'product' | 'offer' | 'calls' | 'report' | 'details'
   >(null);
 
   // Reply + reactions
@@ -91,13 +132,22 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
   const [reportDetails, setReportDetails] = useState('');
   const [reportTarget, setReportTarget] = useState<{ type: 'USER' | 'PRODUCT' | 'MESSAGE'; id: number; label: string } | null>(null);
 
-  const [chatImageFile, setChatImageFile] = useState<string | null>(null);
+  const [chatImageFile, setChatImageFile] = useState<File | null>(null);
+  const [chatImagePreview, setChatImagePreview] = useState<string | null>(null);
   const [chatImageCaption, setChatImageCaption] = useState(CAPTION_PHOTO);
-  const [chatVideoFile, setChatVideoFile] = useState<string | null>(null);
+  const [chatVideoFile, setChatVideoFile] = useState<File | null>(null);
+  const [chatVideoPreview, setChatVideoPreview] = useState<string | null>(null);
   const [chatVideoCaption, setChatVideoCaption] = useState(CAPTION_VIDEO);
   const [offerAmount, setOfferAmount] = useState('');
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const typingChannelRef = useRef<RealtimeChannel | null>(null);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTypingSentRef = useRef(0);
+  const latestTypedRef = useRef('');
+  const previousRoomRef = useRef<number | null>(null);
+  const skipDraftSaveRef = useRef(false);
 
   // Messages stay live via Supabase Realtime (see bootstrapStore in lib/store.ts)
   useEffect(() => {
@@ -111,43 +161,103 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
   }, [initialRoomId]);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [activeRoomId, db.messages]);
+    const element = scrollRef.current;
+    if (!element) return;
+    const distance = element.scrollHeight - element.scrollTop - element.clientHeight;
+    if (distance < 220) element.scrollTop = element.scrollHeight;
+    else setShowJumpToLatest(true);
+  }, [db.messages]);
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    setShowJumpToLatest(false);
+  }, [activeRoomId]);
 
   const user = db.currentUser;
 
   const myRooms = useMemo(() => {
     if (!user) return [] as ChatRoom[];
-    const rooms = db.chatRooms.filter(
-      (room) => room.buyerId === user.id || room.sellerId === user.id
-    );
+    return db.chatRooms
+      .filter((room) => isChatParticipant(room, user.id))
+      .sort((a, b) => {
+        const aT = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
+        const bT = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
+        return bT - aT;
+      });
+  }, [db.chatRooms, user]);
+
+  const unreadByRoom = useMemo(() => {
+    const counts = new Map<number, number>();
+    if (!user) return counts;
+    for (const room of myRooms) {
+      counts.set(room.id, unreadCountForRoom(room, db.messages, user.id));
+    }
+    return counts;
+  }, [db.messages, myRooms, user]);
+
+  const inboxUnread = user ? totalUnreadMessages(myRooms, db.messages, user.id) : 0;
+
+  const filterCounts = useMemo(() => {
+    if (!user) return { all: 0, unread: 0, buying: 0, selling: 0, archived: 0 } as Record<ChatInboxFilter, number>;
+    const activeRooms = myRooms.filter((room) => !chatArchivedFor(room, user.id));
+    return {
+      all: activeRooms.length,
+      unread: activeRooms.filter((room) => (unreadByRoom.get(room.id) || 0) > 0).length,
+      buying: activeRooms.filter((room) => room.buyerId === user.id).length,
+      selling: activeRooms.filter((room) => room.sellerId === user.id).length,
+      archived: myRooms.filter((room) => chatArchivedFor(room, user.id)).length,
+    };
+  }, [myRooms, unreadByRoom, user]);
+
+  const filteredRooms = useMemo(() => {
+    if (!user) return [] as ChatRoom[];
     const needle = roomQuery.trim().toLowerCase();
-    const sorted = [...rooms].sort((a, b) => {
-      const aT = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
-      const bT = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
-      return bT - aT;
-    });
-    if (!needle) return sorted;
-    return sorted.filter((room) => {
-      const other = db.users.find(
-        (u) => u.id === (room.buyerId === user.id ? room.sellerId : room.buyerId)
-      );
+    return myRooms.filter((room) => {
+      const archived = chatArchivedFor(room, user.id);
+      if (inboxFilter === 'archived' ? !archived : archived) return false;
+      if (inboxFilter === 'unread' && (unreadByRoom.get(room.id) || 0) === 0) return false;
+      if (inboxFilter === 'buying' && room.buyerId !== user.id) return false;
+      if (inboxFilter === 'selling' && room.sellerId !== user.id) return false;
+      if (!needle) return true;
+      const otherId = room.buyerId === user.id ? room.sellerId : room.buyerId;
+      const other = db.users.find((entry) => entry.id === otherId);
       return (
         room.productTitle?.toLowerCase().includes(needle) ||
         (room.lastMessage || '').toLowerCase().includes(needle) ||
         (other?.fullName || '').toLowerCase().includes(needle)
       );
     });
-  }, [db.chatRooms, db.users, roomQuery, user]);
+  }, [db.users, inboxFilter, myRooms, roomQuery, unreadByRoom, user]);
 
   const activeRoom = db.chatRooms.find((r) => r.id === activeRoomId) || null;
-  const activeRoomMessages = activeRoom
-    ? db.messages
-        .filter((m) => m.roomId === activeRoom.id)
-        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-    : [];
+  const activeRoomMessages = useMemo(
+    () =>
+      activeRoom
+        ? db.messages
+            .filter((message) => message.roomId === activeRoom.id)
+            .sort(
+              (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+            )
+        : [],
+    [activeRoom, db.messages]
+  );
+
+  const visibleMessages = useMemo(() => {
+    const needle = threadSearch.trim().toLowerCase();
+    if (!needle) return activeRoomMessages;
+    return activeRoomMessages.filter((message) => {
+      const searchable = [
+        message.messageText || '',
+        chatMessagePreview(message),
+        message.receiptDetails?.orderNumber || '',
+        message.receiptDetails?.productTitle || '',
+        message.productDetails?.title || '',
+      ]
+        .join(' ')
+        .toLowerCase();
+      return searchable.includes(needle);
+    });
+  }, [activeRoomMessages, threadSearch]);
 
   const chatProduct = activeRoom ? db.products.find((p) => p.id === activeRoom.productId) : null;
   const partnerId = activeRoom && user
@@ -173,6 +283,125 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
   }, [db.calls, user]);
 
   const activeRoomCalls = activeRoom ? myCalls.filter((c) => c.roomId === activeRoom.id) : [];
+
+  // Capture the read position on open so an unread divider stays visible after
+  // the read RPC advances the durable pointer.
+  useEffect(() => {
+    const room = getDBState().chatRooms.find((entry) => entry.id === activeRoomId);
+    const current = getDBState().currentUser;
+    if (!room || !current) {
+      setUnreadAnchor(null);
+      setShowUnreadMarker(false);
+      return;
+    }
+    setUnreadAnchor(chatReadAt(room, current.id) || null);
+    setShowUnreadMarker(unreadCountForRoom(room, getDBState().messages, current.id) > 0);
+  }, [activeRoom?.id, activeRoomId]);
+
+  useEffect(() => {
+    if (!activeRoom || !user) return;
+    if (unreadCountForRoom(activeRoom, db.messages, user.id) > 0) {
+      void dbOperations.markChatRead(activeRoom.id);
+    }
+  }, [activeRoom, activeRoomMessages.length, db.messages, user]);
+
+  // Drafts survive room switches and accidental refreshes.
+  useEffect(() => {
+    if (!activeRoomId || !user) return;
+    const previousRoom = previousRoomRef.current;
+    if (previousRoom && previousRoom !== activeRoomId) {
+      const previousKey = `goodsale:chat-draft:${user.id}:${previousRoom}`;
+      const previousDraft = latestTypedRef.current;
+      if (previousDraft.trim()) window.localStorage.setItem(previousKey, previousDraft);
+      else window.localStorage.removeItem(previousKey);
+    }
+    previousRoomRef.current = activeRoomId;
+    const saved = window.localStorage.getItem(`goodsale:chat-draft:${user.id}:${activeRoomId}`) || '';
+    setTypedMessage(saved);
+    latestTypedRef.current = saved;
+    skipDraftSaveRef.current = true;
+    setReplyTo(null);
+    setThreadSearch('');
+    setThreadSearchOpen(false);
+    setThreadMenuOpen(false);
+  }, [activeRoomId, user]);
+
+  useEffect(() => {
+    latestTypedRef.current = typedMessage;
+    if (!activeRoomId || !user) return;
+    if (skipDraftSaveRef.current) {
+      skipDraftSaveRef.current = false;
+      return;
+    }
+    const key = `goodsale:chat-draft:${user.id}:${activeRoomId}`;
+    if (typedMessage.trim()) window.localStorage.setItem(key, typedMessage);
+    else window.localStorage.removeItem(key);
+  }, [activeRoomId, typedMessage, user]);
+
+  useEffect(() => {
+    const element = composerRef.current;
+    if (!element) return;
+    element.style.height = 'auto';
+    element.style.height = `${Math.min(element.scrollHeight, 132)}px`;
+  }, [activeRoomId, typedMessage]);
+
+  // Typing is ephemeral Realtime broadcast state — never written to the database.
+  useEffect(() => {
+    if (!activeRoom?.id || !user || !partnerId) return;
+    const client = createClient();
+    if (!client) return;
+    const channel = client.channel(`goodsale-chat-typing-${activeRoom.id}`, {
+      config: { broadcast: { self: false } },
+    });
+    channel.on('broadcast', { event: 'typing' }, (event) => {
+      const payload = event.payload as { userId?: number } | undefined;
+      if (payload?.userId !== partnerId) return;
+      setPartnerTyping(true);
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = setTimeout(() => setPartnerTyping(false), 2600);
+    });
+    channel.subscribe();
+    typingChannelRef.current = channel;
+    setPartnerTyping(false);
+    return () => {
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+      typingChannelRef.current = null;
+      setPartnerTyping(false);
+      void client.removeChannel(channel);
+    };
+  }, [activeRoom?.id, partnerId, user]);
+
+  useEffect(() => {
+    const preview = chatImagePreview;
+    return () => {
+      if (preview) URL.revokeObjectURL(preview);
+    };
+  }, [chatImagePreview]);
+
+  useEffect(() => {
+    const preview = chatVideoPreview;
+    return () => {
+      if (preview) URL.revokeObjectURL(preview);
+    };
+  }, [chatVideoPreview]);
+
+  const notifyTyping = () => {
+    if (!user) return;
+    const now = Date.now();
+    if (now - lastTypingSentRef.current < 1800) return;
+    lastTypingSentRef.current = now;
+    void typingChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: { userId: user.id },
+    });
+  };
+
+  const scrollToLatest = () => {
+    if (!scrollRef.current) return;
+    scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+    setShowJumpToLatest(false);
+  };
 
   /** Reactions grouped per message: emoji → { count, mine }. */
   const reactionsFor = (messageId: number) => {
@@ -235,11 +464,79 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
 
   const handleSendMessage = (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!typedMessage.trim() || !activeRoomId) return;
-    dbOperations.sendMessage(activeRoomId, typedMessage.trim(), undefined, undefined, undefined, undefined, replyTo?.id);
+    const text = typedMessage.trim();
+    if (!text || !activeRoomId) return;
+    void dbOperations.sendMessage(
+      activeRoomId,
+      text,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      replyTo?.id
+    );
+    if (user) window.localStorage.removeItem(`goodsale:chat-draft:${user.id}:${activeRoomId}`);
     setTypedMessage('');
     setReplyTo(null);
+    setPartnerTyping(false);
     refresh();
+  };
+
+  const handleComposerKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      handleSendMessage();
+    }
+  };
+
+  const toggleMute = async () => {
+    if (!activeRoom || !user) return;
+    const next = !chatMutedFor(activeRoom, user.id);
+    setThreadMenuOpen(false);
+    const result = await dbOperations.setChatPreferences(activeRoom.id, { muted: next });
+    if (result.error) toast.error(result.error);
+    else toast.success(next ? 'Conversation muted.' : 'Conversation unmuted.');
+    refresh();
+  };
+
+  const toggleArchive = async () => {
+    if (!activeRoom || !user) return;
+    const next = !chatArchivedFor(activeRoom, user.id);
+    setThreadMenuOpen(false);
+    const result = await dbOperations.setChatPreferences(activeRoom.id, { archived: next });
+    if (result.error) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success(next ? 'Conversation archived.' : 'Conversation restored.');
+    if (next || inboxFilter === 'archived') setActiveRoomId(null);
+    refresh();
+  };
+
+  const chooseImage = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast.error('Choose a JPEG, PNG or WebP image.');
+      return;
+    }
+    if (file.size > IMAGE_UPLOAD_LIMIT) {
+      toast.error('That photo is larger than 8MB. Choose a smaller image.');
+      return;
+    }
+    setChatImageFile(file);
+    setChatImagePreview(URL.createObjectURL(file));
+  };
+
+  const chooseVideo = (file: File) => {
+    if (!file.type.startsWith('video/')) {
+      toast.error('Choose an MP4, WebM or MOV video.');
+      return;
+    }
+    if (file.size > VIDEO_UPLOAD_LIMIT) {
+      toast.error('That video is larger than 25MB. Trim it or choose a smaller clip.');
+      return;
+    }
+    setChatVideoFile(file);
+    setChatVideoPreview(URL.createObjectURL(file));
   };
 
   const placeCall = (kind: 'AUDIO' | 'VIDEO') => {
@@ -267,22 +564,40 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
     refresh();
   };
 
-  const shareImage = (imageUrl: string, captionText: string) => {
-    if (!activeRoomId) return;
-    dbOperations.sendMessage(activeRoomId, captionText, imageUrl);
-    setChatImageFile(null);
-    setChatImageCaption(CAPTION_PHOTO);
-    setOpenSheet(null);
-    refresh();
+  const shareImage = async (file: File, captionText: string) => {
+    if (!activeRoomId || uploadingMedia) return;
+    setUploadingMedia(true);
+    try {
+      const imageUrl = await uploadMedia(file, 'chat-media');
+      await dbOperations.sendMessage(activeRoomId, captionText.trim() || undefined, imageUrl);
+      setChatImageFile(null);
+      setChatImagePreview(null);
+      setChatImageCaption(CAPTION_PHOTO);
+      setOpenSheet(null);
+      refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not upload that photo.');
+    } finally {
+      setUploadingMedia(false);
+    }
   };
 
-  const shareVideo = (videoUrl: string, captionText: string) => {
-    if (!activeRoomId) return;
-    dbOperations.sendMessage(activeRoomId, captionText, undefined, videoUrl);
-    setChatVideoFile(null);
-    setChatVideoCaption(CAPTION_VIDEO);
-    setOpenSheet(null);
-    refresh();
+  const shareVideo = async (file: File, captionText: string) => {
+    if (!activeRoomId || uploadingMedia) return;
+    setUploadingMedia(true);
+    try {
+      const videoUrl = await uploadMedia(file, 'chat-media');
+      await dbOperations.sendMessage(activeRoomId, captionText.trim() || undefined, undefined, videoUrl);
+      setChatVideoFile(null);
+      setChatVideoPreview(null);
+      setChatVideoCaption(CAPTION_VIDEO);
+      setOpenSheet(null);
+      refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not upload that video.');
+    } finally {
+      setUploadingMedia(false);
+    }
   };
 
   const shareProductPreview = (prod: any) => {
@@ -308,52 +623,222 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
     refresh();
   };
 
+  const conversationMuted = activeRoom ? chatMutedFor(activeRoom, user.id) : false;
+  const conversationArchived = activeRoom ? chatArchivedFor(activeRoom, user.id) : false;
+  const relatedOrder = activeRoom
+    ? myOrders.find(
+        (order) =>
+          order.productId === activeRoom.productId &&
+          (order.buyerId === partnerId || order.sellerId === partnerId)
+      )
+    : undefined;
+
+  const detailsPanel = activeRoom ? (
+    <div className="space-y-4">
+      <div>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-ink-400">
+            Conversation
+          </p>
+          <span className="inline-flex items-center gap-1 rounded-full bg-jade-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-jade-700 dark:text-jade-300">
+            <ShieldCheck className="h-3 w-3" /> Protected
+          </span>
+        </div>
+        <div className="mt-3 flex items-center gap-3 rounded-2xl border border-ink-200 bg-white p-3 dark:border-ink-800 dark:bg-ink-900">
+          <SmartAvatar
+            src={(partner as any)?.avatar}
+            name={partnerName}
+            className="h-11 w-11 shrink-0"
+          />
+          <div className="min-w-0">
+            <p className="flex items-center gap-1 truncate text-sm font-black text-ink-900 dark:text-white">
+              {partnerName}
+              {partnerVerified && (
+                <VerifiedMark
+                  status={partnerProfile?.verificationStatus}
+                  expiresAt={partnerProfile?.verificationExpiresAt}
+                />
+              )}
+            </p>
+            <p className="mt-0.5 text-[11px] text-ink-500">
+              {partner ? `${partner.trustScore}% trust · ${partner.sellerLevel.toLowerCase()}` : 'GoodSale member'}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {chatProduct && (
+        <div className="overflow-hidden rounded-2xl border border-ink-200 bg-white dark:border-ink-800 dark:bg-ink-900">
+          <SmartImage
+            src={chatProduct.images?.[0]}
+            alt={chatProduct.title}
+            seed={`chat-details-${chatProduct.id}`}
+            className="h-32 w-full"
+          />
+          <div className="space-y-2 p-3">
+            <p className="line-clamp-2 text-xs font-bold text-ink-900 dark:text-white">
+              {chatProduct.title}
+            </p>
+            <p className="font-mono text-sm font-black text-jade-700 dark:text-jade-400">
+              ₦{Number(chatProduct.price).toLocaleString()}
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => onNavigate?.('product', { id: chatProduct.id })}
+                className="rounded-xl border border-ink-200 py-2 text-[11px] font-bold text-ink-700 transition-colors hover:border-jade-500/50 dark:border-ink-700 dark:text-ink-200 cursor-pointer"
+              >
+                View listing
+              </button>
+              <button
+                onClick={() => setOpenSheet('offer')}
+                className="rounded-xl bg-jade-500 py-2 text-[11px] font-bold text-white transition-colors hover:bg-jade-600 cursor-pointer"
+              >
+                Make offer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {relatedOrder && (
+        <div className="rounded-2xl border border-ink-200 bg-white p-3 dark:border-ink-800 dark:bg-ink-900">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-ink-400">Order</p>
+            <span className="rounded-full bg-ink-100 px-2 py-0.5 text-[9px] font-black text-ink-600 dark:bg-ink-800 dark:text-ink-300">
+              {relatedOrder.status.replaceAll('_', ' ')}
+            </span>
+          </div>
+          <p className="mt-2 font-mono text-[11px] font-bold text-ink-700 dark:text-ink-200">
+            {relatedOrder.orderNumber}
+          </p>
+          <p className="mt-1 text-[11px] text-ink-500">
+            ₦{Number(relatedOrder.totalAmount).toLocaleString()} · escrow protected
+          </p>
+          <button
+            onClick={() => onNavigate?.('buyer-profile')}
+            className="mt-2 flex w-full items-center justify-center gap-1 rounded-xl bg-ink-100 py-2 text-[11px] font-bold text-ink-700 transition-colors hover:bg-ink-200 dark:bg-ink-800 dark:text-ink-200 cursor-pointer"
+          >
+            View order <ExternalLink className="h-3 w-3" />
+          </button>
+        </div>
+      )}
+
+      <div className="rounded-2xl border border-jade-500/20 bg-jade-500/[0.04] p-3.5">
+        <p className="flex items-center gap-1.5 text-[11px] font-black text-jade-800 dark:text-jade-200">
+          <ShieldCheck className="h-4 w-4" /> Safe trade checklist
+        </p>
+        <ul className="mt-2.5 space-y-2 text-[11px] leading-relaxed text-ink-600 dark:text-ink-300">
+          <li className="flex gap-2"><Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-jade-500" /> Confirm condition with a real photo or video.</li>
+          <li className="flex gap-2"><Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-jade-500" /> Keep every payment inside GoodSale escrow.</li>
+          <li className="flex gap-2"><Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-jade-500" /> Never share a bank PIN, OTP or delivery PIN in chat.</li>
+        </ul>
+      </div>
+
+      <div className="flex items-center justify-between rounded-2xl border border-ink-200 bg-white p-3 text-[11px] dark:border-ink-800 dark:bg-ink-900">
+        <span className="text-ink-500">{activeRoomMessages.length} messages</span>
+        <button
+          onClick={() => void toggleMute()}
+          className="flex items-center gap-1.5 font-bold text-ink-700 hover:text-jade-600 dark:text-ink-300 cursor-pointer"
+        >
+          {conversationMuted ? <Bell className="h-3.5 w-3.5" /> : <BellOff className="h-3.5 w-3.5" />}
+          {conversationMuted ? 'Unmute' : 'Mute'}
+        </button>
+      </div>
+    </div>
+  ) : null;
+
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-ink-50 transition-colors duration-300 dark:bg-ink-950">
-      <div className="mx-auto flex h-[calc(100vh-4rem-72px)] w-full max-w-7xl border-x border-ink-200 bg-white shadow-sm dark:border-ink-800 dark:bg-ink-900 md:h-[calc(100vh-4rem)]">
+      <div className="mx-auto flex h-[calc(100vh-4rem-72px)] w-full max-w-[1500px] border-x border-ink-200 bg-white shadow-sm dark:border-ink-800 dark:bg-ink-900 md:h-[calc(100vh-4rem)]">
 
         {/* A. Conversation list */}
         <aside
-          className={`w-full shrink-0 flex-col border-r border-ink-200 dark:border-ink-800 md:flex md:w-[22rem] ${
+          className={`w-full shrink-0 flex-col border-r border-ink-200 bg-white dark:border-ink-800 dark:bg-ink-900 md:flex md:w-[23rem] xl:w-[24rem] ${
             activeRoomId !== null ? 'hidden md:flex' : 'flex'
           }`}
         >
-          <div className="border-b border-ink-200 px-5 py-4 dark:border-ink-800">
-            <div className="flex items-center justify-between">
-              <h2 className="font-display text-base font-bold tracking-tight text-ink-900 dark:text-white">
-                Messages
-              </h2>
-              <Chip tone="jade" icon={<Shield className="h-3.5 w-3.5" />}>
-                Escrow protected
-              </Chip>
+          <div className="border-b border-ink-200 px-5 pb-3 pt-5 dark:border-ink-800">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="font-display text-xl font-black tracking-tight text-ink-900 dark:text-white">
+                    Inbox
+                  </h2>
+                  {inboxUnread > 0 && (
+                    <span className="rounded-full bg-jade-500 px-2 py-0.5 font-mono text-[10px] font-black text-white">
+                      {inboxUnread > 99 ? '99+' : inboxUnread}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-0.5 text-[11px] font-medium text-ink-400">
+                  Buyer and seller conversations
+                </p>
+              </div>
+              <span className="flex items-center gap-1 rounded-full border border-jade-500/20 bg-jade-500/[0.07] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-jade-700 dark:text-jade-300">
+                <Shield className="h-3 w-3" /> Escrow
+              </span>
             </div>
-            <div className="relative mt-3">
+
+            <div className="relative mt-4">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
               <input
-                type="text"
+                type="search"
                 value={roomQuery}
                 onChange={(e) => setRoomQuery(e.target.value)}
-                placeholder="Search conversations"
-                className="focus-ring w-full rounded-full border border-ink-200 bg-ink-50 py-2.5 pl-10 pr-4 text-sm text-ink-800 placeholder:text-ink-400 dark:border-ink-800 dark:bg-ink-800 dark:text-white"
+                placeholder="Search people, listings or messages"
+                className="focus-ring w-full rounded-2xl border border-ink-200 bg-ink-50 py-2.5 pl-10 pr-4 text-sm text-ink-800 placeholder:text-ink-400 dark:border-ink-800 dark:bg-ink-950/50 dark:text-white"
               />
+            </div>
+
+            <div className="mt-3 flex gap-1 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {INBOX_FILTERS.map((filter) => {
+                const selected = inboxFilter === filter.id;
+                return (
+                  <button
+                    key={filter.id}
+                    onClick={() => setInboxFilter(filter.id)}
+                    aria-pressed={selected}
+                    className={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold transition-colors cursor-pointer ${
+                      selected
+                        ? 'bg-ink-900 text-white dark:bg-white dark:text-ink-950'
+                        : 'bg-ink-100/80 text-ink-500 hover:bg-ink-200/70 dark:bg-ink-800 dark:text-ink-300'
+                    }`}
+                  >
+                    {filter.label}
+                    {filterCounts[filter.id] > 0 && (
+                      <span className={`ml-1 font-mono ${selected ? 'opacity-70' : 'text-ink-400'}`}>
+                        {filterCounts[filter.id]}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
           <div className="list-stagger flex-1 overflow-y-auto">
-            {myRooms.length === 0 ? (
+            {filteredRooms.length === 0 ? (
               <EmptyState
                 state="empty-chat"
                 size="sm"
-                icon={<MessageSquare />}
-                title={roomQuery ? 'No matches' : 'No conversations yet'}
+                icon={inboxFilter === 'unread' ? <Inbox /> : <MessageSquare />}
+                title={
+                  myRooms.length === 0
+                    ? 'No conversations yet'
+                    : inboxFilter === 'unread'
+                      ? 'You are all caught up'
+                      : 'No conversations here'
+                }
                 description={
                   roomQuery
-                    ? 'Try a different product, seller or keyword.'
-                    : 'Message a seller from any listing to start a protected trade.'
+                    ? 'Try a different person, listing or keyword.'
+                    : myRooms.length === 0
+                      ? 'Start a protected conversation from any listing.'
+                      : 'Try another filter or browse new listings.'
                 }
               />
             ) : (
-              myRooms.map((room) => {
+              filteredRooms.map((room) => {
                 const otherId = room.buyerId === user.id ? room.sellerId : room.buyerId;
                 const other = db.users.find((u) => u.id === otherId);
                 const otherProfile = db.profiles.find((p) => p.userId === otherId);
@@ -361,31 +846,49 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
                   verificationStatus: otherProfile?.verificationStatus,
                   verificationExpiresAt: otherProfile?.verificationExpiresAt,
                 });
-                const prod = db.products.find((p) => p.id === room.productId);
-                const roomMsgs = db.messages.filter((m) => m.roomId === room.id);
-                const lastMsg = roomMsgs.length > 0 ? roomMsgs[roomMsgs.length - 1] : null;
+                const product = db.products.find((entry) => entry.id === room.productId);
+                const unread = unreadByRoom.get(room.id) || 0;
                 const isActive = activeRoomId === room.id;
+                const isBuyer = room.buyerId === user.id;
+                const muted = chatMutedFor(room, user.id);
 
                 return (
                   <button
                     key={room.id}
                     onClick={() => setActiveRoomId(room.id)}
                     aria-current={isActive ? 'true' : undefined}
-                    className={`flex w-full items-start gap-3 border-b border-ink-100 px-4 py-3.5 text-left transition-colors cursor-pointer dark:border-ink-800/70 ${
+                    className={`relative flex w-full items-start gap-3 border-b border-ink-100 px-4 py-4 text-left transition-colors cursor-pointer dark:border-ink-800/70 ${
                       isActive
-                        ? 'bg-jade-500/[0.07] shadow-[inset_3px_0_0_0_var(--color-jade-500)]'
+                        ? 'bg-jade-500/[0.08] shadow-[inset_3px_0_0_0_var(--color-jade-500)]'
                         : 'hover:bg-ink-50 dark:hover:bg-ink-800/40'
                     }`}
                   >
-                    <SmartAvatar
-                      src={(other as any)?.avatar}
-                      name={other?.fullName || 'GoodSale member'}
-                      className="h-11 w-11 shrink-0"
-                    />
+                    <span className="relative shrink-0">
+                      <SmartAvatar
+                        src={(other as any)?.avatar}
+                        name={other?.fullName || 'GoodSale member'}
+                        className={`h-12 w-12 ${unread > 0 ? 'ring-2 ring-jade-500/30' : ''}`}
+                      />
+                      <span className="absolute -bottom-1 -right-1 grid h-5 w-5 place-items-center overflow-hidden rounded-full border-2 border-white bg-ink-100 dark:border-ink-900 dark:bg-ink-800">
+                        {product?.images?.[0] ? (
+                          <SmartImage
+                            src={product.images[0]}
+                            alt=""
+                            seed={`inbox-${room.id}`}
+                            className="h-full w-full"
+                          />
+                        ) : (
+                          <Package className="h-3 w-3 text-ink-400" />
+                        )}
+                      </span>
+                    </span>
+
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline justify-between gap-2">
-                        <h4 className="flex min-w-0 items-center gap-1 text-sm font-bold text-ink-900 dark:text-white">
-                          <span className="truncate">{other?.fullName || 'GoodSale member'}</span>
+                        <h4 className="flex min-w-0 items-center gap-1 text-sm text-ink-900 dark:text-white">
+                          <span className={`truncate ${unread > 0 ? 'font-black' : 'font-bold'}`}>
+                            {other?.fullName || 'GoodSale member'}
+                          </span>
                           {otherVerified && (
                             <VerifiedMark
                               status={otherProfile?.verificationStatus}
@@ -393,24 +896,35 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
                             />
                           )}
                         </h4>
-                        {lastMsg && (
-                          <span className="shrink-0 font-mono text-xs text-ink-400">
-                            {new Date(lastMsg.createdAt).toLocaleTimeString([], {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
+                        <span className={`shrink-0 font-mono text-[10px] ${unread > 0 ? 'font-bold text-jade-600 dark:text-jade-400' : 'text-ink-400'}`}>
+                          {chatRelativeTime(room.lastMessageTime)}
+                        </span>
+                      </div>
+
+                      <div className="mt-1 flex items-center gap-1.5">
+                        <span className={`rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide ${
+                          isBuyer
+                            ? 'bg-jade-500/10 text-jade-700 dark:text-jade-300'
+                            : 'bg-gold-400/15 text-gold-700 dark:text-gold-300'
+                        }`}>
+                          {isBuyer ? 'Buying' : 'Selling'}
+                        </span>
+                        <span className="truncate text-[11px] font-semibold text-jade-700 dark:text-jade-400">
+                          {product?.title || room.productTitle || 'Listing'}
+                        </span>
+                      </div>
+
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <p className={`min-w-0 flex-1 truncate text-xs ${unread > 0 ? 'font-bold text-ink-800 dark:text-ink-100' : 'text-ink-500'}`}>
+                          {chatRoomPreview(room, db.messages, user.id)}
+                        </p>
+                        {muted && <BellOff className="h-3 w-3 shrink-0 text-ink-400" aria-label="Muted" />}
+                        {unread > 0 && (
+                          <span className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-jade-500 px-1.5 font-mono text-[10px] font-black text-white">
+                            {unread > 99 ? '99+' : unread}
                           </span>
                         )}
                       </div>
-                      <p className="mt-0.5 flex items-center gap-1 truncate text-xs font-semibold text-jade-700 dark:text-jade-400">
-                        <Package className="h-3.5 w-3.5 shrink-0" />
-                        {prod?.title || room.productTitle || 'Listing'}
-                      </p>
-                      <p className="mt-1 truncate text-xs text-ink-500">
-                        {lastMsg
-                          ? lastMsg.messageText || 'Sent an attachment'
-                          : 'Conversation started'}
-                      </p>
                     </div>
                   </button>
                 );
@@ -418,8 +932,13 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
             )}
           </div>
 
-          {/* Sponsored: chat rail placement */}
-          <div className="border-t border-ink-100 px-4 py-4 dark:border-ink-800">
+          <div className="border-t border-ink-100 p-4 dark:border-ink-800">
+            <button
+              onClick={() => onNavigate?.('marketplace')}
+              className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl border border-ink-200 bg-white py-2.5 text-xs font-bold text-ink-700 transition-colors hover:border-jade-500/50 hover:text-jade-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 cursor-pointer"
+            >
+              <Store className="h-3.5 w-3.5" /> Browse listings
+            </button>
             <AdSlot placement="CHAT" onNavigate={onNavigate} variant="rail" />
           </div>
         </aside>
@@ -431,8 +950,8 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
           {activeRoom ? (
             <>
               {/* Thread header */}
-              <header className="flex items-center justify-between gap-3 border-b border-ink-200 px-4 py-3 dark:border-ink-800">
-                <div className="flex min-w-0 items-center gap-3">
+              <header className="relative flex items-center justify-between gap-2 border-b border-ink-200 bg-white px-3 py-3 dark:border-ink-800 dark:bg-ink-900 sm:px-4">
+                <div className="flex min-w-0 items-center gap-2.5">
                   <button
                     onClick={() => setActiveRoomId(null)}
                     className="focus-ring shrink-0 rounded-xl bg-ink-100 p-2 text-ink-500 transition-colors hover:text-ink-900 md:hidden dark:bg-ink-800 dark:hover:text-white"
@@ -441,16 +960,20 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
                     <ArrowLeft className="h-4 w-4" />
                   </button>
                   <button
-                    onClick={() => partner && onNavigate?.('seller-profile', { sellerId: partner.id })}
-                    className="group flex min-w-0 items-center gap-3 text-left cursor-pointer"
+                    onClick={() => {
+                      if (partner && activeRoom.buyerId === user.id) {
+                        onNavigate?.('seller-profile', { sellerId: partner.id });
+                      }
+                    }}
+                    className={`group flex min-w-0 items-center gap-2.5 text-left ${activeRoom.buyerId === user.id ? 'cursor-pointer' : 'cursor-default'}`}
                   >
                     <SmartAvatar
                       src={(partner as any)?.avatar}
                       name={partnerName}
-                      className="h-10 w-10 shrink-0"
+                      className="h-10 w-10 shrink-0 ring-2 ring-jade-500/10"
                     />
                     <span className="min-w-0">
-                      <span className="flex min-w-0 items-center gap-1 text-sm font-bold text-ink-900 transition-colors group-hover:text-jade-600 dark:text-white dark:group-hover:text-jade-400">
+                      <span className="flex min-w-0 items-center gap-1 text-sm font-black text-ink-900 transition-colors group-hover:text-jade-600 dark:text-white dark:group-hover:text-jade-400">
                         <span className="truncate">{partnerName}</span>
                         {partnerVerified && (
                           <VerifiedMark
@@ -459,40 +982,44 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
                           />
                         )}
                       </span>
-                      <span className="flex items-center gap-1.5 font-mono text-xs text-ink-400">
-                        <ShieldCheck className="h-3 w-3 text-jade-500" />
-                        {partner ? `Trust ${partner.trustScore}%` : 'GoodSale member'}
+                      <span className={`flex items-center gap-1.5 text-[11px] ${partnerTyping ? 'font-semibold text-jade-600 dark:text-jade-400' : 'text-ink-400'}`}>
+                        {partnerTyping ? (
+                          <span className="flex items-center gap-1">
+                            <span className="flex gap-0.5">
+                              <span className="h-1 w-1 animate-bounce rounded-full bg-jade-500 [animation-delay:-0.2s]" />
+                              <span className="h-1 w-1 animate-bounce rounded-full bg-jade-500 [animation-delay:-0.1s]" />
+                              <span className="h-1 w-1 animate-bounce rounded-full bg-jade-500" />
+                            </span>
+                            typing…
+                          </span>
+                        ) : (
+                          <>
+                            <ShieldCheck className="h-3 w-3 text-jade-500" />
+                            {partnerVerified ? 'Verified' : 'GoodSale member'}
+                            {partner ? ` · ${partner.trustScore}% trust` : ''}
+                          </>
+                        )}
                       </span>
                     </span>
                   </button>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {chatProduct && (
-                    <button
-                      onClick={() => onNavigate?.('product', { id: chatProduct.id })}
-                      className="hidden items-center gap-2 rounded-2xl border border-jade-500/20 bg-jade-500/[0.06] p-1.5 pr-3 text-left transition-colors hover:border-jade-500/50 sm:flex cursor-pointer"
-                    >
-                      <SmartImage
-                        src={chatProduct.images?.[0]}
-                        alt={chatProduct.title}
-                        seed={`chat-product-${chatProduct.id}`}
-                        className="h-9 w-9 shrink-0 rounded-xl"
-                      />
-                      <span className="max-w-[10rem]">
-                        <span className="block truncate text-xs font-bold text-ink-900 dark:text-white">
-                          {chatProduct.title}
-                        </span>
-                        <span className="block font-mono text-xs font-bold text-jade-700 dark:text-jade-400">
-                          ₦{Number(chatProduct.price).toLocaleString()}
-                        </span>
-                      </span>
-                    </button>
-                  )}
-                  {/* Secure real-time calling */}
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    onClick={() => setThreadSearchOpen((open) => !open)}
+                    className={`focus-ring rounded-xl p-2 transition-colors cursor-pointer ${
+                      threadSearchOpen
+                        ? 'bg-jade-500 text-white'
+                        : 'bg-ink-100 text-ink-500 hover:text-jade-600 dark:bg-ink-800 dark:hover:text-jade-400'
+                    }`}
+                    aria-label="Search this conversation"
+                    title="Search conversation"
+                  >
+                    <Search className="h-4 w-4" />
+                  </button>
                   <button
                     onClick={() => placeCall('AUDIO')}
-                    className="focus-ring rounded-xl bg-ink-100 p-2 text-ink-500 transition-colors hover:bg-jade-500 hover:text-white dark:bg-ink-800 dark:hover:text-white cursor-pointer"
+                    className="focus-ring hidden rounded-xl bg-ink-100 p-2 text-ink-500 transition-colors hover:bg-jade-500 hover:text-white dark:bg-ink-800 dark:hover:text-white cursor-pointer sm:grid"
                     aria-label="Start voice call"
                     title="Voice call"
                   >
@@ -500,58 +1027,134 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
                   </button>
                   <button
                     onClick={() => placeCall('VIDEO')}
-                    className="focus-ring rounded-xl bg-ink-100 p-2 text-ink-500 transition-colors hover:bg-jade-500 hover:text-white dark:bg-ink-800 dark:hover:text-white cursor-pointer"
+                    className="focus-ring hidden rounded-xl bg-ink-100 p-2 text-ink-500 transition-colors hover:bg-jade-500 hover:text-white dark:bg-ink-800 dark:hover:text-white cursor-pointer sm:grid"
                     aria-label="Start video call"
                     title="Video call"
                   >
                     <Video className="h-4 w-4" />
                   </button>
                   <button
-                    onClick={() => setOpenSheet('calls')}
-                    className="focus-ring rounded-xl bg-ink-100 p-2 text-ink-500 transition-colors hover:text-jade-600 dark:bg-ink-800 dark:hover:text-jade-400 cursor-pointer"
-                    aria-label="Call history"
-                    title="Call history"
+                    onClick={() => setDetailsOpen((open) => !open)}
+                    className="focus-ring hidden rounded-xl bg-ink-100 p-2 text-ink-500 transition-colors hover:text-jade-600 xl:grid dark:bg-ink-800 dark:hover:text-jade-400 cursor-pointer"
+                    aria-label="Toggle conversation details"
+                    title="Conversation details"
                   >
-                    <Clock className="h-4 w-4" />
+                    {detailsOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
                   </button>
                   <button
-                    onClick={() => setOpenSheet('offer')}
+                    onClick={() => setOpenSheet('details')}
+                    className="focus-ring grid rounded-xl bg-ink-100 p-2 text-ink-500 transition-colors hover:text-jade-600 xl:hidden dark:bg-ink-800 dark:hover:text-jade-400 cursor-pointer"
+                    aria-label="Conversation details"
+                    title="Conversation details"
+                  >
+                    <Info className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => setThreadMenuOpen((open) => !open)}
                     className="focus-ring rounded-xl bg-ink-100 p-2 text-ink-500 transition-colors hover:text-jade-600 dark:bg-ink-800 dark:hover:text-jade-400 cursor-pointer"
-                    aria-label="Negotiation options"
-                    title="Negotiation options"
+                    aria-label="Conversation options"
+                    aria-expanded={threadMenuOpen}
                   >
                     <MoreVertical className="h-4 w-4" />
                   </button>
                 </div>
+
+                {threadMenuOpen && (
+                  <div className="absolute right-3 top-[3.75rem] z-30 w-60 overflow-hidden rounded-2xl border border-ink-200 bg-white p-1.5 shadow-xl dark:border-ink-700 dark:bg-ink-900">
+                    <button
+                      onClick={() => void toggleMute()}
+                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-xs font-semibold text-ink-700 transition-colors hover:bg-ink-100 dark:text-ink-200 dark:hover:bg-ink-800 cursor-pointer"
+                    >
+                      {conversationMuted ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+                      {conversationMuted ? 'Unmute conversation' : 'Mute conversation'}
+                    </button>
+                    <button
+                      onClick={() => void toggleArchive()}
+                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-xs font-semibold text-ink-700 transition-colors hover:bg-ink-100 dark:text-ink-200 dark:hover:bg-ink-800 cursor-pointer"
+                    >
+                      {conversationArchived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+                      {conversationArchived ? 'Restore to inbox' : 'Archive conversation'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setThreadMenuOpen(false);
+                        setOpenSheet('calls');
+                      }}
+                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-xs font-semibold text-ink-700 transition-colors hover:bg-ink-100 dark:text-ink-200 dark:hover:bg-ink-800 cursor-pointer"
+                    >
+                      <Clock className="h-4 w-4" /> Call history
+                    </button>
+                    <div className="my-1 border-t border-ink-100 dark:border-ink-800" />
+                    <button
+                      onClick={() => {
+                        if (!partner) return;
+                        setReportTarget({ type: 'USER', id: partner.id, label: partnerName });
+                        setThreadMenuOpen(false);
+                        setOpenSheet('report');
+                      }}
+                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10 cursor-pointer"
+                    >
+                      <Flag className="h-4 w-4" /> Report this member
+                    </button>
+                  </div>
+                )}
               </header>
+
+              {/* Thread search */}
+              {threadSearchOpen && (
+                <div className="flex items-center gap-2 border-b border-ink-100 bg-jade-500/[0.04] px-3 py-2 dark:border-ink-800">
+                  <Search className="h-4 w-4 shrink-0 text-jade-500" />
+                  <input
+                    autoFocus
+                    type="search"
+                    value={threadSearch}
+                    onChange={(event) => setThreadSearch(event.target.value)}
+                    placeholder="Search this conversation"
+                    className="min-w-0 flex-1 bg-transparent text-sm text-ink-800 outline-none placeholder:text-ink-400 dark:text-white"
+                  />
+                  {threadSearch.trim() && (
+                    <span className="shrink-0 font-mono text-[10px] font-bold text-ink-400">
+                      {visibleMessages.length} {visibleMessages.length === 1 ? 'result' : 'results'}
+                    </span>
+                  )}
+                  <button
+                    onClick={() => {
+                      setThreadSearch('');
+                      setThreadSearchOpen(false);
+                    }}
+                    className="rounded-lg p-1 text-ink-400 hover:text-ink-700 dark:hover:text-white cursor-pointer"
+                    aria-label="Close conversation search"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
 
               {/* Conversation trust bar */}
               <div className="flex items-center justify-between gap-2 border-b border-ink-100 bg-white px-4 py-2 dark:border-ink-800 dark:bg-ink-900">
-                <span className="flex items-center gap-1.5 text-xs text-ink-500">
-                  <ShieldCheck className="h-3.5 w-3.5 text-jade-500" />
-                  Payments held in escrow until delivery is confirmed
+                <span className="flex min-w-0 items-center gap-1.5 truncate text-[11px] text-ink-500">
+                  <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-jade-500" />
+                  Private to you and {partnerName.split(' ')[0]} · keep payments in escrow
                 </span>
-                <button
-                  onClick={() => {
-                    if (!partner) return;
-                    setReportTarget({
-                      type: 'USER',
-                      id: partner.id,
-                      label: partnerName,
-                    });
-                    setOpenSheet('report');
-                  }}
-                  className="focus-ring flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-ink-400 transition-colors hover:text-red-500 cursor-pointer"
-                >
-                  <Flag className="h-3.5 w-3.5" />
-                  Report
-                </button>
+                {conversationMuted && (
+                  <span className="flex shrink-0 items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-ink-400">
+                    <BellOff className="h-3 w-3" /> Muted
+                  </span>
+                )}
               </div>
 
               {/* Messages */}
+              <div className="relative min-h-0 flex-1">
               <div
                 ref={scrollRef}
-                className="flex-1 space-y-4 overflow-y-auto bg-ink-50/60 p-4 dark:bg-ink-950/30"
+                onScroll={() => {
+                  const element = scrollRef.current;
+                  if (!element) return;
+                  setShowJumpToLatest(
+                    element.scrollHeight - element.scrollTop - element.clientHeight > 220
+                  );
+                }}
+                className="h-full space-y-4 overflow-y-auto bg-ink-50/60 p-4 dark:bg-ink-950/30"
               >
                 <Card
                   variant="outline"
@@ -572,7 +1175,23 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
                   </p>
                 </Card>
 
-                {activeRoomMessages.map((msg) => {
+                {visibleMessages.length === 0 && (
+                  <div className="mx-auto flex max-w-sm flex-col items-center py-10 text-center">
+                    <span className="grid h-12 w-12 place-items-center rounded-2xl bg-white text-jade-600 shadow-sm dark:bg-ink-900 dark:text-jade-400">
+                      <MessageSquare className="h-5 w-5" />
+                    </span>
+                    <p className="mt-3 text-sm font-bold text-ink-800 dark:text-ink-100">
+                      {threadSearch.trim() ? 'No matching messages' : 'Start the conversation'}
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-ink-500">
+                      {threadSearch.trim()
+                        ? 'Try a different word, order number or listing title.'
+                        : `Ask ${partnerName.split(' ')[0]} about condition, size, delivery or a fair price — keep the payment in escrow.`}
+                    </p>
+                  </div>
+                )}
+
+                {visibleMessages.map((msg, index) => {
                   const isMine = msg.senderId === user.id;
                   const quoted = messageById(msg.replyToId);
                   const quotedAuthor = quoted
@@ -581,8 +1200,37 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
                       : partnerName
                     : '';
                   const reactions = reactionsFor(msg.id);
+                  const previous = visibleMessages[index - 1];
+                  const showDay = !threadSearch.trim() && (!previous || isDifferentChatDay(previous.createdAt, msg.createdAt));
+                  const readByPartner = isMessageReadByPartner(msg, activeRoom, user.id);
+                  const readTime = unreadAnchor ? new Date(unreadAnchor).getTime() : 0;
+                  const firstUnreadIndex = showUnreadMarker && !threadSearch.trim()
+                    ? visibleMessages.findIndex(
+                        (entry) =>
+                          entry.senderId !== user.id && new Date(entry.createdAt).getTime() > readTime
+                      )
+                    : -1;
                   return (
-                    <div key={msg.id} className={`group flex items-center gap-2 ${isMine ? 'justify-end' : 'justify-start'}`}>
+                    <React.Fragment key={msg.id}>
+                    {showDay && (
+                      <div className="flex items-center gap-3 py-1">
+                        <span className="h-px flex-1 bg-ink-200 dark:bg-ink-800" />
+                        <span className="rounded-full bg-white px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-ink-400 shadow-sm dark:bg-ink-900">
+                          {chatDayLabel(msg.createdAt)}
+                        </span>
+                        <span className="h-px flex-1 bg-ink-200 dark:bg-ink-800" />
+                      </div>
+                    )}
+                    {index === firstUnreadIndex && (
+                      <div className="flex items-center gap-3 py-1">
+                        <span className="h-px flex-1 bg-jade-500/30" />
+                        <span className="rounded-full bg-jade-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-jade-700 dark:text-jade-300">
+                          Unread messages
+                        </span>
+                        <span className="h-px flex-1 bg-jade-500/30" />
+                      </div>
+                    )}
+                    <div className={`group flex items-center gap-2 ${isMine ? 'justify-end' : 'justify-start'}`}>
                       {swipe?.id === msg.id && swipe.dx <= -16 && (
                         <span className="flex items-center gap-1 text-xs font-semibold text-jade-600 dark:text-jade-400">
                           <Reply className="h-3.5 w-3.5" />
@@ -864,7 +1512,12 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
                               minute: '2-digit',
                             })}
                           </span>
-                          {isMine && <CheckCheck className="h-4 w-4" />}
+                          {isMine && (
+                            <CheckCheck
+                              className={`h-4 w-4 ${readByPartner ? 'text-gold-200 dark:text-gold-300' : 'opacity-60'}`}
+                              aria-label={readByPartner ? 'Read by recipient' : 'Sent'}
+                            />
+                          )}
                         </div>
                       </div>
 
@@ -939,14 +1592,24 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
                       </div>
                       </div>
                     </div>
+                    </React.Fragment>
                   );
                 })}
+              </div>
+                {showJumpToLatest && (
+                  <button
+                    onClick={scrollToLatest}
+                    className="absolute bottom-3 right-1/2 z-20 flex translate-x-1/2 items-center gap-1.5 rounded-full border border-ink-200 bg-white px-3 py-1.5 text-[11px] font-bold text-ink-700 shadow-lg transition-all hover:border-jade-500/50 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 cursor-pointer"
+                  >
+                    <ArrowDown className="h-3.5 w-3.5" /> Latest
+                  </button>
+                )}
               </div>
 
               {/* Composer */}
               <div className="border-t border-ink-200 bg-white dark:border-ink-800 dark:bg-ink-900">
                 <div className="flex items-center gap-1.5 overflow-x-auto border-b border-ink-100 px-3 py-2 dark:border-ink-800/70">
-                  <span className="mr-1 hidden shrink-0 text-xs font-bold tracking-tight text-ink-400 sm:block">
+                  <span className="mr-1 hidden shrink-0 text-[10px] font-black uppercase tracking-wider text-ink-400 sm:block">
                     Trade tools
                   </span>
                   <Chip tone="outline" icon={<FileText className="h-3.5 w-3.5 text-jade-500" />} onClick={() => setOpenSheet('receipt')}>
@@ -974,7 +1637,7 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
                         Replying to {replyTo.senderId === user.id ? 'yourself' : partnerName}
                       </p>
                       <p className="line-clamp-1 text-xs text-ink-500">
-                        {replyTo.messageText || 'Attachment'}
+                        {chatMessagePreview(replyTo)}
                       </p>
                     </div>
                     <button
@@ -987,16 +1650,68 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
                   </div>
                 )}
 
+                {uploadingMedia && (
+                  <div className="flex items-center gap-2 border-t border-jade-500/20 bg-jade-500/[0.06] px-4 py-2 text-[11px] font-semibold text-jade-700 dark:text-jade-300">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Uploading securely…
+                  </div>
+                )}
+
                 <form onSubmit={handleSendMessage} className="flex items-end gap-2 p-3">
-                  <input
-                    type="text"
-                    value={typedMessage}
-                    onChange={(e) => setTypedMessage(e.target.value)}
-                    placeholder={`Message ${partnerName}...`}
-                    className="focus-ring flex-1 rounded-full border border-ink-200 bg-ink-50 px-4 py-3 text-sm text-ink-800 placeholder:text-ink-400 dark:border-ink-800 dark:bg-ink-800 dark:text-white"
-                  />
-                  <Button type="submit" disabled={!typedMessage.trim()} className="shrink-0 rounded-full px-4" aria-label="Send message">
-                    <Send className="h-4 w-4" />
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setComposerEmojiOpen((open) => !open)}
+                      className="grid h-10 w-10 place-items-center rounded-full text-ink-400 transition-colors hover:bg-ink-100 hover:text-jade-600 dark:hover:bg-ink-800 cursor-pointer"
+                      aria-label="Add emoji"
+                    >
+                      <SmilePlus className="h-5 w-5" />
+                    </button>
+                    {composerEmojiOpen && (
+                      <div className="absolute bottom-full left-0 z-30 mb-2 flex gap-0.5 rounded-2xl border border-ink-200 bg-white p-1.5 shadow-xl dark:border-ink-700 dark:bg-ink-900">
+                        {REACTION_EMOJI.map((emoji) => (
+                          <button
+                            key={emoji}
+                            type="button"
+                            onClick={() => {
+                              setTypedMessage((current) => `${current}${emoji}`);
+                              setComposerEmojiOpen(false);
+                              composerRef.current?.focus();
+                            }}
+                            className="rounded-xl px-1.5 py-1 text-lg transition-transform hover:scale-125 cursor-pointer"
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1 rounded-2xl border border-ink-200 bg-ink-50 px-3 py-1.5 transition-colors focus-within:border-jade-500/60 dark:border-ink-800 dark:bg-ink-800/70">
+                    <textarea
+                      ref={composerRef}
+                      rows={1}
+                      value={typedMessage}
+                      onChange={(event) => {
+                        setTypedMessage(event.target.value);
+                        if (event.target.value.trim()) notifyTyping();
+                      }}
+                      onKeyDown={handleComposerKeyDown}
+                      placeholder={`Message ${partnerName.split(' ')[0]}…`}
+                      className="max-h-[132px] min-h-[32px] w-full resize-none bg-transparent py-1.5 text-sm leading-relaxed text-ink-800 outline-none placeholder:text-ink-400 dark:text-white"
+                    />
+                    <div className="flex items-center justify-between pb-0.5">
+                      <span className="text-[9px] font-medium text-ink-400">Enter to send · Shift + Enter for a new line</span>
+                      {typedMessage.trim() && (
+                        <span className="font-mono text-[9px] text-ink-400">{typedMessage.length}</span>
+                      )}
+                    </div>
+                  </div>
+                  <Button
+                    type="submit"
+                    disabled={!typedMessage.trim() || uploadingMedia}
+                    className="h-10 w-10 shrink-0 rounded-full p-0"
+                    aria-label="Send message"
+                  >
+                    {uploadingMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   </Button>
                 </form>
               </div>
@@ -1013,7 +1728,19 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
             </div>
           )}
         </section>
+
+        {/* C. Conversation details */}
+        {activeRoom && detailsOpen && (
+          <aside className="hidden w-[19rem] shrink-0 overflow-y-auto border-l border-ink-200 bg-ink-50/70 p-4 dark:border-ink-800 dark:bg-ink-950/40 xl:block">
+            {detailsPanel}
+          </aside>
+        )}
       </div>
+
+      {/* Sheet: conversation details */}
+      <Sheet open={openSheet === 'details'} onClose={() => setOpenSheet(null)} title="Conversation details">
+        {detailsPanel}
+      </Sheet>
 
       {/* Sheet: share a receipt */}
       <Sheet open={openSheet === 'receipt'} onClose={() => setOpenSheet(null)} title="Share an escrow receipt">
@@ -1064,18 +1791,15 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
-              if (!file) return;
-              const reader = new FileReader();
-              reader.onloadend = () => setChatImageFile(reader.result as string);
-              reader.readAsDataURL(file);
+              if (file) chooseImage(file);
             }}
           />
-          {chatImageFile ? (
+          {chatImageFile && chatImagePreview ? (
             <span className="block space-y-2">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={chatImageFile} alt="Preview" className="mx-auto max-h-32 rounded-xl object-contain" />
+              <img src={chatImagePreview} alt="Preview" className="mx-auto max-h-32 rounded-xl object-contain" />
               <span className="block text-xs font-bold text-jade-600 dark:text-jade-400">
-                Image ready to send
+                {chatImageFile.name} · ready to upload
               </span>
             </span>
           ) : (
@@ -1105,11 +1829,11 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
 
         <Button
           className="mt-4 w-full"
-          disabled={!chatImageFile}
-          onClick={() => chatImageFile && shareImage(chatImageFile, chatImageCaption)}
+          disabled={!chatImageFile || uploadingMedia}
+          onClick={() => chatImageFile && void shareImage(chatImageFile, chatImageCaption)}
         >
-          <ImageIcon className="h-4 w-4" />
-          Send photo
+          {uploadingMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
+          {uploadingMedia ? 'Uploading…' : 'Send photo'}
         </Button>
       </Sheet>
 
@@ -1122,17 +1846,14 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
-              if (!file) return;
-              const reader = new FileReader();
-              reader.onloadend = () => setChatVideoFile(reader.result as string);
-              reader.readAsDataURL(file);
+              if (file) chooseVideo(file);
             }}
           />
-          {chatVideoFile ? (
+          {chatVideoFile && chatVideoPreview ? (
             <span className="block space-y-2">
-              <video src={chatVideoFile} controls className="mx-auto max-h-32 rounded-xl" />
+              <video src={chatVideoPreview} controls className="mx-auto max-h-32 rounded-xl" />
               <span className="block text-xs font-bold text-jade-600 dark:text-jade-400">
-                Video ready to send
+                {chatVideoFile.name} · ready to upload
               </span>
             </span>
           ) : (
@@ -1162,11 +1883,11 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
 
         <Button
           className="mt-4 w-full"
-          disabled={!chatVideoFile}
-          onClick={() => chatVideoFile && shareVideo(chatVideoFile, chatVideoCaption)}
+          disabled={!chatVideoFile || uploadingMedia}
+          onClick={() => chatVideoFile && void shareVideo(chatVideoFile, chatVideoCaption)}
         >
-          <VideoIcon className="h-4 w-4" />
-          Send video
+          {uploadingMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <VideoIcon className="h-4 w-4" />}
+          {uploadingMedia ? 'Uploading…' : 'Send video'}
         </Button>
       </Sheet>
 

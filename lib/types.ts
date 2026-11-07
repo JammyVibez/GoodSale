@@ -401,6 +401,14 @@ export interface ChatRoom {
   buyerName: string;
   lastMessage?: string;
   lastMessageTime?: string;
+  lastMessageSenderId?: number;
+  lastMessageKind?: 'TEXT' | 'PHOTO' | 'VIDEO' | 'VOICE' | 'RECEIPT' | 'PRODUCT' | 'OFFER';
+  buyerLastReadAt?: string;
+  sellerLastReadAt?: string;
+  buyerMuted?: boolean;
+  sellerMuted?: boolean;
+  buyerArchivedAt?: string;
+  sellerArchivedAt?: string;
 }
 
 export interface Message {

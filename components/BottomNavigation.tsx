@@ -4,6 +4,7 @@
 import React from 'react';
 import { Home, Tag, User, ShoppingCart, MessageSquare, Shield, Store, Wallet } from 'lucide-react';
 import { useDBState, UserRole } from '../lib/store';
+import { totalUnreadMessages } from '../lib/chat';
 
 interface BottomNavigationProps {
   currentView: string;
@@ -40,7 +41,7 @@ export default function BottomNavigation({
   const user = db.currentUser;
 
   const unreadMessages = user
-    ? db.chatRooms.filter((r) => r.buyerId === user.id || r.sellerId === user.id).length
+    ? totalUnreadMessages(db.chatRooms, db.messages, user.id)
     : 0;
 
   const go = (view: string, authMode: 'login' | 'register' = 'login') => {

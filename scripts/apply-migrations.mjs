@@ -116,6 +116,9 @@ const VERIFY_RPCS = [
   'admin_disqualify_referral',
   'admin_mark_referral_reviewed',
   'admin_referral_analytics',
+  // Chat read state and inbox preferences
+  'chat_mark_read',
+  'chat_set_preferences',
 ];
 
 /** Tables the schema is expected to create (mirrors supabase/schema.sql). */
