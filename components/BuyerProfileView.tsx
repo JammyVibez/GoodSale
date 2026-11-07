@@ -6,7 +6,7 @@ import {
   Shield, Award, MapPin, CheckCircle, Package, Clock, AlertTriangle, 
   ChevronRight, Calendar, Star, ArrowLeft, Key, CreditCard, Lock,
   Download, Check, Compass, Sliders, Truck, Store, Camera, Loader2, ShieldCheck, Gift,
-  Heart, Pencil, Wallet, Sparkles, LayoutGrid,
+  Heart, Pencil, Wallet, Sparkles, LayoutGrid, Mail, Phone, ReceiptText, Inbox, Filter,
 } from 'lucide-react';
 import { useDBState, dbOperations, OrderStatus, Order, UserRole } from '../lib/store';
 import LiveSafeMeetMap from './LiveSafeMeetMap';
@@ -87,9 +87,54 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
       ? null
       : date.toLocaleDateString('en-NG', { month: 'short', year: 'numeric' });
   })();
-  const jumpTo = (id: YouSection) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  /** Orders newest first — the ledger list used to render in insertion order. */
+  const sortedOrders = [...buyerOrders].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+  const sortedReviews = [...buyerReviews].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+  const sortedListings = [...myListings].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+
+  const activeOrders = sortedOrders.filter((o) =>
+    [OrderStatus.PENDING, OrderStatus.PAID_ESCROW, OrderStatus.SHIPPED, OrderStatus.OUT_FOR_DELIVERY].includes(o.status)
+  );
+  const completedOrders = sortedOrders.filter((o) => o.status === OrderStatus.DELIVERED_SUCCESS);
+  const closedOrders = sortedOrders.filter((o) =>
+    [OrderStatus.CANCELLED, OrderStatus.REFUNDED, OrderStatus.DISPUTED, OrderStatus.REFUND_REQUESTED].includes(o.status)
+  );
+
+  const formatDate = (value: string) => {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime())
+      ? '—'
+      : date.toLocaleDateString('en-NG', { day: '2-digit', month: 'short', year: 'numeric' });
   };
+
+  // Which account surface is open. Tabs beat one long scroll here: every panel
+  // starts at the top of the viewport, so nothing hides under the sticky bar.
+  const [section, setSection] = useState<YouSection>('you-overview');
+  const [orderFilter, setOrderFilter] = useState<'all' | 'active' | 'completed' | 'closed'>('all');
+
+  // Switching panels while scrolled deep into a long order list would leave the
+  // new panel half-read, so bring the hub back to the top of the view.
+  const openSection = (next: YouSection, filter?: 'all' | 'active' | 'completed' | 'closed') => {
+    setSection(next);
+    if (filter) setOrderFilter(filter);
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const visibleOrders =
+    orderFilter === 'active' ? activeOrders
+    : orderFilter === 'completed' ? completedOrders
+    : orderFilter === 'closed' ? closedOrders
+    : sortedOrders;
+
+  const unreviewedDelivered = sortedOrders.filter(
+    (o) => o.status === OrderStatus.DELIVERED_SUCCESS && !db.reviews.some((r) => r.orderId === o.id)
+  );
 
   // Active PIN verification state
   const [selectedOrderForPin, setSelectedOrderForPin] = useState<number | null>(null);
@@ -128,7 +173,10 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
   const [reviewComment, setReviewComment] = useState('');
 
   const handleReviewSubmit = (orderId: number) => {
-    if (!reviewComment.trim()) return;
+    if (!reviewComment.trim()) {
+      toast.error('Add a sentence about the exchange before submitting.');
+      return;
+    }
     dbOperations.submitReview(orderId, reviewRating, reviewComment);
     setReviewingOrderId(null);
     setReviewRating(5);
@@ -414,13 +462,25 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                   {membershipLabel(entitlements)}
                 </Chip>
               )}
-              <Chip
-                tone="jade"
-                className="shrink-0"
-                icon={<Shield className="h-3.5 w-3.5" />}
-              >
-                Trust {myTrust?.score ?? currentUser.trustScore}% · {currentUser.sellerLevel}
-              </Chip>
+              {/* Seller trust is meaningless for a pure buyer — they get the
+                  buyer-protection state instead of a score they cannot move. */}
+              {canSell ? (
+                <Chip
+                  tone="jade"
+                  className="shrink-0"
+                  icon={<Shield className="h-3.5 w-3.5" />}
+                >
+                  Trust {myTrust?.score ?? currentUser.trustScore}% · {currentUser.sellerLevel}
+                </Chip>
+              ) : (
+                <Chip
+                  tone="jade"
+                  className="shrink-0"
+                  icon={<ShieldCheck className="h-3.5 w-3.5" />}
+                >
+                  Escrow-protected buyer
+                </Chip>
+              )}
               <button
                 type="button"
                 onClick={() => onNavigate?.('settings')}
@@ -459,7 +519,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
             { label: 'Escrow held', value: `₦${escrowHeldAsBuyer.toLocaleString()}`, icon: Lock },
             { label: 'Wallet balance', value: `₦${(wallet?.balance || 0).toLocaleString()}`, icon: Wallet },
             { label: 'GoodPoints', value: currentUser.goodPoints.toLocaleString(), icon: Award },
-            { label: 'Saved items', value: wishlist.count.toLocaleString(), icon: Heart },
+            { label: 'Saved items', value: savedProducts.length.toLocaleString(), icon: Heart },
           ].map((stat) => (
             <Card key={stat.label} variant="muted" className="p-4">
               <stat.icon className="mb-2 h-4 w-4 text-jade-600 dark:text-jade-400" />
@@ -474,41 +534,61 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
         </div>
       </div>
 
-      {/* Section jump bar — the You page now holds every account surface */}
+      {/* Section tabs — one panel at a time, always starting at the same point */}
       <nav
+        role="tablist"
         aria-label="Your account sections"
-        className="sticky top-[116px] z-30 mb-6 -mx-1 overflow-x-auto rounded-2xl border border-ink-200 bg-white/95 p-1.5 shadow-sm backdrop-blur-xl scrollbar-hide dark:border-ink-800 dark:bg-ink-900/95"
+        className="sticky top-[116px] z-30 mb-6 overflow-x-auto rounded-2xl border border-ink-200 bg-white/95 p-1.5 shadow-sm backdrop-blur-xl scrollbar-hide dark:border-ink-800 dark:bg-ink-900/95"
       >
         <div className="flex min-w-max items-center gap-1">
           {([
             { id: 'you-overview', label: 'Overview', icon: LayoutGrid },
             { id: 'you-orders', label: 'Orders', icon: Package, count: buyerOrders.length },
-            { id: 'you-saved', label: 'Saved', icon: Heart, count: wishlist.count },
+            { id: 'you-saved', label: 'Saved', icon: Heart, count: savedProducts.length },
             ...(canSell ? [{ id: 'you-listings', label: 'Listings', icon: Store, count: myListings.length }] : []),
             { id: 'you-reviews', label: 'Reviews', icon: Star, count: buyerReviews.length },
           ] as { id: YouSection; label: string; icon: React.ComponentType<{ className?: string }>; count?: number }[]).map(
-            (section) => (
-              <button
-                key={section.id}
-                type="button"
-                onClick={() => jumpTo(section.id)}
-                className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold text-ink-600 transition-colors hover:bg-jade-500/10 hover:text-jade-700 dark:text-ink-300 dark:hover:text-jade-300"
-              >
-                <section.icon className="h-3.5 w-3.5" />
-                {section.label}
-                {typeof section.count === 'number' && section.count > 0 && (
-                  <span className="rounded-full bg-ink-100 px-1.5 text-[10px] font-bold text-ink-600 dark:bg-ink-800 dark:text-ink-300">
-                    {section.count}
-                  </span>
-                )}
-              </button>
-            )
+            (tab) => {
+              const active = section === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  aria-controls={`panel-${tab.id}`}
+                  onClick={() => openSection(tab.id)}
+                  className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition-colors ${
+                    active
+                      ? 'bg-jade-600 text-white shadow-sm shadow-jade-600/20'
+                      : 'text-ink-600 hover:bg-jade-500/10 hover:text-jade-700 dark:text-ink-300 dark:hover:text-jade-300'
+                  }`}
+                >
+                  <tab.icon className="h-3.5 w-3.5" />
+                  {tab.label}
+                  {typeof tab.count === 'number' && tab.count > 0 && (
+                    <span
+                      className={`rounded-full px-1.5 text-[10px] font-bold ${
+                        active ? 'bg-white/20 text-white' : 'bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-300'
+                      }`}
+                    >
+                      {tab.count}
+                    </span>
+                  )}
+                </button>
+              );
+            }
           )}
         </div>
       </nav>
 
-      {/* Overview — membership, protection and shortcuts */}
-      <div id="you-overview" className="scroll-mt-32">
+      {/* Overview — membership, account details, wallet and shortcuts */}
+      <div
+        id="panel-you-overview"
+        role="tabpanel"
+        hidden={section !== 'you-overview'}
+        className="space-y-4"
+      >
         {(!entitlements.business || entitlements.businessPlan === 'PRO') && canSell && currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.SUPER_ADMIN && (
           <Card className="mb-4 flex flex-wrap items-center justify-between gap-3 border-gold-400/30 bg-gold-300/10 p-4">
             <div className="flex items-start gap-3">
@@ -527,6 +607,131 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
             </Button>
           </Card>
         )}
+
+      <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-5">
+        {/* Account details — the record the rest of the app reads from */}
+        <Card className="p-5 sm:p-6 lg:col-span-3">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 font-display text-base font-bold tracking-tight text-ink-900 dark:text-white">
+              <Compass className="h-5 w-5 text-jade-600 dark:text-jade-400" />
+              Account details
+            </h2>
+            <button
+              type="button"
+              onClick={() => onNavigate?.('settings')}
+              className="inline-flex items-center gap-1 text-xs font-bold text-jade-700 hover:underline dark:text-jade-300"
+            >
+              Manage <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+            {[
+              { label: 'Full name', value: currentUser.fullName, icon: LayoutGrid },
+              { label: 'Username', value: `@${currentUser.username}`, icon: Compass },
+              { label: 'Email', value: currentUser.email, icon: Mail },
+              { label: 'Phone', value: currentUser.phoneNumber || 'Not added', icon: Phone },
+              {
+                label: 'Location',
+                value:
+                  [currentProfile?.address, currentProfile?.city, currentProfile?.state]
+                    .filter(Boolean)
+                    .join(', ') || 'No address on file',
+                icon: MapPin,
+              },
+              { label: 'Member since', value: memberSince || 'New member', icon: Calendar },
+              {
+                label: 'Delivery',
+                value:
+                  currentProfile?.deliveryPreference === 'GOODSALE_PARTNER'
+                    ? 'GoodSale partner rider'
+                    : 'Direct dispatch courier',
+                icon: Truck,
+              },
+              { label: 'Account type', value: currentUser.role.replace(/_/g, ' ').toLowerCase(), icon: Shield },
+            ].map((row) => (
+              <div key={row.label} className="flex items-start gap-2.5 border-b border-ink-100 pb-2.5 last:border-0 dark:border-ink-800">
+                <row.icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-400" />
+                <div className="min-w-0">
+                  <dt className="font-mono text-[10px] font-bold uppercase tracking-tight text-ink-400">{row.label}</dt>
+                  <dd className="truncate text-xs font-bold capitalize text-ink-800 dark:text-ink-100">{row.value}</dd>
+                </div>
+              </div>
+            ))}
+          </dl>
+
+          {unreviewedDelivered.length > 0 && (
+            <button
+              type="button"
+              onClick={() => openSection('you-orders', 'completed')}
+              className="mt-4 flex w-full items-center justify-between gap-2 rounded-xl border border-gold-400/40 bg-gold-300/10 px-3.5 py-2.5 text-left text-xs font-bold text-ink-800 transition-colors hover:bg-gold-300/20 dark:text-gold-100"
+            >
+              <span className="flex items-center gap-2">
+                <Star className="star-filled h-3.5 w-3.5" />
+                {unreviewedDelivered.length === 1
+                  ? '1 delivered order still needs your review'
+                  : `${unreviewedDelivered.length} delivered orders still need your review`}
+              </span>
+              <ChevronRight className="h-4 w-4 shrink-0" />
+            </button>
+          )}
+        </Card>
+
+        {/* Wallet & escrow summary */}
+        <Card className="relative overflow-hidden border-0 bg-ink-900 p-6 text-white lg:col-span-2 dark:bg-ink-950">
+          <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-jade-500/20 blur-3xl" />
+
+          <div className="relative mb-4 flex items-center justify-between gap-2">
+            <h3 className="flex items-center gap-2 font-display text-base font-bold tracking-tight">
+              <CreditCard className="h-5 w-5 text-jade-400" />
+              Wallet &amp; escrow
+            </h3>
+            <button
+              type="button"
+              onClick={() => onNavigate?.('wallet')}
+              className="text-xs font-bold text-jade-300 hover:text-white"
+            >
+              History
+            </button>
+          </div>
+
+          <div className="relative space-y-3">
+            <div className="rounded-2xl border border-ink-800 bg-ink-950/60 p-4">
+              <span className="block font-mono text-xs tracking-tight text-ink-400">Currently held in escrow</span>
+              <span className="mt-1 block font-mono text-3xl font-bold text-jade-400">
+                ₦{escrowHeldAsBuyer.toLocaleString()}
+              </span>
+              <span className="mt-1.5 block text-xs text-ink-400">
+                Released to sellers only after you confirm delivery.
+              </span>
+            </div>
+
+            <dl className="space-y-2 font-mono text-xs text-ink-300">
+              <div className="flex justify-between gap-3">
+                <dt>Available balance</dt>
+                <dd className="font-bold text-white">₦{(wallet?.balance || 0).toLocaleString()}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt>Purchases</dt>
+                <dd className="font-bold text-white">{buyerOrders.length}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt>Released to sellers</dt>
+                <dd className="font-bold text-white">₦{escrowReleasedAsBuyer.toLocaleString()}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt>GoodPoints</dt>
+                <dd className="font-bold text-ink-200">{currentUser.goodPoints.toLocaleString()} GP</dd>
+              </div>
+            </dl>
+
+            <Button variant="primary" className="relative w-full" onClick={() => onNavigate?.('wallet')}>
+              Open wallet
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </Card>
+      </div>
 
       {/* Quick portals */}
       <Card className="mb-8 space-y-4 p-5">
@@ -637,7 +842,8 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
       </div>
 
       {/* Saved items — the same wishlist the header heart writes to */}
-      <Card id="you-saved" className="mb-8 scroll-mt-32 p-5 sm:p-6">
+      <div id="panel-you-saved" role="tabpanel" hidden={section !== 'you-saved'}>
+      <Card className="p-5 sm:p-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <h2 className="flex items-center gap-2 font-display text-lg font-bold tracking-tight text-ink-900 dark:text-white">
             <Heart className="h-5 w-5 text-jade-600 dark:text-jade-400" />
@@ -699,14 +905,17 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
         )}
       </Card>
 
+      </div>
+
       {/* Your listings — visible only to accounts that can sell */}
       {canSell && (
-        <Card id="you-listings" className="mb-8 scroll-mt-32 p-5 sm:p-6">
+        <div id="panel-you-listings" role="tabpanel" hidden={section !== 'you-listings'}>
+        <Card className="p-5 sm:p-6">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <h2 className="flex items-center gap-2 font-display text-lg font-bold tracking-tight text-ink-900 dark:text-white">
               <Store className="h-5 w-5 text-jade-600 dark:text-jade-400" />
               Your listings
-              <Chip tone="neutral">{myListings.length}</Chip>
+              <Chip tone="neutral">{sortedListings.length}</Chip>
             </h2>
             <button
               type="button"
@@ -726,7 +935,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
             </div>
           ) : (
             <div className="divide-y divide-ink-100 dark:divide-ink-800">
-              {myListings.slice(0, 6).map((product) => (
+              {sortedListings.slice(0, 8).map((product) => (
                 <button
                   key={product.id}
                   type="button"
@@ -755,13 +964,12 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
             </div>
           )}
         </Card>
+        </div>
       )}
 
       {/* 2. Interactive Escrow Orders Tracking List */}
-      <div id="you-orders" className="grid scroll-mt-32 grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* Left Side: Orders list */}
-        <div className="lg:col-span-2 space-y-6">
+      <div id="panel-you-orders" role="tabpanel" hidden={section !== 'you-orders'}>
+        <div className="space-y-6">
           <Card className="p-6 sm:p-8">
             <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -780,6 +988,33 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
               )}
             </div>
 
+            {buyerOrders.length > 0 && (
+              <div className="mb-5 flex flex-wrap items-center gap-1.5">
+                <Filter className="mr-1 h-3.5 w-3.5 text-ink-400" />
+                {([
+                  { id: 'all', label: 'All', count: sortedOrders.length },
+                  { id: 'active', label: 'Active', count: activeOrders.length },
+                  { id: 'completed', label: 'Delivered', count: completedOrders.length },
+                  { id: 'closed', label: 'Cancelled & refunds', count: closedOrders.length },
+                ] as const).map((filter) => (
+                  <button
+                    key={filter.id}
+                    type="button"
+                    aria-pressed={orderFilter === filter.id}
+                    onClick={() => setOrderFilter(filter.id)}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-bold transition-colors ${
+                      orderFilter === filter.id
+                        ? 'border-jade-500 bg-jade-500/10 text-jade-700 dark:text-jade-300'
+                        : 'border-ink-200 text-ink-500 hover:border-jade-400 hover:text-jade-700 dark:border-ink-700 dark:text-ink-400'
+                    }`}
+                  >
+                    {filter.label}
+                    <span className="font-mono text-[10px] opacity-70">{filter.count}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
             {buyerOrders.length === 0 ? (
               <EmptyState
                 state="empty-cart"
@@ -794,8 +1029,13 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                 }
               />
             ) : (
+              visibleOrders.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-ink-200 px-4 py-8 text-center text-sm text-ink-500 dark:border-ink-700">
+                  Nothing in this view. Switch the filter to see the rest of your orders.
+                </p>
+              ) : (
               <div className="space-y-4">
-                {buyerOrders.map((order) => {
+                {visibleOrders.map((order) => {
                   const isSelected = selectedOrderForPin === order.id;
                   
                   // Progress tracker helper variables
@@ -803,6 +1043,17 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                   const isShipped = order.status === OrderStatus.SHIPPED || order.status === OrderStatus.OUT_FOR_DELIVERY || order.status === OrderStatus.DELIVERED_SUCCESS;
                   const isOutForDelivery = order.status === OrderStatus.OUT_FOR_DELIVERY || order.status === OrderStatus.DELIVERED_SUCCESS;
                   const isDelivered = order.status === OrderStatus.DELIVERED_SUCCESS;
+                  // Four long milestone labels cannot fit a phone width, so on
+                  // small screens the rail names only the current stage.
+                  const activeStepLabel = isDelivered
+                    ? 'Funds released'
+                    : isOutForDelivery
+                    ? 'Buyer received'
+                    : isShipped
+                    ? 'Goods dispatched'
+                    : isPaid
+                    ? 'Payment confirmed'
+                    : 'Awaiting deposit';
 
                   return (
                     <div 
@@ -819,7 +1070,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                           Order <span className="font-bold text-ink-900 dark:text-white">#{order.orderNumber}</span>
                         </div>
                         <div className="flex items-center gap-2.5">
-                          <span className="font-mono text-ink-500">{new Date(order.createdAt).toLocaleDateString()}</span>
+                          <span className="font-mono text-ink-500">{formatDate(order.createdAt)}</span>
                           {getStatusBadge(order.status)}
                         </div>
                       </div>
@@ -884,12 +1135,16 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                                 }`}>
                                   {step.active ? <Check className="h-3.5 w-3.5" /> : idx + 1}
                                 </div>
-                                <span className={`text-xs font-bold mt-1.5 whitespace-nowrap ${step.active ? 'text-jade-600 dark:text-jade-400' : 'text-ink-400'}`}>
+                                <span className={`mt-1.5 hidden whitespace-nowrap text-xs font-bold sm:block ${step.active ? 'text-jade-600 dark:text-jade-400' : 'text-ink-400'}`}>
                                   {step.label}
                                 </span>
                               </div>
                             ))}
                           </div>
+
+                          <p className="mt-3 text-center text-[11px] font-bold text-jade-600 sm:hidden dark:text-jade-400">
+                            {activeStepLabel}
+                          </p>
                         </div>
                       </div>
 
@@ -1137,7 +1392,15 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                       {activeSafeMeetOrderId === order.id && (() => {
                         const meetup = db.safeMeetMeetups.find(m => m.orderId === order.id);
                         const selectedLoc = db.safeMeetLocations.find(l => l.id === (meetup ? meetup.locationId : selectedSafeMeetLocationId)) || db.safeMeetLocations[0];
-                        
+
+                        if (!selectedLoc) {
+                          return (
+                            <div className="border-t border-ink-200 p-5 text-xs text-ink-500 dark:border-ink-800">
+                              SafeMeet™ locations are not available in your area yet. Use the delivery PIN or contact support to arrange an alternative handover.
+                            </div>
+                          );
+                        }
+
                         return (
                           <div className="border-t border-jade-200 dark:border-jade-50/20 p-5 bg-jade-500/[0.02] space-y-4">
                             <div className="flex items-center justify-between">
@@ -1321,121 +1584,79 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                   );
                 })}
               </div>
+              )
             )}
           </Card>
         </div>
+      </div>
 
-        {/* Right Side Column: reviews written list & stats */}
-        <div className="space-y-6">
-          
-          {/* Wallet & escrow summary */}
-          <Card className="relative overflow-hidden border-0 bg-ink-900 p-6 text-white dark:bg-ink-950">
-            <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-jade-500/20 blur-3xl" />
-
-            <h3 className="relative mb-5 flex items-center gap-2 font-display text-base font-bold tracking-tight">
-              <CreditCard className="h-5 w-5 text-jade-400" />
-              Wallet &amp; escrow
-            </h3>
-
-            <div className="relative space-y-4">
-              <div className="rounded-2xl border border-ink-800 bg-ink-950/60 p-4">
-                <span className="block font-mono text-xs tracking-tight text-ink-400">
-                  Currently held in escrow
+      {/* Reviews — its own panel instead of being buried under the order list */}
+      <div id="panel-you-reviews" role="tabpanel" hidden={section !== 'you-reviews'}>
+        <Card className="p-6 sm:p-8">
+            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="flex items-center gap-2 font-display text-base font-bold tracking-tight text-ink-900 dark:text-white">
+                <Star className="star-filled h-5 w-5" />
+                Reviews you&apos;ve written
+                <Chip tone="neutral">{buyerReviews.length}</Chip>
+              </h3>
+              {buyerReviews.length > 0 && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-ink-200 px-3 py-1 font-mono text-xs font-bold text-ink-600 dark:border-ink-700 dark:text-ink-300">
+                  <Star className="star-filled h-3.5 w-3.5" />
+                  {(buyerReviews.reduce((sum, r) => sum + r.rating, 0) / buyerReviews.length).toFixed(1)} average given
                 </span>
-                <span className="mt-1 block font-mono text-3xl font-bold text-jade-400">
-                  ₦{escrowHeldAsBuyer.toLocaleString()}
-                </span>
-                <span className="mt-1.5 block text-xs text-ink-400">
-                  Released safely to sellers only after you confirm delivery.
-                </span>
-              </div>
-
-              <dl className="space-y-2 font-mono text-xs text-ink-300">
-                <div className="flex justify-between gap-3">
-                  <dt>Available balance</dt>
-                  <dd className="font-bold text-white">₦{(wallet?.balance || 0).toLocaleString()}</dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt>Purchases</dt>
-                  <dd className="font-bold text-white">{buyerOrders.length}</dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt>Released to sellers</dt>
-                  <dd className="font-bold text-white">₦{escrowReleasedAsBuyer.toLocaleString()}</dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt>Released</dt>
-                  <dd className="font-bold text-jade-400">
-                    {buyerOrders.filter((o) => o.status === OrderStatus.DELIVERED_SUCCESS).length}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt>Active holds</dt>
-                  <dd className="font-bold text-ink-200">
-                    {buyerOrders.filter((o) =>
-                      [OrderStatus.PAID_ESCROW, OrderStatus.SHIPPED, OrderStatus.OUT_FOR_DELIVERY].includes(o.status)
-                    ).length}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt>GoodPoints</dt>
-                  <dd className="font-bold text-ink-200">{currentUser.goodPoints.toLocaleString()} GP</dd>
-                </div>
-              </dl>
-
-              <Button
-                variant="primary"
-                className="relative w-full"
-                onClick={() => onNavigate?.('wallet')}
-              >
-                Open wallet
-                <ChevronRight className="h-4 w-4" />
-              </Button>
+              )}
             </div>
-          </Card>
-
-          {/* Reviews written */}
-          <Card id="you-reviews" className="scroll-mt-32 p-6">
-            <h3 className="mb-4 flex items-center gap-2 font-display text-base font-bold tracking-tight text-ink-900 dark:text-white">
-              <Star className="star-filled h-5 w-5" />
-              Reviews you&apos;ve written
-              <Chip tone="neutral">{buyerReviews.length}</Chip>
-            </h3>
+            <p className="mb-4 text-sm text-ink-500">
+              Ratings you leave feed the seller&apos;s public trust score — they are never editable after they post.
+            </p>
 
             {buyerReviews.length === 0 ? (
-              <p className="text-sm text-ink-500">Nothing yet — complete an escrow delivery to leave feedback for a seller.</p>
+              <div className="rounded-2xl border border-dashed border-ink-200 px-4 py-10 text-center dark:border-ink-700">
+                <Inbox className="mx-auto mb-2 h-8 w-8 text-ink-300 dark:text-ink-600" />
+                <p className="text-sm font-bold text-ink-800 dark:text-ink-100">No reviews yet</p>
+                <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-ink-500">
+                  {completedOrders.length > 0
+                    ? 'Your delivered orders are ready to rate — open one and tap Leave Review.'
+                    : 'After an escrow delivery is confirmed you can rate the seller and earn +30 GP.'}
+                </p>
+                <Button
+                  className="mt-4"
+                  variant="secondary"
+                  onClick={() => openSection('you-orders', completedOrders.length > 0 ? 'completed' : 'all')}
+                >
+                  <ReceiptText className="h-4 w-4" />
+                  {completedOrders.length > 0 ? 'Rate a delivered order' : 'View your orders'}
+                </Button>
+              </div>
             ) : (
               <div className="space-y-3">
-                {buyerReviews.map((review) => (
-                  <div key={review.id} className="p-3 bg-ink-50 dark:bg-ink-800/40 rounded-xl border border-ink-100 dark:border-ink-800">
-                    <div className="flex items-center justify-between mb-1">
+                {sortedReviews.map((review) => (
+                  <div key={review.id} className="rounded-xl border border-ink-100 bg-ink-50 p-3 dark:border-ink-800 dark:bg-ink-800/40">
+                    <div className="mb-1 flex items-center justify-between">
                       <div className="flex items-center gap-0.5">
                         {[1, 2, 3, 4, 5].map((s) => (
-                          <Star 
-                            key={s} 
-                            className={`h-3.5 w-3.5 ${s <= review.rating ? 'star-filled' : 'star-empty'}`} 
+                          <Star
+                            key={s}
+                            className={`h-3.5 w-3.5 ${s <= review.rating ? 'star-filled' : 'star-empty'}`}
                           />
                         ))}
                       </div>
-                      <span className="text-xs text-ink-400 font-mono">{new Date(review.createdAt).toLocaleDateString()}</span>
+                      <span className="font-mono text-xs text-ink-400">{formatDate(review.createdAt)}</span>
                     </div>
 
-                    <p className="text-xs text-ink-700 dark:text-ink-300 font-sans italic leading-relaxed">&ldquo;{review.comment}&rdquo;</p>
-                    
+                    <p className="font-sans text-xs italic leading-relaxed text-ink-700 dark:text-ink-300">&ldquo;{review.comment}&rdquo;</p>
+
                     {review.sellerReply && (
-                      <div className="mt-2 pl-2 border-l-2 border-ink-400 bg-ink-500/5 p-1.5 rounded-r-lg text-xs">
-                        <span className="font-bold text-ink-600 dark:text-ink-400 block mb-0.5">Merchant Reply:</span>
-                        <p className="text-ink-500 dark:text-ink-400 font-medium">{review.sellerReply}</p>
+                      <div className="mt-2 rounded-r-lg border-l-2 border-ink-400 bg-ink-500/5 p-1.5 text-xs">
+                        <span className="mb-0.5 block font-bold text-ink-600 dark:text-ink-400">Merchant reply</span>
+                        <p className="font-medium text-ink-500 dark:text-ink-400">{review.sellerReply}</p>
                       </div>
                     )}
                   </div>
                 ))}
               </div>
             )}
-          </Card>
-
-        </div>
-
+        </Card>
       </div>
 
     </div>
