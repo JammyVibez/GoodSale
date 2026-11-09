@@ -290,7 +290,7 @@ export default async function ProductPage({ params }: PageProps) {
                 View category →
               </Link>
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-4">
+            <div className="mt-4 grid grid-cols-2 gap-2.5 md:grid-cols-4 xl:grid-cols-5">
               {siblings.map((item) => (
                 <ProductCard key={item.id} product={item} />
               ))}

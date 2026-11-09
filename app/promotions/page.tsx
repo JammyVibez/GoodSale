@@ -72,7 +72,7 @@ export default async function PromotionsPage() {
           </h2>
           <p className="mt-1 text-sm text-emerald-950/55">Prices and stock reflect the live catalog at page load.</p>
           {products.length > 0 ? (
-            <div className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+            <div className="mt-4 grid grid-cols-2 gap-2.5 md:grid-cols-4 xl:grid-cols-5">
               {products.map((product, index) => (
                 <ProductCard key={product.id} product={product} eager={index < 4} />
               ))}

@@ -14,6 +14,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticPages: MetadataRoute.Sitemap = [
     { url: siteUrl(), lastModified: new Date(), changeFrequency: 'daily', priority: 1 },
     { url: absoluteUrl('/categories'), lastModified: new Date(), changeFrequency: 'daily', priority: 0.9 },
+    { url: absoluteUrl('/featured'), lastModified: new Date(), changeFrequency: 'daily', priority: 0.8 },
+    { url: absoluteUrl('/flash-deals'), lastModified: new Date(), changeFrequency: 'hourly', priority: 0.8 },
+    { url: absoluteUrl('/best-deals'), lastModified: new Date(), changeFrequency: 'daily', priority: 0.8 },
+    { url: absoluteUrl('/trending'), lastModified: new Date(), changeFrequency: 'daily', priority: 0.7 },
+    { url: absoluteUrl('/new-arrivals'), lastModified: new Date(), changeFrequency: 'hourly', priority: 0.7 },
+    { url: absoluteUrl('/recommended'), lastModified: new Date(), changeFrequency: 'daily', priority: 0.7 },
     { url: absoluteUrl('/sellers'), lastModified: new Date(), changeFrequency: 'daily', priority: 0.9 },
     { url: absoluteUrl('/promotions'), lastModified: new Date(), changeFrequency: 'daily', priority: 0.7 },
     { url: absoluteUrl('/track'), lastModified: new Date(), changeFrequency: 'monthly', priority: 0.5 },

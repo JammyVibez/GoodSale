@@ -30,6 +30,10 @@ export interface SeoProduct {
   condition: string;
   price: number;
   compareAtPrice?: number;
+  /** Scheduled flash-sale price. Only effective inside its window. */
+  flashSalePrice?: number;
+  flashSaleStartsAt?: string;
+  flashSaleEndsAt?: string;
   stockStatus: string;
   quantity: number;
   inStock: boolean;
@@ -238,6 +242,9 @@ export const getPublicProducts = cache(async (): Promise<SeoProduct[]> => {
         condition: str(row.condition, 'GOOD'),
         price: num(row.price),
         compareAtPrice: row.compare_at_price != null ? num(row.compare_at_price) : undefined,
+        flashSalePrice: row.flash_sale_price != null ? num(row.flash_sale_price) : undefined,
+        flashSaleStartsAt: row.flash_sale_starts_at != null ? str(row.flash_sale_starts_at) : undefined,
+        flashSaleEndsAt: row.flash_sale_ends_at != null ? str(row.flash_sale_ends_at) : undefined,
         stockStatus,
         quantity,
         inStock: quantity > 0 && ['IN_STOCK', 'LOW_STOCK'].includes(stockStatus),
@@ -395,6 +402,25 @@ export async function searchPublicProducts(query: string, limit = 60): Promise<S
     })
     .slice(0, limit);
 }
+
+/** Ids of currently running, approved featured placements. */
+export const getFeaturedProductIds = cache(async (): Promise<number[]> => {
+  const snap = await loadSnapshot();
+  const now = Date.now();
+  return [
+    ...new Set(
+      snap.featured
+        .filter(
+          (row) =>
+            str(row.status, 'ACTIVE') === 'ACTIVE' &&
+            str(row.moderation_status, 'APPROVED') === 'APPROVED' &&
+            (!str(row.starts_at) || new Date(str(row.starts_at)).getTime() <= now) &&
+            new Date(str(row.ends_at) || str(row.expires_at)).getTime() > now
+        )
+        .map((row) => num(row.product_id))
+    ),
+  ];
+});
 
 export const getFeaturedProducts = cache(async (): Promise<SeoProduct[]> => {
   const snap = await loadSnapshot();

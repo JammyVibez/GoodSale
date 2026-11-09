@@ -38,6 +38,8 @@ interface SmartImageProps {
   imgClassName?: string;
   seed?: string | null;
   rounded?: boolean;
+  /** Use `eager` only for above-the-fold media (hero, first card row). */
+  loading?: 'lazy' | 'eager';
 }
 
 /**
@@ -52,6 +54,7 @@ export function SmartImage({
   imgClassName = 'w-full h-full object-cover',
   seed,
   rounded = false,
+  loading = 'lazy',
 }: SmartImageProps) {
   const [failed, setFailed] = useState(false);
   const showImage = Boolean(src) && !failed;
@@ -68,7 +71,8 @@ export function SmartImage({
           src={src as string}
           alt={alt}
           className={imgClassName}
-          loading="lazy"
+          loading={loading}
+          decoding="async"
           referrerPolicy="no-referrer"
           onError={() => setFailed(true)}
         />

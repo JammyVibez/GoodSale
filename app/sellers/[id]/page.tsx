@@ -149,7 +149,7 @@ export default async function SellerPage({ params }: PageProps) {
         <section aria-labelledby="store-listings" className="mt-10">
           <h2 id="store-listings" className="text-xl font-bold text-[#032214]">Listings from {name}</h2>
           {products.length > 0 ? (
-            <div className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+            <div className="mt-4 grid grid-cols-2 gap-2.5 md:grid-cols-4 xl:grid-cols-5">
               {products.map((product, index) => (
                 <ProductCard key={product.id} product={product} eager={index < 4} />
               ))}

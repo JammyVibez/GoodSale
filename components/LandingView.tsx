@@ -2,31 +2,37 @@
 'use client';
 
 /**
- * Marketplace home — the reference layout, driven entirely by live data.
+ * Marketplace home — a curated storefront over the live catalogue.
  *
- * Design language: deep-jade hero with gold accents, circular category rail,
- * Flash Deals with a real midnight countdown, a personalised "Recommended for
- * you" rail, a trust strip and a dense catalog. Everything shown (discounts,
- * ratings, stock, countdown) is derived from real rows — a discount badge only
- * renders when the seller set a higher compare-at price.
+ * Layout: compact promo band → category nav → Flash deals → Featured →
+ * Shop by category → Recommended → Trending → Recently added → Best deals →
+ * seller band → the full catalogue with filters.
+ *
+ * Every section hides itself when the catalogue cannot fill it, and every
+ * "See all" link goes to a real listing route (/featured, /flash-deals, …) that
+ * shows the same selection with filters, sorting and pagination.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
-  Star, Heart, ShoppingCart, Zap, ShieldCheck, Truck, Headphones,
+  Heart, ShoppingCart, Zap, ShieldCheck, Truck, Headphones,
   BadgeCheck, ArrowRight, ChevronRight, Sparkles, Store, Flame, Gavel,
   Shirt, Cpu, Smartphone, Laptop, Armchair, Apple, Car, BookOpen, LayoutGrid,
-  Package, SlidersHorizontal,
+  Package, SlidersHorizontal, TrendingUp, Tag, Clock, Plus,
 } from 'lucide-react';
 import { Product, useDBState } from '../lib/store';
+import type { Profile, User } from '@/lib/types';
 import { isVerifiedSeller } from '@/lib/verification';
 import VerifiedBadge from './verification/VerifiedBadge';
-import { trackProductMetric } from '@/lib/productMetrics';
 import { activeFlashSale } from '@/lib/productPricing';
 import { discoveryScore } from '@/lib/ranking';
 import { useWishlist } from '@/lib/hooks/useWishlist';
 import { SmartImage } from './ui/SmartImage';
 import EmptyState from './ui/EmptyState';
 import AdSlot from './AdSlot';
+import ProductTile from './marketplace/ProductTile';
+import ProductRail, { type RailProduct } from './marketplace/ProductRail';
+import { COLLECTIONS } from '@/lib/marketplace/collections';
 
 interface LandingViewProps {
   onSelectProduct: (productId: number) => void;
@@ -43,6 +49,8 @@ interface LandingViewProps {
 
 type SortMode = 'smart' | 'rating' | 'price_asc' | 'price_desc' | 'newest';
 
+const PAGE_SIZE = 24;
+
 const CATEGORY_META: Record<string, { label: string; Icon: React.ComponentType<{ className?: string }> }> = {
   phones: { label: 'Phones & Tablets', Icon: Smartphone },
   laptops: { label: 'Laptops', Icon: Laptop },
@@ -56,14 +64,11 @@ const CATEGORY_META: Record<string, { label: string; Icon: React.ComponentType<{
 };
 
 function categoryMeta(category: string) {
-  return CATEGORY_META[category.trim().toLowerCase()] || {
-    label: category,
-    Icon: Package,
-  };
+  return CATEGORY_META[category.trim().toLowerCase()] || { label: category, Icon: Package };
 }
 
 function naira(value: number): string {
-  return `₦${Math.round(Number(value) || 0).toLocaleString()}`;
+  return `₦${Math.round(Number(value) || 0).toLocaleString('en-NG')}`;
 }
 
 /** Real discount percentage — null unless the compare-at price is genuinely higher. */
@@ -71,6 +76,10 @@ function discountPercent(product: Product): number | null {
   const compareAt = Number(product.compareAtPrice) || 0;
   if (!compareAt || compareAt <= product.price) return null;
   return Math.round(((compareAt - product.price) / compareAt) * 100);
+}
+
+function inStock(product: Product): boolean {
+  return product.quantity > 0 && ['IN_STOCK', 'LOW_STOCK'].includes(product.stockStatus);
 }
 
 function useCountdownTo(endsAt?: string | null) {
@@ -93,166 +102,31 @@ function useCountdownTo(endsAt?: string | null) {
   return left;
 }
 
-function Rating({ average, count }: { average: number | null; count: number }) {
-  if (!average) {
-    return <span className="text-[10px] font-medium text-ink-400">No reviews yet</span>;
-  }
+function Countdown({ hours, minutes, seconds, tone = 'light' }: { hours: number; minutes: number; seconds: number; tone?: 'light' | 'dark' }) {
+  const box = tone === 'dark'
+    ? 'bg-white text-ink-950'
+    : 'bg-jade-950 text-white dark:bg-white dark:text-ink-950';
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] leading-none">
-      <Star className="h-3 w-3 fill-gold-400 text-gold-400" />
-      <span className="font-bold text-ink-700 dark:text-ink-200">{average.toFixed(1)}</span>
-      <span className="text-ink-400">
-        ({count >= 1000 ? `${(count / 1000).toFixed(1)}k` : count})
-      </span>
+    <span className="inline-flex items-center gap-1" aria-label="Time left">
+      {[
+        { value: hours, label: 'h' },
+        { value: minutes, label: 'm' },
+        { value: seconds, label: 's' },
+      ].map((part, index) => (
+        <React.Fragment key={part.label}>
+          {index > 0 && <span className={`text-[10px] font-black ${tone === 'dark' ? 'text-white/60' : 'text-ink-300'}`}>:</span>}
+          <span className={`min-w-[22px] rounded px-1 py-0.5 text-center text-[11px] font-black tabular-nums leading-4 ${box}`}>
+            {String(part.value).padStart(2, '0')}
+          </span>
+        </React.Fragment>
+      ))}
     </span>
   );
 }
 
-function CountdownBox({ value, label }: { value: number; label: string }) {
-  return (
-    <span className="flex flex-col items-center">
-      <span className="min-w-[26px] rounded-md bg-jade-900 px-1.5 py-1 text-center text-[11px] font-black tabular-nums leading-none text-white">
-        {String(value).padStart(2, '0')}
-      </span>
-      <span className="mt-0.5 text-[8px] font-bold uppercase tracking-wide text-ink-400">{label}</span>
-    </span>
-  );
-}
-
-function ProductCard({
-  product,
-  rating,
-  reviewCount,
-  compact = false,
-  sellerName,
-  sellerVerified = false,
-  isFavorite,
-  isFeatured = false,
-  onToggleFavorite,
-  onSelect,
-  onAdd,
-}: {
-  product: Product;
-  rating: number | null;
-  reviewCount: number;
-  compact?: boolean;
-  sellerName?: string;
-  sellerVerified?: boolean;
-  isFeatured?: boolean;
-  isFavorite: boolean;
-  onToggleFavorite: () => void;
-  onSelect: () => void;
-  onAdd: () => void;
-}) {
-  const flashSale = activeFlashSale(product);
-  const displayedPrice = flashSale?.price ?? product.price;
-  const discount = flashSale?.discountPercent ?? discountPercent(product);
-  const comparePrice = flashSale ? product.price : Number(product.compareAtPrice || 0);
-  const lowStock = product.quantity > 0 && product.quantity <= 8;
-
-  useEffect(() => {
-    trackProductMetric(product.id, 'impression', true);
-  }, [product.id]);
-
-  return (
-    <article
-      onClick={onSelect}
-      className="group flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-ink-150 bg-white transition-all duration-200 hover:-translate-y-0.5 hover:border-jade-500/30 hover:shadow-lg dark:border-ink-800 dark:bg-ink-900"
-    >
-      <div className="relative aspect-square overflow-hidden bg-ink-50 dark:bg-ink-950">
-        <SmartImage
-          src={product.images?.[0]}
-          alt={product.title}
-          seed={`card-${product.id}`}
-          className="h-full w-full"
-          imgClassName="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-        />
-
-        {discount !== null && (
-          <span className="absolute left-2 top-2 rounded-md bg-jade-600 px-1.5 py-0.5 text-[10px] font-black text-white shadow-sm">
-            -{discount}%
-          </span>
-        )}
-        {discount === null && lowStock && (
-          <span className="absolute left-2 top-2 rounded-md bg-jade-700/90 px-1.5 py-0.5 text-[10px] font-bold text-white shadow-sm">
-            {product.quantity} left
-          </span>
-        )}
-        {isFeatured && (
-          <span className="absolute bottom-2 left-2 rounded-md bg-gold-300 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-ink-950 shadow-sm">
-            Featured
-          </span>
-        )}
-        {flashSale && (
-          <span className="absolute bottom-2 right-2 rounded-md bg-rose-600 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-white shadow-sm">
-            Flash Sale
-          </span>
-        )}
-
-        <button
-          type="button"
-          aria-label={isFavorite ? 'Remove from wishlist' : 'Save to wishlist'}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleFavorite();
-          }}
-          className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-white/95 text-ink-500 shadow-sm transition-colors hover:text-jade-600 dark:bg-ink-900/95 dark:text-ink-300"
-        >
-          <Heart className={`h-3.5 w-3.5 ${isFavorite ? 'fill-jade-500 text-jade-500' : ''}`} />
-        </button>
-      </div>
-
-      <div className="flex flex-1 flex-col gap-1.5 p-2.5">
-        <h3 className={`line-clamp-2 font-bold leading-snug text-ink-900 dark:text-white ${compact ? 'text-[11px]' : 'text-xs'}`}>
-          {product.title}
-        </h3>
-
-        {sellerName && (
-          <div className="flex min-w-0 items-center gap-1 text-[10px] text-ink-500 dark:text-ink-400">
-            <span className="truncate">{sellerName}</span>
-            {sellerVerified && (
-              <VerifiedBadge
-                sellerId={product.sellerId}
-                status="VERIFIED"
-                variant="icon"
-                fallbackName={sellerName}
-                className="shrink-0"
-              />
-            )}
-          </div>
-        )}
-
-        <div className="mt-auto space-y-1">
-          <div className="flex flex-wrap items-baseline gap-1.5">
-            <span className={`font-black tracking-tight text-ink-900 dark:text-white ${compact ? 'text-[13px]' : 'text-sm'}`}>
-              {naira(displayedPrice)}
-            </span>
-            {discount !== null && comparePrice > displayedPrice && (
-              <span className="text-[10px] font-medium text-ink-400 line-through">
-                {naira(comparePrice)}
-              </span>
-            )}
-          </div>
-
-          <div className="flex items-center justify-between gap-1">
-            <Rating average={rating} count={reviewCount} />
-            <button
-              type="button"
-              aria-label="Add to cart"
-              disabled={product.quantity <= 0 || product.stockStatus === 'SOLD' || product.stockStatus === 'UNAVAILABLE' || product.stockStatus === 'OUT_OF_STOCK'}
-              onClick={(e) => {
-                e.stopPropagation();
-                onAdd();
-              }}
-              className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-jade-500/10 text-jade-700 transition-all hover:bg-jade-500 hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 dark:text-jade-300"
-            >
-              <ShoppingCart className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-      </div>
-    </article>
-  );
+function scrollToId(id: string) {
+  if (typeof document === 'undefined') return;
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 export default function LandingView({
@@ -274,16 +148,17 @@ export default function LandingView({
   const [onlyVerified, setOnlyVerified] = useState(false);
   const [dealsOnly, setDealsOnly] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('smart');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   /* ---- indexes ---- */
   const profilesByUserId = useMemo(() => {
-    const map = new Map<number, (typeof db.profiles)[number]>();
+    const map = new Map<number, Profile>();
     for (const profile of db.profiles) map.set(profile.userId, profile);
     return map;
   }, [db.profiles]);
 
   const usersById = useMemo(() => {
-    const map = new Map<number, (typeof db.users)[number]>();
+    const map = new Map<number, User>();
     for (const user of db.users) map.set(user.id, user);
     return map;
   }, [db.users]);
@@ -375,14 +250,15 @@ export default function LandingView({
         if (!haystack.includes(query)) return false;
       }
       if (selectedCategory && product.category.toLowerCase() !== selectedCategory.toLowerCase()) return false;
-      if (selectedState && stateOf(product.sellerId) !== selectedState) return false;          if (onlyVerified) {
-            const sellerProfile = profilesByUserId.get(product.sellerId);
-            const verified = isVerifiedSeller({
-              verificationStatus: sellerProfile?.verificationStatus,
-              verificationExpiresAt: sellerProfile?.verificationExpiresAt,
-            });
-            if (!verified) return false;
-          }
+      if (selectedState && stateOf(product.sellerId) !== selectedState) return false;
+      if (onlyVerified) {
+        const sellerProfile = profilesByUserId.get(product.sellerId);
+        const verified = isVerifiedSeller({
+          verificationStatus: sellerProfile?.verificationStatus,
+          verificationExpiresAt: sellerProfile?.verificationExpiresAt,
+        });
+        if (!verified) return false;
+      }
       if (wishlistOnly && !favorites.includes(product.id)) return false;
       if (dealsOnly && discountPercent(product) === null && !activeFlashSale(product)) return false;
       return true;
@@ -419,13 +295,18 @@ export default function LandingView({
     activeFeaturedIds, activeVerifiedPlusSellers,
   ]);
 
+  // A new filter or search always restarts the catalogue at page one.
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [searchQuery, selectedCategory, selectedState, onlyVerified, dealsOnly, wishlistOnly, sortMode]);
+
   /* ---- Flash Deals come only from approved, currently running sales. ---- */
   const flashDeals = useMemo(
     () =>
       db.products
-        .filter((product) => activeFlashSale(product) && ['IN_STOCK', 'LOW_STOCK'].includes(product.stockStatus))
+        .filter((product) => activeFlashSale(product) && inStock(product))
         .sort((a, b) => (activeFlashSale(b)?.discountPercent || 0) - (activeFlashSale(a)?.discountPercent || 0))
-        .slice(0, 6),
+        .slice(0, 12),
     [db.products]
   );
   const flashEndsAt = useMemo(
@@ -438,7 +319,17 @@ export default function LandingView({
   );
   const countdown = useCountdownTo(flashEndsAt);
 
-  /* ---- recommended: personalised by city + wishlist + rating ---- */
+  /* ---- curated rails ---- */
+  /** Paid placements win; otherwise the highest-rated live listings stand in. */
+  const featuredProducts = useMemo(() => {
+    const promoted = db.products.filter((product) => activeFeaturedIds.has(product.id) && inStock(product));
+    if (promoted.length > 0) return promoted.slice(0, 12);
+    return db.products
+      .filter(inStock)
+      .sort((a, b) => (ratingOf(b.id) || 0) - (ratingOf(a.id) || 0) || b.viewCount - a.viewCount)
+      .slice(0, 12);
+  }, [db.products, activeFeaturedIds, ratingOf]);
+
   const recommended = useMemo(() => {
     const favoriteCategories = new Set(
       db.products.filter((p) => favorites.includes(p.id)).map((p) => p.category.toLowerCase())
@@ -454,8 +345,34 @@ export default function LandingView({
         return { product, score };
       })
       .sort((a, b) => b.score - a.score);
-    return scored.slice(0, 6).map((s) => s.product);
+    return scored.slice(0, 12).map((s) => s.product);
   }, [db.products, db.profiles, db.currentUser, favorites, flashDeals, ratingOf, stateOf]);
+
+  const trendingProducts = useMemo(() => {
+    const score = (product: Product) =>
+      product.viewCount * 2 + (product.likes || 0) * 3 + (product.cartAdds || 0) * 2 + (ratingOf(product.id) || 0) * 30;
+    return db.products
+      .filter(inStock)
+      .sort((a, b) => score(b) - score(a))
+      .slice(0, 12);
+  }, [db.products, ratingOf]);
+
+  const newArrivals = useMemo(
+    () =>
+      db.products
+        .filter(inStock)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 12),
+    [db.products]
+  );
+
+  const bestDeals = useMemo(() => {
+    const score = (product: Product) => activeFlashSale(product)?.discountPercent ?? discountPercent(product) ?? 0;
+    return db.products
+      .filter((product) => score(product) > 0 && inStock(product))
+      .sort((a, b) => score(b) - score(a))
+      .slice(0, 12);
+  }, [db.products]);
 
   const auctions = useMemo(() => db.products.filter((p) => p.isAuction).slice(0, 4), [db.products]);
 
@@ -486,15 +403,58 @@ export default function LandingView({
     [profilesByUserId, usersById]
   );
 
+  /**
+   * Rails render top to bottom and never repeat a product. A section that
+   * cannot fill itself from unseen listings is hidden instead of echoing the
+   * section above it — a small catalogue should feel sparse, not padded.
+   */
+  const railSections = useMemo(() => {
+    const used = new Set<number>(flashDeals.map((product) => product.id));
+    const take = (list: Product[]) => {
+      const fresh = list.filter((product) => !used.has(product.id));
+      if (fresh.length < 3) return [] as Product[];
+      const picked = fresh.slice(0, 12);
+      picked.forEach((product) => used.add(product.id));
+      return picked;
+    };
+    return {
+      featured: take(featuredProducts),
+      recommended: take(recommended),
+      trending: take(trendingProducts),
+      newArrivals: take(newArrivals),
+      bestDeals: take(bestDeals),
+    };
+  }, [flashDeals, featuredProducts, recommended, trendingProducts, newArrivals, bestDeals]);
+
+  const asRail = useCallback(
+    (product: Product, badge: RailProduct['badge'] = null): RailProduct => ({
+      product,
+      rating: ratingOf(product.id),
+      reviewCount: reviewCountOf(product.id),
+      sellerState: stateOf(product.sellerId),
+      badge,
+      ...sellerProps(product.sellerId),
+    }),
+    [ratingOf, reviewCountOf, stateOf, sellerProps]
+  );
+
+  const railCommon = {
+    favorites,
+    onToggleFavorite: toggleFavorite,
+    onSelectProduct: onSelectProduct,
+    onAddToCart,
+  };
+
   /* ---- hero ---- */
   const heroSlides = useMemo(
     () => [
       {
-        eyebrow: 'Best Deals',
-        title: 'Shop Smarter.',
-        highlight: 'Live Better.',
-        body: 'Great products, unbeatable prices, and complete peace of mind.',
-        cta: 'Shop Now',
+        eyebrow: 'Escrow marketplace',
+        title: 'Shop smarter.',
+        highlight: 'Pay when it arrives.',
+        body: 'Great prices from verified Nigerian sellers, with your money held safely until delivery is confirmed.',
+        cta: 'Shop the marketplace',
+        href: null,
         action: () => {
           setSelectedCategory(null);
           onWishlistOnlyChange(false);
@@ -502,30 +462,41 @@ export default function LandingView({
         },
       },
       {
-        eyebrow: 'Buyer Protection',
-        title: 'Your money waits',
-        highlight: 'until you confirm.',
-        body: 'Every order is escrow-backed. The seller is paid only after you receive what you ordered.',
-        cta: 'Browse protected deals',
+        eyebrow: 'Flash deals',
+        title: 'Price drops,',
+        highlight: 'clock running.',
+        body: flashDeals.length
+          ? `${flashDeals.length} scheduled deals are live right now. The price you see is the price you pay.`
+          : 'Scheduled deals appear here the moment a seller starts one.',
+        cta: 'See live deals',
+        href: COLLECTIONS['flash-deals'].href,
         action: () => {
           setSelectedCategory(null);
+          setDealsOnly(true);
           scrollToId('catalog-section');
         },
       },
       {
-        eyebrow: 'Verified Sellers',
+        eyebrow: 'Verified sellers',
         title: 'Real stores.',
         highlight: 'Real reviews.',
-        body: `${verifiedSellers.length} verified Nigerian merchants, with reviews tied to real orders.`,
+        body: `${verifiedSellers.length} verified Nigerian merchants, with reviews tied to completed orders.`,
         cta: 'Meet the sellers',
-        action: () => scrollToId('sellers-section'),
+        href: '/sellers',
+        action: () => {
+          if (verifiedSellers[0]) onNavigate('seller-profile', { sellerId: verifiedSellers[0].id });
+          else scrollToId('catalog-section');
+        },
       },
     ],
-    [verifiedSellers.length]
+    [flashDeals.length, verifiedSellers, onNavigate, onWishlistOnlyChange]
   );
 
   useEffect(() => {
-    const id = setInterval(() => setActiveSlide((s) => (s + 1) % heroSlides.length), 6500);
+    // A rotating banner is decoration: leave it on the first slide for anyone
+    // who asked the system to reduce motion.
+    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    const id = setInterval(() => setActiveSlide((s) => (s + 1) % heroSlides.length), 7000);
     return () => clearInterval(id);
   }, [heroSlides.length]);
 
@@ -536,108 +507,170 @@ export default function LandingView({
       .slice(0, 6);
     if (!picks.length) return [] as Product[];
     const out: Product[] = [];
-    for (let i = 0; i < 3; i += 1) {
-      const value = picks[(activeSlide * 3 + i) % picks.length];
+    for (let i = 0; i < 2; i += 1) {
+      const value = picks[(activeSlide * 2 + i) % picks.length];
       if (value) out.push(value);
     }
     return out;
   }, [db.products, activeSlide, ratingOf]);
 
+  const slide = heroSlides[activeSlide] ?? heroSlides[0];
+  const buyerState = db.profiles.find((profile) => profile.userId === db.currentUser?.id)?.state || '';
+  const visibleProducts = filteredProducts.slice(0, visibleCount);
+  const hasMore = filteredProducts.length > visibleProducts.length;
+
+  const catalogHeading = wishlistOnly
+    ? 'Your wishlist'
+    : dealsOnly
+      ? 'Discounted deals'
+      : selectedCategory
+        ? categoryMeta(selectedCategory).label
+        : searchQuery.trim()
+          ? `Results for “${searchQuery.trim()}”`
+          : 'All listings';
+
   return (
     <div className="min-h-screen bg-white pb-20 transition-colors duration-300 dark:bg-ink-950">
-      {/* ───────────────────────── Hero ───────────────────────── */}
-      <section className="relative overflow-hidden bg-jade-50 text-ink-900 transition-colors duration-300 dark:bg-jade-950 dark:text-white">
-        <div aria-hidden className="pointer-events-none absolute -left-24 top-10 h-72 w-72 rounded-full bg-jade-300/30 blur-3xl dark:bg-jade-500/25" />
-        <div aria-hidden className="pointer-events-none absolute -right-16 bottom-0 h-64 w-64 rounded-full bg-gold-300/25 blur-3xl dark:bg-gold-400/10" />
-
-        <div className="relative mx-auto max-w-7xl px-4 pb-6 pt-4 sm:px-6 sm:pb-8 lg:px-8">
-          {/* live trust line */}
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-[11px] font-semibold text-jade-800 dark:text-jade-200">
-            <span className="inline-flex items-center gap-1.5">
-              <Sparkles className="h-3.5 w-3.5 text-jade-600 dark:text-gold-300" />
-              {db.products.length} live listings across {states.length} states
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <ShieldCheck className="h-3.5 w-3.5 text-jade-600 dark:text-gold-300" />
-              Escrow on every order
-            </span>
-          </div>
-
-          {/* carousel card */}
-          <div className="relative overflow-hidden rounded-3xl border border-jade-200 bg-gradient-to-br from-white via-jade-50 to-jade-100 shadow-sm dark:border-white/10 dark:from-jade-800 dark:via-jade-900 dark:to-jade-950 dark:shadow-none">
-            <div className="grid items-center gap-4 p-4 sm:p-6 lg:grid-cols-[1.15fr_0.85fr]">
-              <div className="relative z-10">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-jade-600 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-white dark:bg-gold-300 dark:text-jade-950">
-                  <Flame className="h-3.5 w-3.5" />
-                  {heroSlides[activeSlide].eyebrow}
+      {/* ───────────────────────── Promo band ───────────────────────── */}
+      <section className="border-b border-ink-150 bg-ink-50/60 dark:border-ink-800 dark:bg-ink-950">
+        <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
+          <div className="grid gap-2.5 lg:grid-cols-[1.7fr_1fr]">
+            {/* rotating banner */}
+            <div className="relative flex min-h-[172px] items-center overflow-hidden rounded-2xl bg-jade-950 px-4 py-5 text-white sm:px-6 sm:py-6">
+              <div aria-hidden className="pointer-events-none absolute -left-10 -top-16 h-48 w-48 rounded-full bg-jade-500/25 blur-3xl" />
+              <div aria-hidden className="pointer-events-none absolute -bottom-24 right-0 h-56 w-56 rounded-full bg-gold-400/10 blur-3xl" />
+              <div className="relative z-10 max-w-md">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-gold-300 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-ink-950">
+                  <Flame className="h-3 w-3" aria-hidden="true" />
+                  {slide.eyebrow}
                 </span>
-
-                <h1 className="mt-3 font-display text-2xl font-black leading-[1.08] tracking-tight sm:text-3xl lg:text-4xl">
-                  {heroSlides[activeSlide].title}
+                <h1 className="mt-2 font-display text-2xl font-black leading-[1.08] tracking-tight sm:text-3xl">
+                  {slide.title}
                   <br />
-                  <span className="text-jade-600 dark:text-gold-300">{heroSlides[activeSlide].highlight}</span>
+                  <span className="text-gold-300">{slide.highlight}</span>
                 </h1>
-
-                <p className="mt-2 max-w-md text-xs leading-relaxed text-ink-600 dark:text-jade-100/85 sm:text-sm">
-                  {heroSlides[activeSlide].body}
+                <p className="mt-1.5 max-w-sm text-[11px] leading-relaxed text-jade-100/80 sm:text-xs">
+                  {slide.body}
                 </p>
-
-                <button
-                  type="button"
-                  onClick={heroSlides[activeSlide].action}
-                  className="mt-4 inline-flex items-center gap-2 rounded-xl bg-jade-600 px-4 py-2.5 text-xs font-black text-white shadow-lg shadow-jade-900/20 transition-all hover:bg-jade-700 active:scale-95 dark:bg-gold-300 dark:text-jade-950 dark:shadow-black/20 dark:hover:bg-gold-200"
-                >
-                  {heroSlides[activeSlide].cta}
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-
-                <div className="mt-4 flex items-center gap-1.5">
-                  {heroSlides.map((slide, index) => (
+                <div className="mt-3 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={slide.action}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-[11px] font-bold text-jade-950 transition-colors hover:bg-jade-50 active:scale-95 dark:bg-gold-300 dark:hover:bg-gold-200"
+                  >
+                    {slide.cta}
+                    <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                  {slide.href && (
+                    <Link
+                      href={slide.href}
+                      className="text-[11px] font-semibold text-jade-100/80 underline-offset-4 hover:text-white hover:underline"
+                    >
+                      Browse all
+                    </Link>
+                  )}
+                </div>
+                <div className="mt-3 flex items-center gap-1.5">
+                  {heroSlides.map((item, index) => (
                     <button
-                      key={slide.eyebrow}
+                      key={item.eyebrow}
                       type="button"
-                      aria-label={`Show ${slide.eyebrow}`}
+                      aria-label={`Show ${item.eyebrow}`}
+                      aria-current={index === activeSlide}
                       onClick={() => setActiveSlide(index)}
-                      className={`h-1.5 rounded-full transition-all ${
-                        index === activeSlide
-                          ? 'w-6 bg-jade-600 dark:bg-gold-300'
-                          : 'w-1.5 bg-ink-300 hover:bg-ink-400 dark:bg-white/35 dark:hover:bg-white/60'
+                      className={`h-1 rounded-full transition-all ${
+                        index === activeSlide ? 'w-5 bg-gold-300' : 'w-1.5 bg-white/30 hover:bg-white/60'
                       }`}
                     />
                   ))}
                 </div>
               </div>
 
-              {/* real product collage + protection seal */}
-              <div className="relative hidden h-48 sm:block lg:h-56">
-                <div className="absolute inset-0 flex items-end justify-center gap-2">
-                  {heroImages.map((product, index) => (
+              {heroImages.length > 0 && (
+                <div className="relative ml-auto hidden items-center gap-2 sm:flex">
+                  {heroImages.map((product) => (
                     <button
                       key={product.id}
                       type="button"
                       onClick={() => onSelectProduct(product.id)}
-                      className={`relative overflow-hidden rounded-2xl border border-ink-200 bg-white shadow-lg transition-all hover:-translate-y-1 dark:border-white/20 dark:bg-white/10 dark:shadow-xl ${
-                        index === 1 ? 'h-40 w-28 sm:h-44 sm:w-32' : 'h-32 w-24 sm:h-36 sm:w-28'
-                      }`}
+                      className="relative h-28 w-24 overflow-hidden rounded-xl border border-white/15 bg-white/5 shadow-lg transition-transform hover:-translate-y-0.5 focus-ring lg:h-32 lg:w-28"
+                      aria-label={`View ${product.title}`}
                     >
                       <SmartImage
                         src={product.images?.[0]}
                         alt={product.title}
                         seed={`hero-${product.id}`}
                         className="h-full w-full"
+                        loading="eager"
                       />
                     </button>
                   ))}
-                </div>
-
-                <div className="absolute -right-1 top-0 flex flex-col items-center gap-0.5 rounded-xl border border-gold-400/60 bg-white/95 px-2.5 py-2 text-center backdrop-blur dark:border-gold-300/40 dark:bg-jade-950/80">
-                  <BadgeCheck className="h-4 w-4 text-gold-500 dark:text-gold-300" />
-                  <span className="text-[9px] font-bold leading-tight text-jade-800 dark:text-gold-200">
-                    Buyer<br />Protection
+                  <span className="absolute -bottom-1 right-0 inline-flex items-center gap-1 rounded-md bg-gold-300 px-1.5 py-1 text-[9px] font-black uppercase tracking-wide text-ink-950">
+                    <BadgeCheck className="h-3 w-3" aria-hidden="true" />
+                    Protected
                   </span>
                 </div>
+              )}
+            </div>
+
+            {/* side tiles */}
+            <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-1">
+              <Link
+                href={COLLECTIONS['flash-deals'].href}
+                className="group flex flex-col justify-between rounded-2xl border border-gold-300/60 bg-gold-50 p-3 transition-colors hover:border-gold-400 dark:border-gold-500/30 dark:bg-ink-900"
+              >
+                <span className="flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-gold-700 dark:text-gold-300">
+                    <Zap className="h-3.5 w-3.5 fill-gold-400 text-gold-500" aria-hidden="true" />
+                    Flash deals
+                  </span>
+                  {flashDeals.length > 0 && !countdown.ended && (
+                    <Countdown hours={countdown.hours} minutes={countdown.minutes} seconds={countdown.seconds} />
+                  )}
+                </span>
+                <span className="mt-2 block text-lg font-black leading-tight tracking-tight text-ink-900 dark:text-white">
+                  {flashDeals.length > 0
+                    ? `Up to ${Math.max(...flashDeals.map((p) => activeFlashSale(p)?.discountPercent || 0))}% off`
+                    : 'No live deals yet'}
+                </span>
+                <span className="mt-0.5 flex items-center justify-between text-[11px] text-ink-500 dark:text-ink-400">
+                  {flashDeals.length > 0 ? `${flashDeals.length} deals ending soon` : 'Check back later today'}
+                  <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                </span>
+              </Link>
+
+              <div className="flex flex-col justify-between rounded-2xl border border-ink-150 bg-white p-3 dark:border-ink-800 dark:bg-ink-900">
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-jade-700 dark:text-jade-300">
+                  <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                  GoodSale escrow
+                </span>
+                <span className="mt-2 block text-lg font-black leading-tight tracking-tight text-ink-900 dark:text-white">
+                  Your money waits
+                </span>
+                <span className="mt-0.5 flex items-center justify-between text-[11px] text-ink-500 dark:text-ink-400">
+                  Released only after you confirm delivery
+                  <Link href="/trust-safety" className="font-bold text-jade-700 hover:underline dark:text-jade-300">
+                    How it works
+                  </Link>
+                </span>
               </div>
             </div>
+          </div>
+
+          {/* live status line */}
+          <div className="mt-2 flex items-center justify-between gap-3 overflow-x-auto whitespace-nowrap text-[10px] font-semibold text-ink-500 scrollbar-hide dark:text-ink-400">
+            <span className="inline-flex items-center gap-1.5">
+              <Sparkles className="h-3 w-3 text-jade-600 dark:text-jade-300" aria-hidden="true" />
+              {db.products.length} live listings across {states.length} states
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Truck className="h-3 w-3 text-jade-600 dark:text-jade-300" aria-hidden="true" />
+              Tracked delivery nationwide
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Headphones className="h-3 w-3 text-jade-600 dark:text-jade-300" aria-hidden="true" />
+              Human support, every day
+            </span>
           </div>
         </div>
       </section>
@@ -646,223 +679,342 @@ export default function LandingView({
         <AdSlot
           placement="HOME"
           onNavigate={onNavigate}
-          state={selectedState || db.profiles.find((profile) => profile.userId === db.currentUser?.id)?.state || ''}
+          state={selectedState || buyerState}
           city={db.profiles.find((profile) => profile.userId === db.currentUser?.id)?.city || ''}
           category={selectedCategory || ''}
-          className="mt-4"
+          className="mt-3"
         />
 
-        {/* ───────────────────── Categories ───────────────────── */}
-        <section className="mt-5 rounded-3xl border border-ink-150 bg-white p-3 shadow-sm dark:border-ink-800 dark:bg-ink-900 sm:p-4">
-          <div className="flex items-center justify-between px-1">
-            <h2 className="font-display text-sm font-black text-ink-900 dark:text-white">Shop by category</h2>
+        {/* ───────────────────── Category nav ───────────────────── */}
+        {categories.length > 0 && (
+          <nav aria-label="Browse categories" className="mt-3 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
             <button
               type="button"
               onClick={() => {
                 setSelectedCategory(null);
                 scrollToId('catalog-section');
               }}
-              className="inline-flex items-center gap-0.5 text-[11px] font-bold text-jade-600 hover:text-jade-700 dark:text-jade-400"
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-bold transition-colors ${
+                selectedCategory === null
+                  ? 'border-jade-600 bg-jade-600 text-white'
+                  : 'border-ink-200 bg-white text-ink-600 hover:border-jade-300 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300'
+              }`}
             >
-              See all <ChevronRight className="h-3.5 w-3.5" />
+              <LayoutGrid className="h-3.5 w-3.5" aria-hidden="true" />
+              All
             </button>
-          </div>
-
-          <div className="mt-3 flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-5">
-            {categories.map((category) => {
-              const { label, Icon } = categoryMeta(category.name);
+            {categories.slice(0, 14).map((category) => {
+              const { Icon, label } = categoryMeta(category.name);
               const selected = selectedCategory?.toLowerCase() === category.name.toLowerCase();
               return (
                 <button
                   key={category.name}
                   type="button"
+                  aria-pressed={selected}
                   onClick={() => {
                     setSelectedCategory(selected ? null : category.name);
                     scrollToId('catalog-section');
                   }}
-                  className="group flex w-[68px] shrink-0 flex-col items-center gap-1.5"
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-bold transition-colors ${
+                    selected
+                      ? 'border-jade-600 bg-jade-600 text-white'
+                      : 'border-ink-200 bg-white text-ink-600 hover:border-jade-300 hover:text-jade-700 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300'
+                  }`}
                 >
-                  <div
-                    className={`grid h-14 w-14 place-items-center overflow-hidden rounded-full ring-2 transition-all sm:h-16 sm:w-16 ${
-                      selected
-                        ? 'ring-jade-500 shadow-md shadow-jade-500/25'
-                        : 'ring-ink-100 group-hover:ring-jade-300 dark:ring-ink-800'
-                    } ${category.image ? 'bg-white' : 'bg-jade-500/10 text-jade-600 dark:text-jade-300'}`}
-                  >
-                    {category.image ? (
-                      <SmartImage
-                        src={category.image}
-                        alt={category.name}
-                        seed={`cat-${category.name}`}
-                        className="h-full w-full"
-                      />
-                    ) : (
-                      <Icon className="h-6 w-6" />
-                    )}
-                  </div>
-                  <span
-                    className={`w-[68px] text-center text-[10px] font-bold leading-tight line-clamp-2 ${
-                      selected ? 'text-jade-600 dark:text-jade-400' : 'text-ink-700 dark:text-ink-300'
-                    }`}
-                  >
-                    {label}
-                  </span>
+                  <Icon className="h-3.5 w-3.5" />
+                  {label}
+                  <span className={selected ? 'text-white/70' : 'text-ink-400'}>{category.count}</span>
                 </button>
               );
             })}
-
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedCategory(null);
-                onWishlistOnlyChange(false);
-                scrollToId('catalog-section');
-              }}
-              className="flex w-[68px] shrink-0 flex-col items-center gap-1.5"
+            <Link
+              href="/categories"
+              className="inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-bold text-jade-700 hover:bg-jade-500/10 dark:text-jade-300"
             >
-              <div className="grid h-14 w-14 place-items-center rounded-full bg-jade-600 text-white ring-2 ring-jade-600 sm:h-16 sm:w-16">
-                <LayoutGrid className="h-6 w-6" />
-              </div>
-              <span className="text-[10px] font-bold text-ink-700 dark:text-ink-300">More</span>
-            </button>
+              All categories
+              <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </Link>
+          </nav>
+        )}
+
+        {/* ───────────────────── Flash deals ───────────────────── */}
+        {flashDeals.length >= 3 && !countdown.ended && (
+          <div className="mt-4">
+            <ProductRail
+              label="Flash deals"
+              title={COLLECTIONS['flash-deals'].title}
+              subtitle={`${COLLECTIONS['flash-deals'].ordering} · prices return to normal when the timer ends`}
+              href={COLLECTIONS['flash-deals'].href}
+              icon={<Zap className="h-4 w-4 fill-gold-400" />}
+              variant="jade"
+              headerExtra={
+                flashEndsAt ? (
+                  <span className="hidden items-center gap-1.5 text-[10px] font-semibold text-jade-100/70 sm:inline-flex">
+                    <Clock className="h-3 w-3" aria-hidden="true" />
+                    Ends {new Date(flashEndsAt).toLocaleString('en-NG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                ) : null
+              }
+              products={flashDeals.map((product) => asRail(product, 'flash'))}
+              {...railCommon}
+            />
           </div>
-        </section>
+        )}
 
-        {/* ───────────────────── Flash sales ───────────────────── */}
-        {flashDeals.length > 0 && !countdown.ended && (
-          <section className="mt-6" id="flash-deals-section">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <span className="grid h-7 w-7 place-items-center rounded-lg bg-gold-100 text-gold-600">
-                  <Zap className="h-4 w-4 fill-gold-400 text-gold-500" />
-                </span>
-                <h2 className="font-display text-lg font-black tracking-tight text-ink-900 dark:text-white sm:text-xl">
-                  Flash Sales
+        {/* ───────────────────── Featured ───────────────────── */}
+        {railSections.featured.length > 0 && (
+          <div className="mt-6">
+            <ProductRail
+              label="Featured products"
+              title={COLLECTIONS.featured.title}
+              subtitle={COLLECTIONS.featured.subtitle}
+              href={COLLECTIONS.featured.href}
+              icon={<Sparkles className="h-4 w-4" />}
+              headerExtra={
+                activeFeaturedIds.size > 0 ? (
+                  <span className="hidden items-center gap-1 rounded-full bg-gold-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-gold-700 sm:inline-flex dark:bg-gold-300/15 dark:text-gold-200">
+                    Promoted
+                  </span>
+                ) : (
+                  <span className="hidden items-center gap-1 rounded-full bg-jade-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-jade-700 sm:inline-flex dark:text-jade-300">
+                    Top rated
+                  </span>
+                )
+              }
+              products={railSections.featured.map((product) =>
+                asRail(product, activeFeaturedIds.has(product.id) ? 'featured' : null)
+              )}
+              {...railCommon}
+            />
+          </div>
+        )}
+
+        {/* ───────────────────── Shop by category ───────────────────── */}
+        {categories.length > 0 && (
+          <section className="mt-6" aria-labelledby="shop-by-category">
+            <div className="mb-2.5 flex items-end justify-between gap-2">
+              <div>
+                <h2 id="shop-by-category" className="font-display text-base font-extrabold tracking-tight text-ink-900 dark:text-white sm:text-lg">
+                  Shop by category
                 </h2>
-                <span className="hidden text-[10px] font-semibold text-ink-400 sm:inline">
-                  Ends {flashEndsAt ? new Date(flashEndsAt).toLocaleString('en-NG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'soon'}
-                </span>
+                <p className="text-[11px] text-ink-500 dark:text-ink-400">Every category below has live listings.</p>
               </div>
-
-              <div className="flex items-center gap-2">
-                <div className="flex items-start gap-1 rounded-lg bg-white px-2 py-1 shadow-sm ring-1 ring-ink-150 dark:bg-ink-900 dark:ring-ink-800">
-                  <CountdownBox value={countdown.hours} label="hrs" />
-                  <span className="pt-0.5 text-[11px] font-black text-ink-300">:</span>
-                  <CountdownBox value={countdown.minutes} label="min" />
-                  <span className="pt-0.5 text-[11px] font-black text-ink-300">:</span>
-                  <CountdownBox value={countdown.seconds} label="sec" />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedCategory(null);
-                    setDealsOnly(true);
-                    scrollToId('catalog-section');
-                  }}
-                  className="inline-flex items-center gap-0.5 text-[11px] font-bold text-jade-600 hover:text-jade-700 dark:text-jade-400"
-                >
-                  See All <ArrowRight className="h-3.5 w-3.5" />
-                </button>
-              </div>
+              <Link href="/categories" className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold text-jade-700 hover:underline dark:text-jade-300">
+                All categories
+                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </Link>
             </div>
 
-            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
-              {flashDeals.slice(0, 6).map((product) => (
-                <ProductCard
-                  key={product.id}
-                  product={product}
-                  rating={ratingOf(product.id)}
-                  reviewCount={reviewCountOf(product.id)}
-                  {...sellerProps(product.sellerId)}
-                  isFeatured={activeFeaturedIds.has(product.id)}
-                  isFavorite={favorites.includes(product.id)}
-                  onToggleFavorite={() => toggleFavorite(product.id)}
-                  onSelect={() => onSelectProduct(product.id)}
-                  onAdd={() => onAddToCart(product.id)}
-                />
-              ))}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
+              {categories.slice(0, 8).map((category) => {
+                const { label, Icon } = categoryMeta(category.name);
+                return (
+                  <button
+                    key={category.name}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategory(category.name);
+                      scrollToId('catalog-section');
+                    }}
+                    className="group relative flex h-20 flex-col justify-end overflow-hidden rounded-xl border border-ink-150 bg-ink-50 p-2 text-left transition-colors hover:border-jade-500/40 sm:h-24 dark:border-ink-800 dark:bg-ink-900 focus-ring"
+                  >
+                    {category.image ? (
+                      <span className="absolute inset-0 block overflow-hidden">
+                        <SmartImage
+                          src={category.image}
+                          alt=""
+                          seed={`cat-${category.name}`}
+                          className="h-full w-full opacity-90 transition-transform duration-300 group-hover:scale-105 motion-reduce:transition-none"
+                        />
+                      </span>
+                    ) : (
+                      <span className="absolute inset-0 grid place-items-center text-jade-600 dark:text-jade-300">
+                        <Icon className="h-7 w-7" />
+                      </span>
+                    )}
+                    <span aria-hidden className="absolute inset-0 bg-gradient-to-t from-ink-950/80 via-ink-950/10 to-transparent" />
+                    <span className="relative flex items-center gap-1 text-[11px] font-bold leading-tight text-white">
+                      <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
+                      <span className="line-clamp-2">{label}</span>
+                    </span>
+                    <span className="relative text-[10px] text-white/70">{category.count} listings</span>
+                  </button>
+                );
+              })}
             </div>
           </section>
         )}
 
         {/* ───────────────────── Recommended ───────────────────── */}
-        {recommended.length > 0 && (
-          <section className="mt-6">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-gold-400" />
-                <h2 className="font-display text-lg font-black tracking-tight text-ink-900 dark:text-white sm:text-xl">
-                  Recommended for You
-                </h2>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setSortMode('rating');
-                  scrollToId('catalog-section');
-                }}
-                className="inline-flex items-center gap-0.5 text-[11px] font-bold text-jade-600 hover:text-jade-700 dark:text-jade-400"
-              >
-                See All <ArrowRight className="h-3.5 w-3.5" />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
-              {recommended.map((product) => (
-                <ProductCard
-                  key={product.id}
-                  product={product}
-                  rating={ratingOf(product.id)}
-                  reviewCount={reviewCountOf(product.id)}
-                  {...sellerProps(product.sellerId)}
-                  isFeatured={activeFeaturedIds.has(product.id)}
-                  isFavorite={favorites.includes(product.id)}
-                  onToggleFavorite={() => toggleFavorite(product.id)}
-                  onSelect={() => onSelectProduct(product.id)}
-                  onAdd={() => onAddToCart(product.id)}
-                />
-              ))}
-            </div>
-          </section>
+        {railSections.recommended.length > 0 && (
+          <div className="mt-6">
+            <ProductRail
+              label="Recommended for you"
+              title={COLLECTIONS.recommended.title}
+              subtitle={COLLECTIONS.recommended.subtitle}
+              href={COLLECTIONS.recommended.href}
+              icon={<Heart className="h-4 w-4" />}
+              products={railSections.recommended.map((product) => asRail(product))}
+              {...railCommon}
+            />
+          </div>
         )}
 
+        {/* ───────────────────── Trending ───────────────────── */}
+        {railSections.trending.length > 0 && (
+          <div className="mt-6">
+            <ProductRail
+              label="Trending now"
+              title={COLLECTIONS.trending.title}
+              subtitle={COLLECTIONS.trending.subtitle}
+              href={COLLECTIONS.trending.href}
+              icon={<TrendingUp className="h-4 w-4" />}
+              headerExtra={
+                <span className="hidden items-center gap-1 rounded-full bg-jade-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-jade-700 sm:inline-flex dark:text-jade-300">
+                  Live activity
+                </span>
+              }
+              products={railSections.trending.map((product) => asRail(product, 'trending'))}
+              {...railCommon}
+            />
+          </div>
+        )}
+
+        {/* ───────────────────── Recently added ───────────────────── */}
+        {railSections.newArrivals.length > 0 && (
+          <div className="mt-6">
+            <ProductRail
+              label="Recently added"
+              title={COLLECTIONS['new-arrivals'].title}
+              subtitle={COLLECTIONS['new-arrivals'].subtitle}
+              href={COLLECTIONS['new-arrivals'].href}
+              icon={<Clock className="h-4 w-4" />}
+              products={railSections.newArrivals.map((product) => asRail(product, 'new'))}
+              {...railCommon}
+            />
+          </div>
+        )}
+
+        {/* ───────────────────── Best deals ───────────────────── */}
+        {railSections.bestDeals.length > 0 && (
+          <div className="mt-6">
+            <ProductRail
+              label="Best deals"
+              title={COLLECTIONS['best-deals'].title}
+              subtitle={COLLECTIONS['best-deals'].subtitle}
+              href={COLLECTIONS['best-deals'].href}
+              icon={<Tag className="h-4 w-4" />}
+              products={railSections.bestDeals.map((product) => asRail(product))}
+              {...railCommon}
+            />
+          </div>
+        )}
+
+        {/* ───────────────────── Seller band ───────────────────── */}
+        <section className="mt-6 overflow-hidden rounded-2xl bg-jade-950 text-white dark:bg-jade-900" aria-labelledby="sell-on-goodsale">
+          <div className="grid gap-4 p-4 sm:p-6 lg:grid-cols-[1.3fr_1fr]">
+            <div>
+              <p className="inline-flex items-center gap-1.5 rounded-full bg-gold-300 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-ink-950">
+                <Store className="h-3 w-3" aria-hidden="true" />
+                Sell on GoodSale
+              </p>
+              <h2 id="sell-on-goodsale" className="mt-2 font-display text-xl font-black tracking-tight sm:text-2xl">
+                Turn your stock into a verified storefront.
+              </h2>
+              <p className="mt-1.5 max-w-lg text-[11px] leading-relaxed text-jade-100/80 sm:text-xs">
+                Publish listings in minutes, get paid from escrow after delivery, and track every rider in one place.
+                Verification is reviewed by real people, not an algorithm.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => onNavigate('dashboard')}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-gold-300 px-3 py-2 text-[11px] font-bold text-ink-950 transition-colors hover:bg-gold-200 active:scale-95"
+                >
+                  Start selling
+                  <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+                <Link
+                  href="/sellers"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-white/25 px-3 py-2 text-[11px] font-semibold text-white hover:bg-white/10"
+                >
+                  Browse verified sellers
+                </Link>
+              </div>
+            </div>
+
+            {verifiedSellers.length > 0 && (
+              <div className="flex flex-col justify-center gap-2">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-jade-100/60">Verified merchants</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {verifiedSellers.slice(0, 5).map((seller) => {
+                    const profile = profilesByUserId.get(seller.id);
+                    const listings = db.products.filter((p) => p.sellerId === seller.id).length;
+                    return (
+                      <button
+                        key={seller.id}
+                        type="button"
+                        onClick={() => onNavigate('seller-profile', { sellerId: seller.id })}
+                        className="flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-2 py-1.5 text-left transition-colors hover:bg-white/10 focus-ring"
+                      >
+                        <span className="grid h-7 w-7 place-items-center overflow-hidden rounded-full bg-white/10">
+                          <SmartImage src={profile?.photoUrl} alt={seller.fullName} seed={`seller-${seller.id}`} className="h-full w-full" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="flex items-center gap-1 text-[11px] font-bold">
+                            <span className="truncate max-w-[110px]">{seller.fullName}</span>
+                            <VerifiedBadge
+                              sellerId={seller.id}
+                              status={profile?.verificationStatus}
+                              expiresAt={profile?.verificationExpiresAt}
+                              variant="icon"
+                              fallbackName={seller.fullName}
+                              className="shrink-0"
+                            />
+                          </span>
+                          <span className="block text-[10px] text-jade-100/60">
+                            {listings} listings{profile?.state ? ` · ${profile.state}` : ''}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
         {/* ───────────────────── Trust strip ───────────────────── */}
-        <section className="mt-6 grid grid-cols-2 gap-2 rounded-2xl border border-ink-150 bg-white p-3 text-ink-900 shadow-sm sm:grid-cols-4 sm:gap-3 sm:p-4 dark:border-jade-800/60 dark:bg-jade-900 dark:text-white dark:shadow-none">
+        <section className="mt-4 grid grid-cols-2 gap-2 rounded-2xl border border-ink-150 bg-white p-3 shadow-sm sm:grid-cols-4 dark:border-ink-800 dark:bg-ink-900">
           {[
-            { Icon: ShieldCheck, title: 'Secure Payments', body: 'Escrow protected' },
-            { Icon: Headphones, title: '24/7 Support', body: 'Real humans' },
-            { Icon: BadgeCheck, title: 'Verified Sellers', body: 'ID checked' },
-            { Icon: Truck, title: 'Fast Delivery', body: 'Tracked riders' },
+            { Icon: ShieldCheck, title: 'Secure payments', body: 'Escrow on every order' },
+            { Icon: Truck, title: 'Tracked delivery', body: 'Nationwide riders' },
+            { Icon: BadgeCheck, title: 'Verified sellers', body: 'ID checked' },
+            { Icon: Headphones, title: 'Human support', body: 'Every day' },
           ].map((item) => (
             <div key={item.title} className="flex items-center gap-2">
-              <item.Icon className="h-6 w-6 shrink-0 text-jade-600 dark:text-gold-300" />
+              <item.Icon className="h-5 w-5 shrink-0 text-jade-600 dark:text-gold-300" aria-hidden="true" />
               <div className="min-w-0">
-                <p className="truncate text-[11px] font-bold leading-tight">{item.title}</p>
-                <p className="truncate text-[10px] text-ink-500 dark:text-jade-200/80">{item.body}</p>
+                <p className="truncate text-[11px] font-bold leading-tight text-ink-900 dark:text-white">{item.title}</p>
+                <p className="truncate text-[10px] text-ink-500 dark:text-ink-400">{item.body}</p>
               </div>
             </div>
           ))}
         </section>
 
-        {/* ───────────────────── Catalog ───────────────────── */}
-        <section id="catalog-section" className="mt-7 scroll-mt-24">
-          <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-            <div>
-              <h2 className="font-display text-lg font-black tracking-tight text-ink-900 dark:text-white sm:text-xl">
-                {wishlistOnly
-                  ? 'Your wishlist'
-                  : dealsOnly
-                    ? 'Discounted deals'
-                    : selectedCategory
-                      ? categoryMeta(selectedCategory).label
-                      : searchQuery.trim()
-                        ? `Results for “${searchQuery.trim()}”`
-                        : 'All listings'}
+        {/* ───────────────────── Catalogue ───────────────────── */}
+        <section id="catalog-section" className="mt-6 scroll-mt-28">
+          <div className="mb-2.5 flex flex-wrap items-end justify-between gap-2">
+            <div className="min-w-0">
+              <h2 className="font-display text-base font-extrabold tracking-tight text-ink-900 dark:text-white sm:text-lg">
+                {catalogHeading}
               </h2>
-              <p className="text-[11px] text-ink-400">
+              <p className="text-[11px] text-ink-500 dark:text-ink-400">
                 {filteredProducts.length} item{filteredProducts.length === 1 ? '' : 's'}
                 {selectedState ? ` · ${selectedState}` : ' · across Nigeria'}
                 {onlyVerified ? ' · verified sellers only' : ''}
+                {dealsOnly ? ' · discounted only' : ''}
               </p>
             </div>
 
@@ -870,13 +1022,14 @@ export default function LandingView({
               <button
                 type="button"
                 onClick={() => onWishlistOnlyChange(!wishlistOnly)}
+                aria-pressed={wishlistOnly}
                 className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition-colors ${
                   wishlistOnly
-                    ? 'border-jade-500 bg-jade-500 text-white'
+                    ? 'border-jade-600 bg-jade-600 text-white'
                     : 'border-ink-200 bg-white text-ink-600 hover:border-jade-300 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300'
                 }`}
               >
-                <Heart className={`h-3.5 w-3.5 ${wishlistOnly ? 'fill-white' : ''}`} />
+                <Heart className={`h-3.5 w-3.5 ${wishlistOnly ? 'fill-white' : ''}`} aria-hidden="true" />
                 Wishlist
                 {favorites.length > 0 && (
                   <span className={`rounded-full px-1 text-[10px] ${wishlistOnly ? 'bg-white/20' : 'bg-jade-500/10 text-jade-700 dark:text-jade-300'}`}>
@@ -888,31 +1041,33 @@ export default function LandingView({
               <button
                 type="button"
                 onClick={() => setDealsOnly((v) => !v)}
+                aria-pressed={dealsOnly}
                 className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition-colors ${
                   dealsOnly
-                    ? 'border-jade-500 bg-jade-500 text-white'
+                    ? 'border-jade-600 bg-jade-600 text-white'
                     : 'border-ink-200 bg-white text-ink-600 hover:border-jade-300 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300'
                 }`}
               >
-                <Flame className={`h-3.5 w-3.5 ${dealsOnly ? 'fill-white' : 'text-gold-500'}`} />
+                <Flame className={`h-3.5 w-3.5 ${dealsOnly ? 'fill-white' : 'text-gold-500'}`} aria-hidden="true" />
                 Deals
               </button>
 
               <button
                 type="button"
                 onClick={() => setOnlyVerified((v) => !v)}
+                aria-pressed={onlyVerified}
                 className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition-colors ${
                   onlyVerified
-                    ? 'border-jade-500 bg-jade-500 text-white'
+                    ? 'border-jade-600 bg-jade-600 text-white'
                     : 'border-ink-200 bg-white text-ink-600 hover:border-jade-300 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300'
                 }`}
               >
-                <BadgeCheck className="h-3.5 w-3.5" />
+                <BadgeCheck className="h-3.5 w-3.5" aria-hidden="true" />
                 Verified
               </button>
 
               <label className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-[11px] font-bold text-ink-600 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300">
-                <SlidersHorizontal className="h-3.5 w-3.5 text-ink-400" />
+                <SlidersHorizontal className="h-3.5 w-3.5 text-ink-400" aria-hidden="true" />
                 <select
                   aria-label="Sort listings"
                   value={sortMode}
@@ -931,7 +1086,7 @@ export default function LandingView({
 
           {filteredProducts.length === 0 ? (
             db.products.length === 0 ? (
-              <div className="rounded-3xl border border-dashed border-ink-300 bg-white shadow-sm dark:border-ink-700 dark:bg-ink-900">
+              <div className="rounded-2xl border border-dashed border-ink-300 bg-white dark:border-ink-700 dark:bg-ink-900">
                 <EmptyState
                   state="empty-cart"
                   icon={<Store />}
@@ -941,16 +1096,16 @@ export default function LandingView({
                     <button
                       type="button"
                       onClick={() => onOpenAuth?.('register')}
-                      className="inline-flex items-center gap-2 rounded-xl bg-jade-500 px-5 py-2.5 text-xs font-bold text-white shadow-lg shadow-jade-500/20 transition-all hover:bg-jade-600"
+                      className="inline-flex items-center gap-2 rounded-lg bg-jade-600 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-jade-700"
                     >
-                      <ShoppingCart className="h-4 w-4" />
+                      <ShoppingCart className="h-4 w-4" aria-hidden="true" />
                       List the first item
                     </button>
                   }
                 />
               </div>
             ) : (
-              <div className="rounded-3xl border border-ink-200 bg-white shadow-sm dark:border-ink-800 dark:bg-ink-900">
+              <div className="rounded-2xl border border-ink-200 bg-white dark:border-ink-800 dark:bg-ink-900">
                 <EmptyState
                   state="empty-search"
                   icon={<Heart />}
@@ -964,23 +1119,42 @@ export default function LandingView({
               </div>
             )
           ) : (
-            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4 xl:grid-cols-5">
-              {filteredProducts.map((product) => (
-                <ProductCard
-                  key={product.id}
-                  product={product}
-                  rating={ratingOf(product.id)}
-                  reviewCount={reviewCountOf(product.id)}
-                  {...sellerProps(product.sellerId)}
-                  isFeatured={activeFeaturedIds.has(product.id)}
-                  isFavorite={favorites.includes(product.id)}
-                  onToggleFavorite={() => toggleFavorite(product.id)}
-                  onSelect={() => onSelectProduct(product.id)}
-                  onAdd={() => onAddToCart(product.id)}
-                  compact
-                />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4 xl:grid-cols-5">
+                {visibleProducts.map((product) => (
+                  <ProductTile
+                    key={product.id}
+                    product={product}
+                    rating={ratingOf(product.id)}
+                    reviewCount={reviewCountOf(product.id)}
+                    {...sellerProps(product.sellerId)}
+                    sellerState={stateOf(product.sellerId)}
+                    badge={activeFeaturedIds.has(product.id) ? 'featured' : null}
+                    isFavorite={favorites.includes(product.id)}
+                    onToggleFavorite={() => toggleFavorite(product.id)}
+                    onSelect={() => onSelectProduct(product.id)}
+                    onAdd={() => onAddToCart(product.id)}
+                  />
+                ))}
+              </div>
+
+              <div className="mt-4 flex flex-col items-center gap-2">
+                {hasMore ? (
+                  <button
+                    type="button"
+                    onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-4 py-2 text-[11px] font-bold text-ink-700 transition-colors hover:border-jade-400 hover:text-jade-700 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-200"
+                  >
+                    <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                    Show {Math.min(PAGE_SIZE, filteredProducts.length - visibleProducts.length)} more
+                  </button>
+                ) : null}
+                <p className="text-[10px] text-ink-400">
+                  Showing {visibleProducts.length} of {filteredProducts.length} listings
+                  {sortMode === 'smart' ? ' · ranked by relevance' : ''}
+                </p>
+              </div>
+            </>
           )}
 
           <AdSlot
@@ -994,16 +1168,16 @@ export default function LandingView({
 
         {/* ───────────────────── Auctions (only when live) ───────────────────── */}
         {auctions.length > 0 && (
-          <section className="mt-8">
-            <div className="mb-3 flex items-center gap-2">
+          <section className="mt-6" aria-labelledby="live-auctions">
+            <div className="mb-2.5 flex items-center gap-2">
               <span className="grid h-7 w-7 place-items-center rounded-lg bg-jade-500/10 text-jade-600 dark:text-jade-300">
-                <Gavel className="h-4 w-4" />
+                <Gavel className="h-4 w-4" aria-hidden="true" />
               </span>
-              <h2 className="font-display text-lg font-black tracking-tight text-ink-900 dark:text-white">
+              <h2 id="live-auctions" className="font-display text-base font-extrabold tracking-tight text-ink-900 dark:text-white sm:text-lg">
                 Live auctions
               </h2>
             </div>
-            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4 xl:grid-cols-5">
               {auctions.map((product) => {
                 const auction = db.auctions.find((a) => a.productId === product.id);
                 const bids = db.bids.filter((b) => b.auctionId === auction?.id);
@@ -1013,7 +1187,7 @@ export default function LandingView({
                     key={product.id}
                     type="button"
                     onClick={() => onSelectProduct(product.id)}
-                    className="group overflow-hidden rounded-2xl border border-ink-150 bg-white text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg dark:border-ink-800 dark:bg-ink-900"
+                    className="group overflow-hidden rounded-xl border border-ink-150 bg-white text-left transition-colors hover:border-jade-500/40 dark:border-ink-800 dark:bg-ink-900 focus-ring"
                   >
                     <div className="relative aspect-square bg-ink-50 dark:bg-ink-950">
                       <SmartImage
@@ -1021,15 +1195,17 @@ export default function LandingView({
                         alt={product.title}
                         seed={`auction-${product.id}`}
                         className="h-full w-full"
-                        imgClassName="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        imgClassName="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04] motion-reduce:transition-none"
                       />
-                      <span className="absolute left-2 top-2 rounded-md bg-jade-600 px-1.5 py-0.5 text-[10px] font-black text-white">
+                      <span className="absolute left-1.5 top-1.5 rounded bg-jade-600 px-1.5 py-0.5 text-[10px] font-black text-white">
                         Live bid
                       </span>
                     </div>
-                    <div className="space-y-1 p-2.5">
-                      <h3 className="line-clamp-2 text-xs font-bold text-ink-900 dark:text-white">{product.title}</h3>
-                      <p className="text-[11px] font-black text-jade-700 dark:text-jade-300">
+                    <div className="space-y-1 p-2">
+                      <h3 className="line-clamp-2 min-h-[2rem] text-[12px] font-semibold leading-4 text-ink-900 dark:text-ink-100">
+                        {product.title}
+                      </h3>
+                      <p className="text-[13px] font-extrabold text-jade-700 dark:text-jade-300">
                         Highest {naira(highest)}
                       </p>
                       <p className="text-[10px] text-ink-400">{bids.length} bid{bids.length === 1 ? '' : 's'}</p>
@@ -1040,63 +1216,7 @@ export default function LandingView({
             </div>
           </section>
         )}
-
-        {/* ───────────────────── Verified stores ───────────────────── */}
-        {verifiedSellers.length > 0 && (
-          <section id="sellers-section" className="mt-8 scroll-mt-24">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <h2 className="font-display text-lg font-black tracking-tight text-ink-900 dark:text-white">
-                Verified stores
-              </h2>
-              <span className="inline-flex items-center gap-1 rounded-full bg-jade-500/10 px-2 py-1 text-[10px] font-bold text-jade-700 dark:text-jade-300">
-                <ShieldCheck className="h-3 w-3" /> ID checked
-              </span>
-            </div>
-            <div className="flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {verifiedSellers.map((seller) => {
-                const profile = profilesByUserId.get(seller.id);
-                const listings = db.products.filter((p) => p.sellerId === seller.id).length;
-                return (
-                  <button
-                    key={seller.id}
-                    type="button"
-                    onClick={() => onNavigate('seller-profile', { sellerId: seller.id })}
-                    className="flex w-40 shrink-0 flex-col items-center gap-1.5 rounded-2xl border border-ink-150 bg-white p-3 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-ink-800 dark:bg-ink-900"
-                  >
-                    <div className="grid h-14 w-14 place-items-center overflow-hidden rounded-full bg-jade-500/10 ring-2 ring-jade-500/20">
-                      <SmartImage
-                        src={profile?.photoUrl}
-                        alt={seller.fullName}
-                        seed={`seller-${seller.id}`}
-                        className="h-full w-full"
-                      />
-                    </div>
-                    <span className="flex min-w-0 items-center gap-1 text-[11px] font-bold text-ink-900 dark:text-white">
-                      <span className="truncate">{seller.fullName}</span>
-                      <VerifiedBadge
-                        sellerId={seller.id}
-                        status={profile?.verificationStatus}
-                        expiresAt={profile?.verificationExpiresAt}
-                        variant="icon"
-                        fallbackName={seller.fullName}
-                        className="shrink-0"
-                      />
-                    </span>
-                    <span className="text-[10px] text-ink-400">{listings} listings</span>
-                    {profile?.state && <span className="text-[10px] text-ink-400">{profile.state}</span>}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-        )}
       </div>
     </div>
   );
-}
-
-/** Smooth-scroll to a section on the home page. */
-function scrollToId(id: string) {
-  if (typeof document === 'undefined') return;
-  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }

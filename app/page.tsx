@@ -480,7 +480,10 @@ export default function Home() {
                   <li><button onClick={() => handleNavigate('marketplace')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Browse listings</button></li>
                   <li><Link href="/categories" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Categories</Link></li>
                   <li><Link href="/sellers" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Verified sellers</Link></li>
-                  <li><Link href="/promotions" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Featured deals</Link></li>
+                  <li><Link href="/flash-deals" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Flash deals</Link></li>
+                  <li><Link href="/best-deals" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Best deals</Link></li>
+                  <li><Link href="/new-arrivals" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">New arrivals</Link></li>
+                  <li><Link href="/promotions" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Promoted listings</Link></li>
                   <li><button onClick={() => handleNavigate('cart')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Your cart</button></li>
                   <li><button onClick={() => handleNavigate('referrals')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Refer &amp; earn Coins</button></li>
                 </ul>

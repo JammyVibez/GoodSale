@@ -4,8 +4,11 @@ import Logo from '@/components/LogoIcon';
 
 const nav = [
   { href: '/categories', label: 'Categories' },
+  { href: '/flash-deals', label: 'Flash deals' },
+  { href: '/featured', label: 'Featured' },
+  { href: '/best-deals', label: 'Best deals' },
+  { href: '/new-arrivals', label: 'New in' },
   { href: '/sellers', label: 'Sellers' },
-  { href: '/promotions', label: 'Promotions' },
   { href: '/trust-safety', label: 'Trust & Safety' },
 ];
 
@@ -76,8 +79,12 @@ export function SeoShell({ children }: { children: ReactNode }) {
             <h2 className="text-sm font-semibold uppercase tracking-wider text-[#d4af37]">Shop</h2>
             <ul className="mt-3 space-y-2 text-sm text-emerald-100/75">
               <li><Link href="/categories" className="hover:text-white">All categories</Link></li>
+              <li><Link href="/featured" className="hover:text-white">Featured products</Link></li>
+              <li><Link href="/flash-deals" className="hover:text-white">Flash deals</Link></li>
+              <li><Link href="/trending" className="hover:text-white">Trending now</Link></li>
+              <li><Link href="/best-deals" className="hover:text-white">Best deals</Link></li>
               <li><Link href="/sellers" className="hover:text-white">Verified sellers</Link></li>
-              <li><Link href="/promotions" className="hover:text-white">Featured deals</Link></li>
+              <li><Link href="/promotions" className="hover:text-white">Promotions</Link></li>
             </ul>
           </div>
           <div>
