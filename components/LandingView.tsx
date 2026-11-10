@@ -617,10 +617,10 @@ export default function LandingView({
             <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-1">
               <Link
                 href={COLLECTIONS['flash-deals'].href}
-                className="group flex flex-col justify-between rounded-2xl border border-gold-300/60 bg-gold-50 p-3 transition-colors hover:border-gold-400 dark:border-gold-500/30 dark:bg-ink-900"
+                className="group flex flex-col justify-between rounded-2xl border border-ink-200 bg-white p-3 transition-colors hover:border-jade-400 dark:border-ink-800 dark:bg-ink-900"
               >
                 <span className="flex items-center justify-between gap-2">
-                  <span className="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-gold-700 dark:text-gold-300">
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-jade-700 dark:text-jade-300">
                     <Zap className="h-3.5 w-3.5 fill-gold-400 text-gold-500" aria-hidden="true" />
                     Flash deals
                   </span>
@@ -633,9 +633,9 @@ export default function LandingView({
                     ? `Up to ${Math.max(...flashDeals.map((p) => activeFlashSale(p)?.discountPercent || 0))}% off`
                     : 'No live deals yet'}
                 </span>
-                <span className="mt-0.5 flex items-center justify-between text-[11px] text-ink-500 dark:text-ink-400">
-                  {flashDeals.length > 0 ? `${flashDeals.length} deals ending soon` : 'Check back later today'}
-                  <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                <span className="mt-0.5 flex items-center justify-between gap-2 text-[11px] leading-relaxed text-ink-500 dark:text-ink-400">
+                  <span className="min-w-0">{flashDeals.length > 0 ? `${flashDeals.length} deals ending soon` : 'Check back later today'}</span>
+                  <ArrowRight className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
                 </span>
               </Link>
 
@@ -647,9 +647,9 @@ export default function LandingView({
                 <span className="mt-2 block text-lg font-black leading-tight tracking-tight text-ink-900 dark:text-white">
                   Your money waits
                 </span>
-                <span className="mt-0.5 flex items-center justify-between text-[11px] text-ink-500 dark:text-ink-400">
-                  Released only after you confirm delivery
-                  <Link href="/trust-safety" className="font-bold text-jade-700 hover:underline dark:text-jade-300">
+                <span className="mt-0.5 flex items-center justify-between gap-2 text-[11px] leading-relaxed text-ink-500 dark:text-ink-400">
+                  <span className="min-w-0">Released only after you confirm delivery</span>
+                  <Link href="/trust-safety" className="shrink-0 font-bold text-jade-700 hover:underline dark:text-jade-300">
                     How it works
                   </Link>
                 </span>
@@ -659,15 +659,15 @@ export default function LandingView({
 
           {/* live status line */}
           <div className="mt-2 flex items-center justify-between gap-3 overflow-x-auto whitespace-nowrap text-[10px] font-semibold text-ink-500 scrollbar-hide dark:text-ink-400">
-            <span className="inline-flex items-center gap-1.5">
+            <span className="inline-flex shrink-0 items-center gap-1.5">
               <Sparkles className="h-3 w-3 text-jade-600 dark:text-jade-300" aria-hidden="true" />
               {db.products.length} live listings across {states.length} states
             </span>
-            <span className="inline-flex items-center gap-1.5">
+            <span className="inline-flex shrink-0 items-center gap-1.5">
               <Truck className="h-3 w-3 text-jade-600 dark:text-jade-300" aria-hidden="true" />
               Tracked delivery nationwide
             </span>
-            <span className="inline-flex items-center gap-1.5">
+            <span className="inline-flex shrink-0 items-center gap-1.5">
               <Headphones className="h-3 w-3 text-jade-600 dark:text-jade-300" aria-hidden="true" />
               Human support, every day
             </span>
