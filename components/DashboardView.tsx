@@ -47,6 +47,9 @@ export default function DashboardView({
 }) {
   const [db, setDb] = useState(getDBState());
   const [activeTab, setActiveTab] = useState<MerchantHubTab>('overview');
+  const [sellerOrderFilter, setSellerOrderFilter] = useState<'all' | 'dispatch' | 'transit' | 'complete'>('all');
+  const [expandedSellerDeliveryId, setExpandedSellerDeliveryId] = useState<number | null>(null);
+  const [expandedSellerTrackingId, setExpandedSellerTrackingId] = useState<number | null>(null);
   
   // Create Listing Form State - Expanded for Multi-step professional wizard
   const [currentListingStep, setCurrentListingStep] = useState(1);
@@ -161,6 +164,18 @@ export default function DashboardView({
   const sellerProducts = db.products.filter(p => p.sellerId === user?.id);
   const entitlements = resolveEntitlements(db, user?.id);
   const sellerOrders = db.orders.filter(o => o.sellerId === user?.id);
+  const sortedSellerOrders = [...sellerOrders].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+  const dispatchOrders = sortedSellerOrders.filter((order) => order.status === OrderStatus.PAID_ESCROW);
+  const transitOrders = sortedSellerOrders.filter((order) =>
+    [OrderStatus.SHIPPED, OrderStatus.OUT_FOR_DELIVERY].includes(order.status)
+  );
+  const completedSellerOrders = sortedSellerOrders.filter((order) => order.status === OrderStatus.DELIVERED_SUCCESS);
+  const visibleSellerOrders = sellerOrderFilter === 'dispatch' ? dispatchOrders
+    : sellerOrderFilter === 'transit' ? transitOrders
+    : sellerOrderFilter === 'complete' ? completedSellerOrders
+    : sortedSellerOrders;
 
   // FINANCIALS: Calculate Escrow held and withdrawable balances
   const totalVisits = sellerProducts.reduce((acc, p) => acc + p.viewCount, 0);
@@ -1031,11 +1046,49 @@ export default function DashboardView({
           <div className="space-y-6">
             
             <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-[32px] overflow-hidden shadow-sm">
-              <div className="p-5 border-b border-ink-100 dark:border-ink-800 flex justify-between items-center">
-                <div>
-                  <h3 className="font-display font-bold text-base text-ink-900 dark:text-white">Merchant Escrow Orders</h3>
-                  <p className="text-xs text-ink-400 font-sans mt-0.5">Secure payment tracking, shipments dispatcher, and pin verification portal.</p>
+              <div className="border-b border-ink-100 p-5 dark:border-ink-800">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <h3 className="font-display text-lg font-bold text-ink-900 dark:text-white">Orders</h3>
+                    <p className="mt-1 text-sm text-ink-500">Review each sale and take the next fulfilment step.</p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    {[
+                      { label: 'To dispatch', count: dispatchOrders.length },
+                      { label: 'In transit', count: transitOrders.length },
+                      { label: 'Complete', count: completedSellerOrders.length },
+                    ].map((item) => (
+                      <div key={item.label} className="min-w-[76px] rounded-xl bg-ink-50 px-3 py-2 dark:bg-ink-950/60">
+                        <p className="font-display text-lg font-bold text-ink-900 dark:text-white">{item.count}</p>
+                        <p className="text-[10px] font-semibold text-ink-500">{item.label}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
+                {sellerOrders.length > 0 && (
+                  <div className="mt-5 flex flex-wrap gap-2" aria-label="Filter orders">
+                    {([
+                      { id: 'all', label: 'All orders', count: sortedSellerOrders.length },
+                      { id: 'dispatch', label: 'To dispatch', count: dispatchOrders.length },
+                      { id: 'transit', label: 'In transit', count: transitOrders.length },
+                      { id: 'complete', label: 'Complete', count: completedSellerOrders.length },
+                    ] as const).map((filter) => (
+                      <button
+                        key={filter.id}
+                        type="button"
+                        aria-pressed={sellerOrderFilter === filter.id}
+                        onClick={() => setSellerOrderFilter(filter.id)}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-bold transition-colors ${
+                          sellerOrderFilter === filter.id
+                            ? 'border-jade-500 bg-jade-500/10 text-jade-700 dark:text-jade-300'
+                            : 'border-ink-200 text-ink-500 hover:border-jade-400 dark:border-ink-700 dark:text-ink-400'
+                        }`}
+                      >
+                        {filter.label} <span className="ml-1 font-mono opacity-70">{filter.count}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {sellerOrders.length === 0 ? (
@@ -1046,7 +1099,9 @@ export default function DashboardView({
                 </div>
               ) : (
                 <div className="divide-y divide-ink-100 dark:divide-ink-800">
-                  {sellerOrders.map((ord) => {
+                  {visibleSellerOrders.length === 0 ? (
+                    <p className="p-8 text-center text-sm text-ink-500">No orders in this stage.</p>
+                  ) : visibleSellerOrders.map((ord) => {
                     const buyer = db.users.find(u => u.id === ord.buyerId);
                     const delivery = (db.deliveries || []).find(d => d.orderId === ord.id);
                     const deliveryRider = delivery?.riderId
@@ -1054,7 +1109,7 @@ export default function DashboardView({
                       : undefined;
                     
                     return (
-                      <div key={ord.id} className="p-5 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5 text-xs">
+                      <div key={ord.id} className="space-y-4 p-4 sm:p-5">
                         
                         {/* Product Detail Thumbnail Column */}
                         <div className="flex items-start gap-3.5 min-w-0">
@@ -1070,25 +1125,29 @@ export default function DashboardView({
                             <span className="font-mono text-xs font-bold text-jade-500 tracking-wider block mb-0.5">{ord.orderNumber}</span>
                             <h4 className="font-display font-bold text-sm text-ink-900 dark:text-white truncate mb-1">{ord.productTitle}</h4>
                             <p className="text-xs text-ink-400 font-sans">
-                              Buyer: <strong className="text-ink-700 dark:text-ink-300">{buyer?.fullName}</strong> • City: {ord.deliveryCity}
+                              Buyer: <strong className="text-ink-700 dark:text-ink-300">{buyer?.fullName || 'Buyer'}</strong>
                             </p>
                           </div>
                         </div>
 
                         {/* Amount & Date Block */}
-                        <div className="flex sm:gap-6 items-center flex-wrap shrink-0">
+                        <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs">
                           <div>
-                            <span className="text-ink-400 text-xs tracking-widest font-mono block">Escrow Paid</span>
-                            <span className="font-mono font-semibold text-sm text-ink-900 dark:text-white">₦{ord.totalAmount.toLocaleString()}</span>
+                            <span className="block text-[10px] font-bold uppercase tracking-wide text-ink-400">Order total</span>
+                            <span className="font-mono text-sm font-bold text-ink-900 dark:text-white">₦{ord.totalAmount.toLocaleString()}</span>
                           </div>
                           <div>
-                            <span className="text-ink-400 text-xs tracking-widest font-mono block">Order Date</span>
-                            <span className="font-mono text-xs text-ink-600 dark:text-ink-400">{new Date(ord.createdAt).toLocaleDateString()}</span>
+                            <span className="block text-[10px] font-bold uppercase tracking-wide text-ink-400">Placed</span>
+                            <span className="text-ink-600 dark:text-ink-400">{new Date(ord.createdAt).toLocaleDateString()}</span>
+                          </div>
+                          <div>
+                            <span className="block text-[10px] font-bold uppercase tracking-wide text-ink-400">Deliver to</span>
+                            <span className="text-ink-600 dark:text-ink-400">{ord.deliveryCity}{ord.deliveryState ? `, ${ord.deliveryState}` : ''}</span>
                           </div>
                         </div>
 
                         {/* Order Workflow Actions */}
-                        <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto pt-3 lg:pt-0 border-t lg:border-t-0 border-ink-100 dark:border-ink-800 justify-end">
+                        <div className="flex flex-wrap items-center justify-start gap-2 rounded-2xl bg-ink-50 p-3 dark:bg-ink-950/50">
                           
                           {/* STATUS BADGE */}
                           <span className={`px-2.5 py-1.5 rounded-xl text-xs font-mono font-bold tracking-wider ${
@@ -1098,7 +1157,7 @@ export default function DashboardView({
                             ord.status === OrderStatus.DELIVERED_SUCCESS ? 'bg-jade-500 text-white' :
                             'bg-ink-100 dark:bg-ink-800 text-ink-500'
                           }`}>
-                            {ord.status.replace('_', ' ')}
+                            {ord.status.replace(/_/g, ' ').toLowerCase().replace(/^./, (letter) => letter.toUpperCase())}
                           </span>
 
                           {/* 1. If Awaiting Shipment */}
@@ -1136,8 +1195,20 @@ export default function DashboardView({
                             </button>
                           )}
 
-                          {/* Live dispatch map for seller when rider is en route */}
+                          {/* Expand tracking only when needed to keep the order list scannable. */}
                           {ord.deliveryMethod === 'GOODSALE_PARTNER' &&
+                            hasLiveTracking(db.deliveryJobs.find((j) => j.orderId === ord.id)) && (
+                              <button
+                                type="button"
+                                onClick={() => setExpandedSellerTrackingId((current) => current === ord.id ? null : ord.id)}
+                                className="rounded-xl border border-ink-200 px-3 py-2 text-xs font-bold text-ink-600 hover:border-jade-400 dark:border-ink-700 dark:text-ink-300"
+                                aria-expanded={expandedSellerTrackingId === ord.id}
+                              >
+                                {expandedSellerTrackingId === ord.id ? 'Hide live tracking' : 'View live tracking'}
+                              </button>
+                            )}
+                          {expandedSellerTrackingId === ord.id &&
+                            ord.deliveryMethod === 'GOODSALE_PARTNER' &&
                             hasLiveTracking(db.deliveryJobs.find((j) => j.orderId === ord.id)) && (() => {
                               const job = db.deliveryJobs.find((j) => j.orderId === ord.id);
                               const dest = bestCoords(
@@ -1204,6 +1275,16 @@ export default function DashboardView({
                           )}
 
                           {delivery && (
+                            <button
+                              type="button"
+                              onClick={() => setExpandedSellerDeliveryId((current) => current === ord.id ? null : ord.id)}
+                              className="rounded-xl border border-ink-200 px-3 py-2 text-xs font-bold text-ink-600 hover:border-jade-400 dark:border-ink-700 dark:text-ink-300"
+                              aria-expanded={expandedSellerDeliveryId === ord.id}
+                            >
+                              {expandedSellerDeliveryId === ord.id ? 'Hide delivery details' : 'Delivery details'}
+                            </button>
+                          )}
+                          {delivery && expandedSellerDeliveryId === ord.id && (
                             <SellerDeliveryPanel
                               delivery={delivery}
                               events={db.deliveryEvents || []}

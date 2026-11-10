@@ -99,7 +99,16 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
   );
 
   const activeOrders = sortedOrders.filter((o) =>
-    [OrderStatus.PENDING, OrderStatus.PAID_ESCROW, OrderStatus.SHIPPED, OrderStatus.OUT_FOR_DELIVERY].includes(o.status)
+    [
+      OrderStatus.PENDING,
+      OrderStatus.PENDING_BANK_TRANSFER,
+      OrderStatus.PARTIAL_DEPOSIT_PAID,
+      OrderStatus.INVOICE_SENT,
+      OrderStatus.COD_PENDING,
+      OrderStatus.PAID_ESCROW,
+      OrderStatus.SHIPPED,
+      OrderStatus.OUT_FOR_DELIVERY,
+    ].includes(o.status)
   );
   const completedOrders = sortedOrders.filter((o) => o.status === OrderStatus.DELIVERED_SUCCESS);
   const closedOrders = sortedOrders.filter((o) =>
@@ -298,7 +307,11 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
 
   const getStatusBadge = (status: OrderStatus) => {
     const map: Partial<Record<OrderStatus, { label: string; tone: 'jade' | 'neutral' | 'outline' }>> = {
-      [OrderStatus.PENDING]: { label: 'Awaiting deposit', tone: 'neutral' },
+      [OrderStatus.PENDING]: { label: 'Awaiting payment', tone: 'neutral' },
+      [OrderStatus.PENDING_BANK_TRANSFER]: { label: 'Bank transfer pending', tone: 'neutral' },
+      [OrderStatus.PARTIAL_DEPOSIT_PAID]: { label: 'Deposit received', tone: 'jade' },
+      [OrderStatus.INVOICE_SENT]: { label: 'Invoice sent', tone: 'neutral' },
+      [OrderStatus.COD_PENDING]: { label: 'Cash on delivery', tone: 'neutral' },
       [OrderStatus.PAID_ESCROW]: { label: 'Held in escrow', tone: 'jade' },
       [OrderStatus.SHIPPED]: { label: 'In transit', tone: 'jade' },
       [OrderStatus.OUT_FOR_DELIVERY]: { label: 'Out for delivery', tone: 'jade' },
@@ -970,15 +983,15 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
       {/* 2. Interactive Escrow Orders Tracking List */}
       <div id="panel-you-orders" role="tabpanel" hidden={section !== 'you-orders'}>
         <div className="space-y-6">
-          <Card className="p-6 sm:p-8">
-            <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <Card className="p-4 sm:p-6">
+            <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
               <div>
                 <h2 className="flex items-center gap-2 font-display text-lg font-bold tracking-tight text-ink-900 dark:text-white">
                   <Package className="h-5 w-5 text-jade-600 dark:text-jade-400" />
-                  Escrow-protected purchases
+                  Your orders
                 </h2>
                 <p className="mt-1 text-sm text-ink-500">
-                  Track transit, get your delivery PIN, and release funds only after inspection.
+                  Follow delivery progress, manage your PIN, and review completed purchases.
                 </p>
               </div>
               {buyerOrders.length > 0 && (
@@ -989,13 +1002,13 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
             </div>
 
             {buyerOrders.length > 0 && (
-              <div className="mb-5 flex flex-wrap items-center gap-1.5">
+              <div className="mb-5 flex flex-wrap items-center gap-2 border-y border-ink-100 py-3 dark:border-ink-800">
                 <Filter className="mr-1 h-3.5 w-3.5 text-ink-400" />
                 {([
                   { id: 'all', label: 'All', count: sortedOrders.length },
                   { id: 'active', label: 'Active', count: activeOrders.length },
                   { id: 'completed', label: 'Delivered', count: completedOrders.length },
-                  { id: 'closed', label: 'Cancelled & refunds', count: closedOrders.length },
+                  { id: 'closed', label: 'Issues & closed', count: closedOrders.length },
                 ] as const).map((filter) => (
                   <button
                     key={filter.id}
@@ -1039,10 +1052,23 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                   const isSelected = selectedOrderForPin === order.id;
                   
                   // Progress tracker helper variables
-                  const isPaid = order.status === OrderStatus.PAID_ESCROW || order.status === OrderStatus.SHIPPED || order.status === OrderStatus.OUT_FOR_DELIVERY || order.status === OrderStatus.DELIVERED_SUCCESS;
+                  const isPaid = order.status === OrderStatus.PARTIAL_DEPOSIT_PAID || order.status === OrderStatus.PAID_ESCROW || order.status === OrderStatus.SHIPPED || order.status === OrderStatus.OUT_FOR_DELIVERY || order.status === OrderStatus.DELIVERED_SUCCESS;
                   const isShipped = order.status === OrderStatus.SHIPPED || order.status === OrderStatus.OUT_FOR_DELIVERY || order.status === OrderStatus.DELIVERED_SUCCESS;
                   const isOutForDelivery = order.status === OrderStatus.OUT_FOR_DELIVERY || order.status === OrderStatus.DELIVERED_SUCCESS;
                   const isDelivered = order.status === OrderStatus.DELIVERED_SUCCESS;
+                  const isOrderIssue = [OrderStatus.DISPUTED, OrderStatus.REFUND_REQUESTED].includes(order.status);
+                  const isOrderClosed = [OrderStatus.CANCELLED, OrderStatus.REFUNDED].includes(order.status);
+                  const hasEscrowProtection = [
+                    OrderStatus.PAID_ESCROW,
+                    OrderStatus.PARTIAL_DEPOSIT_PAID,
+                    OrderStatus.SHIPPED,
+                    OrderStatus.OUT_FOR_DELIVERY,
+                  ].includes(order.status);
+                  const protectionLabel = isDelivered ? 'Funds released'
+                    : isOrderIssue ? 'Under review'
+                    : isOrderClosed ? 'Order closed'
+                    : hasEscrowProtection ? 'Escrow protected'
+                    : 'Awaiting payment';
                   // Four long milestone labels cannot fit a phone width, so on
                   // small screens the rail names only the current stage.
                   const activeStepLabel = isDelivered
@@ -1053,31 +1079,38 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                     ? 'Goods dispatched'
                     : isPaid
                     ? 'Payment confirmed'
-                    : 'Awaiting deposit';
+                    : order.status === OrderStatus.PENDING_BANK_TRANSFER
+                    ? 'Bank transfer pending'
+                    : order.status === OrderStatus.INVOICE_SENT
+                    ? 'Invoice sent'
+                    : order.status === OrderStatus.COD_PENDING
+                    ? 'Cash on delivery'
+                    : 'Awaiting payment';
 
                   return (
                     <div 
                       key={order.id} 
-                      className={`overflow-hidden rounded-3xl border transition-all ${
+                      className={`overflow-hidden rounded-2xl border bg-white transition-all dark:bg-ink-900 ${
                         isSelected 
                           ? 'border-jade-500/60 ring-1 ring-jade-500/20' 
                           : 'border-ink-200 hover:border-jade-500/40 dark:border-ink-800'
                       }`}
                     >
                       {/* Top Summary Bar */}
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-150 bg-ink-50 px-4 py-3 text-xs dark:border-ink-800 dark:bg-ink-950/50">
-                        <div className="font-mono text-ink-500">
-                          Order <span className="font-bold text-ink-900 dark:text-white">#{order.orderNumber}</span>
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-100 bg-ink-50 px-4 py-3 dark:border-ink-800 dark:bg-ink-950/50">
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-ink-400">Order number</p>
+                          <p className="font-mono text-xs font-bold text-ink-900 dark:text-white">#{order.orderNumber}</p>
                         </div>
-                        <div className="flex items-center gap-2.5">
-                          <span className="font-mono text-ink-500">{formatDate(order.createdAt)}</span>
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <span className="text-xs text-ink-500">Placed {formatDate(order.createdAt)}</span>
                           {getStatusBadge(order.status)}
                         </div>
                       </div>
 
                       {/* Content details */}
-                      <div className="flex gap-4 p-4">
-                        <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-ink-100 dark:bg-ink-800">
+                      <div className="flex items-center gap-3 p-4 sm:gap-4">
+                        <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-ink-100 sm:h-16 sm:w-16 dark:bg-ink-800">
                           <SmartImage
                             src={order.productImage}
                             alt={order.productTitle}
@@ -1087,87 +1120,107 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                         </div>
 
                         <div className="min-w-0 flex-1">
-                          <h4 className="truncate font-display text-sm font-bold text-ink-900 dark:text-white">{order.productTitle}</h4>
-                          <p className="mt-1 font-mono text-sm font-bold text-ink-900 dark:text-white">
-                            ₦{order.totalAmount.toLocaleString()}
-                          </p>
-                          <p className="mt-1 line-clamp-1 text-xs text-ink-500">
-                            Deliver to {order.deliveryAddress}, {order.deliveryCity}
-                          </p>
+                          <h4 className="line-clamp-2 font-display text-sm font-bold text-ink-900 dark:text-white">{order.productTitle}</h4>
+                          <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                            <p className="font-mono text-sm font-bold text-ink-900 dark:text-white">
+                              ₦{order.totalAmount.toLocaleString()}
+                            </p>
+                            <p className="line-clamp-1 text-xs text-ink-500">
+                              Deliver to {order.deliveryAddress}{order.deliveryCity ? `, ${order.deliveryCity}` : ''}{order.deliveryState ? `, ${order.deliveryState}` : ''}
+                            </p>
+                          </div>
                         </div>
                       </div>
 
                       {/* Escrow Progress Tracker */}
                       <div className="px-4 pb-4">
-                        <div className="rounded-2xl border border-ink-100 bg-ink-50/70 p-4 dark:border-ink-800 dark:bg-ink-950/40">
-                          <div className="mb-4 flex items-center justify-between font-mono text-xs font-bold tracking-tight text-ink-400">
-                            <span>Escrow progress</span>
-                            <span className="text-jade-600 dark:text-jade-400">Protected</span>
+                        <div className="rounded-xl bg-ink-50 px-3 py-3 dark:bg-ink-950/60 sm:px-4">
+                          <div className="mb-3 flex items-center justify-between gap-3 text-xs">
+                            <span className="font-bold text-ink-600 dark:text-ink-300">{isOrderIssue || isOrderClosed ? 'Order status' : 'Delivery progress'}</span>
+                            <span className={`inline-flex items-center gap-1 font-semibold ${hasEscrowProtection || isDelivered ? 'text-jade-600 dark:text-jade-400' : 'text-ink-500 dark:text-ink-400'}`}>
+                              {hasEscrowProtection ? <ShieldCheck className="h-3.5 w-3.5" /> : null}
+                              {protectionLabel}
+                            </span>
                           </div>
 
-                          <div className="relative flex items-center justify-between px-3 mt-4">
-                            {/* Horizontal Line background */}
-                            <div className="absolute left-6 right-6 top-1/2 h-0.5 bg-ink-200 dark:bg-ink-800 -translate-y-1/2 z-0" />
-                            
-                            {/* Active Line Progress overlay */}
-                            <div 
-                              className="absolute left-6 top-1/2 h-0.5 bg-jade-500 -translate-y-1/2 transition-all duration-500 z-0"
-                              style={{
-                                width: !isPaid ? '0%' :
-                                       !isShipped ? '0%' :
-                                       !isOutForDelivery ? '33.3%' :
-                                       !isDelivered ? '66.6%' : '100%'
-                              }}
-                            />
+                          {isOrderIssue || isOrderClosed ? (
+                            <p className="text-sm font-semibold text-ink-600 dark:text-ink-300">
+                              {isOrderIssue
+                                ? 'This order is under review. Contact support for updates; delivery actions are paused.'
+                                : 'This order is closed. No delivery steps remain.'}
+                            </p>
+                          ) : (
+                            <>
+                              <div className="relative flex items-center justify-between px-3">
+                                {/* Horizontal Line background */}
+                                <div className="absolute left-6 right-6 top-1/2 h-0.5 -translate-y-1/2 bg-ink-200 dark:bg-ink-800 z-0" />
 
-                            {/* Timeline Milestones */}
-                            {[
-                              { label: 'Payment Confirmed', active: isPaid },
-                              { label: 'Goods Dispatched', active: isShipped },
-                              { label: 'Buyer Received', active: isOutForDelivery },
-                              { label: 'Funds Released', active: isDelivered },
-                            ].map((step, idx) => (
-                              <div key={idx} className="flex flex-col items-center relative z-10">
-                                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold border-2 ${
-                                  step.active 
-                                    ? 'bg-jade-500 border-jade-500 text-white shadow-md shadow-jade-500/15' 
-                                    : 'bg-white dark:bg-ink-900 border-ink-200 dark:border-ink-800 text-ink-400'
-                                }`}>
-                                  {step.active ? <Check className="h-3.5 w-3.5" /> : idx + 1}
-                                </div>
-                                <span className={`mt-1.5 hidden whitespace-nowrap text-xs font-bold sm:block ${step.active ? 'text-jade-600 dark:text-jade-400' : 'text-ink-400'}`}>
-                                  {step.label}
-                                </span>
+                                {/* Active Line Progress overlay */}
+                                <div
+                                  className="absolute left-6 top-1/2 h-0.5 -translate-y-1/2 bg-jade-500 transition-all duration-500 z-0"
+                                  style={{
+                                    width: !isPaid ? '0%' :
+                                           !isShipped ? '0%' :
+                                           !isOutForDelivery ? '33.3%' :
+                                           !isDelivered ? '66.6%' : '100%'
+                                  }}
+                                />
+
+                                {/* Timeline Milestones */}
+                                {[
+                                  { label: 'Payment Confirmed', active: isPaid },
+                                  { label: 'Goods Dispatched', active: isShipped },
+                                  { label: 'Buyer Received', active: isOutForDelivery },
+                                  { label: 'Funds Released', active: isDelivered },
+                                ].map((step, idx) => (
+                                  <div key={idx} className="relative z-10 flex flex-col items-center">
+                                    <div className={`flex h-6 w-6 items-center justify-center rounded-full border-2 text-[10px] font-bold ${
+                                      step.active
+                                        ? 'border-jade-500 bg-jade-500 text-white shadow-md shadow-jade-500/15'
+                                        : 'border-ink-200 bg-white text-ink-400 dark:border-ink-800 dark:bg-ink-900'
+                                    }`}>
+                                      {step.active ? <Check className="h-3.5 w-3.5" /> : idx + 1}
+                                    </div>
+                                    <span className={`mt-1.5 hidden whitespace-nowrap text-[10px] font-semibold sm:block ${step.active ? 'text-jade-600 dark:text-jade-400' : 'text-ink-400'}`}>
+                                      {step.label}
+                                    </span>
+                                  </div>
+                                ))}
                               </div>
-                            ))}
-                          </div>
 
-                          <p className="mt-3 text-center text-[11px] font-bold text-jade-600 sm:hidden dark:text-jade-400">
-                            {activeStepLabel}
-                          </p>
+                              <p className="mt-3 text-center text-[11px] font-bold text-jade-600 sm:hidden dark:text-jade-400">
+                                {activeStepLabel}
+                              </p>
+                            </>
+                          )}
                         </div>
                       </div>
 
                       {/* Escrow actions panel */}
-                      <div className="bg-ink-50/50 dark:bg-ink-800/20 px-4 py-3 border-t border-ink-150 dark:border-ink-800 flex flex-wrap items-center justify-between gap-3">
-                        <div className="text-xs text-ink-500 max-w-[280px]">
-                          {order.status === OrderStatus.PAID_ESCROW || order.status === OrderStatus.SHIPPED || order.status === OrderStatus.OUT_FOR_DELIVERY ? (
+                      <div className="flex flex-col gap-3 border-t border-ink-100 bg-ink-50/60 px-4 py-3 dark:border-ink-800 dark:bg-ink-950/30 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="max-w-[420px] text-xs leading-relaxed text-ink-500">
+                          {hasEscrowProtection ? (
                             <span className="text-ink-600 dark:text-ink-400 font-bold flex items-center gap-1">
                               <Shield className="w-3.5 h-3.5 shrink-0" />
-                              Escrow payout active. Release PIN only when verified!
+                              Keep your PIN private until you have inspected the delivery.
                             </span>
                           ) : order.status === OrderStatus.DELIVERED_SUCCESS ? (
                             <span className="text-jade-600 dark:text-jade-400 font-bold flex items-center gap-1">
                               <CheckCircle className="w-3.5 h-3.5" />
                               Payment successfully released. Deal concluded.
                             </span>
-                          ) : order.status === OrderStatus.PENDING ? (
-                            <span className="text-ink-600 dark:text-ink-500 font-bold flex items-center gap-1 animate-pulse">
+                          ) : isOrderIssue ? (
+                            <span className="text-ink-600 dark:text-ink-400 font-bold flex items-center gap-1">
                               <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                              Awaiting Escrow Deposit payment.
+                              This order needs support review. Check the status above for details.
                             </span>
+                          ) : isOrderClosed ? (
+                            <span>This order is closed. No further delivery action is needed.</span>
                           ) : (
-                            <span>Funds are safe in local escrow vault.</span>
+                            <span className="text-ink-600 dark:text-ink-400 font-bold flex items-center gap-1">
+                              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                              Payment is still pending. Complete payment to activate escrow protection.
+                            </span>
                           )}
                         </div>
 
@@ -1217,7 +1270,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
 
                         {/* PIN Verification trigger */}
                         {(order.status === OrderStatus.SHIPPED || order.status === OrderStatus.OUT_FOR_DELIVERY || order.status === OrderStatus.PAID_ESCROW) && (
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <button
                               onClick={() => {
                                 setSelectedOrderForPin(isSelected ? null : order.id);
@@ -1253,7 +1306,7 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
 
                         {/* DELIVERED ACTIONS: Download Receipt & Leave Review */}
                         {order.status === OrderStatus.DELIVERED_SUCCESS && (
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <button
                               onClick={() => handleDownloadReceipt(order)}
                               className="px-3 py-1.5 bg-ink-100 hover:bg-ink-200 dark:bg-ink-800 dark:hover:bg-ink-700 text-ink-700 dark:text-white font-sans font-bold text-xs tracking-tight rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
