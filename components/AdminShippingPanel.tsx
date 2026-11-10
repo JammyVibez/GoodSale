@@ -136,8 +136,15 @@ export default function AdminShippingPanel() {
     setBusy(true);
     setError(null);
     setNotice(null);
-    const result = await fn();
-    setBusy(false);
+    let result: { success?: boolean; error?: string };
+    try {
+      result = await fn();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save shipping settings. Try again.');
+      return false;
+    } finally {
+      setBusy(false);
+    }
     if (result?.error) {
       setError(result.error);
       return false;
@@ -339,8 +346,12 @@ export default function AdminShippingPanel() {
           <button
             className={settingsFlags.enabled ? btn : btnGhost}
             onClick={() => {
-              setSettingsFlags((prev) => ({ ...prev, enabled: !prev.enabled }));
-              void dbOperations.adminUpdateShippingSettings({ ...db.shippingSettings, enabled: !settingsFlags.enabled });
+              const enabled = !settingsFlags.enabled;
+              void run(async () => {
+                const result = await dbOperations.adminUpdateShippingSettings({ ...db.shippingSettings, enabled });
+                if (!result.error) setSettingsFlags((prev) => ({ ...prev, enabled }));
+                return result;
+              });
             }}
             disabled={busy}
           >
