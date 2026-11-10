@@ -75,8 +75,8 @@ export default async function SellerPage({ params }: PageProps) {
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
         <Breadcrumbs items={breadcrumbs} />
 
-        <header className="mt-5 overflow-hidden rounded-3xl border border-emerald-950/10 bg-white">
-          <div className="relative h-32 bg-[#032214] sm:h-40">
+        <header className="mt-5 overflow-hidden rounded-3xl border border-ink-200 dark:border-ink-800 bg-white dark:bg-ink-900">
+          <div className="relative h-32 bg-jade-950 dark:bg-ink-900 sm:h-40">
             {store.bannerUrl && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -91,7 +91,7 @@ export default async function SellerPage({ params }: PageProps) {
           </div>
           <div className="relative px-5 pb-6 sm:px-8">
             <div className="-mt-10 flex flex-wrap items-end gap-4">
-              <span className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border-4 border-white bg-[#eef5ef] text-2xl font-black text-[#032214]">
+              <span className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border-4 border-white bg-jade-50 dark:bg-jade-500/10 text-2xl font-black text-ink-900 dark:text-white">
                 {store.logoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={store.logoUrl} alt={`${name} logo`} width={160} height={160} className="h-full w-full object-cover" />
@@ -100,46 +100,46 @@ export default async function SellerPage({ params }: PageProps) {
                 )}
               </span>
               <div className="min-w-0 flex-1 pb-1">
-                <h1 className="text-2xl font-black tracking-tight text-[#032214] sm:text-3xl">{name}</h1>
-                <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-emerald-950/60">
+                <h1 className="text-2xl font-black tracking-tight text-ink-900 dark:text-white sm:text-3xl">{name}</h1>
+                <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-ink-500 dark:text-ink-400">
                   {store.verified && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-800">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-jade-100 dark:bg-jade-500/15 px-2.5 py-0.5 text-xs font-bold text-jade-700 dark:text-jade-300">
                       ✓ Verified seller
                     </span>
                   )}
-                  {store.business && <span className="rounded-full bg-[#f4ead0] px-2.5 py-0.5 text-xs font-semibold text-[#7a5c12]">Registered business</span>}
+                  {store.business && <span className="rounded-full bg-gold-100 dark:bg-gold-300/15 px-2.5 py-0.5 text-xs font-semibold text-gold-700 dark:text-gold-200">Registered business</span>}
                   {location && <span>{location}</span>}
                   <span>{products.length} live listing{products.length === 1 ? '' : 's'}</span>
                 </p>
               </div>
               <Link
                 href={`/?seller=${store.id}`}
-                className="mb-1 rounded-full bg-[#d4af37] px-5 py-2.5 text-sm font-bold text-[#032214] hover:bg-[#e6c35a]"
+                className="mb-1 rounded-full bg-gold-300 px-5 py-2.5 text-sm font-bold text-ink-950 hover:bg-gold-200"
               >
                 Open storefront in app
               </Link>
             </div>
 
             {(store.businessDescription || store.bio) && (
-              <p className="mt-5 max-w-3xl whitespace-pre-line text-sm leading-7 text-emerald-950/70">
+              <p className="mt-5 max-w-3xl whitespace-pre-line text-sm leading-7 text-ink-600 dark:text-ink-300">
                 {store.businessDescription || store.bio}
               </p>
             )}
-            <dl className="mt-5 flex flex-wrap gap-x-8 gap-y-3 border-t border-emerald-950/10 pt-4 text-sm">
+            <dl className="mt-5 flex flex-wrap gap-x-8 gap-y-3 border-t border-ink-200 dark:border-ink-800 pt-4 text-sm">
               <div>
-                <dt className="text-xs uppercase tracking-wide text-emerald-950/45">Member since</dt>
+                <dt className="text-xs uppercase tracking-wide text-ink-400 dark:text-ink-500">Member since</dt>
                 <dd className="font-medium">
                   {new Date(store.joinedAt).toLocaleDateString('en-NG', { month: 'long', year: 'numeric' })}
                 </dd>
               </div>
               {store.businessAddress && (
                 <div>
-                  <dt className="text-xs uppercase tracking-wide text-emerald-950/45">Business address</dt>
+                  <dt className="text-xs uppercase tracking-wide text-ink-400 dark:text-ink-500">Business address</dt>
                   <dd className="font-medium">{store.businessAddress}</dd>
                 </div>
               )}
               <div>
-                <dt className="text-xs uppercase tracking-wide text-emerald-950/45">Payments</dt>
+                <dt className="text-xs uppercase tracking-wide text-ink-400 dark:text-ink-500">Payments</dt>
                 <dd className="font-medium">Held in GoodSale escrow</dd>
               </div>
             </dl>
@@ -147,7 +147,7 @@ export default async function SellerPage({ params }: PageProps) {
         </header>
 
         <section aria-labelledby="store-listings" className="mt-10">
-          <h2 id="store-listings" className="text-xl font-bold text-[#032214]">Listings from {name}</h2>
+          <h2 id="store-listings" className="text-xl font-bold text-ink-900 dark:text-white">Listings from {name}</h2>
           {products.length > 0 ? (
             <div className="mt-4 grid grid-cols-2 gap-2.5 md:grid-cols-4 xl:grid-cols-5">
               {products.map((product, index) => (
@@ -155,47 +155,47 @@ export default async function SellerPage({ params }: PageProps) {
               ))}
             </div>
           ) : (
-            <p className="mt-4 rounded-2xl border border-emerald-950/10 bg-white p-6 text-sm text-emerald-950/60">
-              This seller has no live listings right now. <Link href="/categories" className="font-semibold text-emerald-800 underline">Browse categories</Link> to keep shopping.
+            <p className="mt-4 rounded-2xl border border-ink-200 dark:border-ink-800 bg-white dark:bg-ink-900 p-6 text-sm text-ink-500 dark:text-ink-400">
+              This seller has no live listings right now. <Link href="/categories" className="font-semibold text-jade-700 dark:text-jade-300 underline">Browse categories</Link> to keep shopping.
             </p>
           )}
         </section>
 
-        <section aria-labelledby="store-reviews" className="mt-10 rounded-3xl border border-emerald-950/10 bg-white p-6">
-          <h2 id="store-reviews" className="text-xl font-bold text-[#032214]">Seller reviews</h2>
+        <section aria-labelledby="store-reviews" className="mt-10 rounded-3xl border border-ink-200 dark:border-ink-800 bg-white dark:bg-ink-900 p-6">
+          <h2 id="store-reviews" className="text-xl font-bold text-ink-900 dark:text-white">Seller reviews</h2>
           {store.reviewCount > 0 ? (
             <>
-              <p className="mt-2 text-sm text-emerald-950/60">
-                <span className="text-2xl font-black text-[#032214]">{store.rating?.toFixed(1)}</span> / 5 from{' '}
+              <p className="mt-2 text-sm text-ink-500 dark:text-ink-400">
+                <span className="text-2xl font-black text-ink-900 dark:text-white">{store.rating?.toFixed(1)}</span> / 5 from{' '}
                 {store.reviewCount} real review{store.reviewCount === 1 ? '' : 's'}
               </p>
               <ul className="mt-4 grid gap-4 sm:grid-cols-2">
                 {store.reviews.map((review) => (
-                  <li key={review.id} className="rounded-2xl bg-[#f7f5ee] p-4">
-                    <p className="text-sm font-semibold text-[#032214]">
+                  <li key={review.id} className="rounded-2xl bg-ink-50 dark:bg-ink-850 p-4">
+                    <p className="text-sm font-semibold text-ink-900 dark:text-white">
                       {review.author}
-                      <span className="ml-2 font-normal text-[#b8912c]" aria-label={`${review.rating} out of 5 stars`}>
+                      <span className="ml-2 font-normal text-gold-500 dark:text-gold-300" aria-label={`${review.rating} out of 5 stars`}>
                         {'★'.repeat(review.rating)}
                       </span>
                     </p>
-                    <p className="mt-1 text-sm leading-6 text-emerald-950/70">{review.comment}</p>
+                    <p className="mt-1 text-sm leading-6 text-ink-600 dark:text-ink-300">{review.comment}</p>
                   </li>
                 ))}
               </ul>
             </>
           ) : (
-            <p className="mt-2 text-sm leading-6 text-emerald-950/60">
+            <p className="mt-2 text-sm leading-6 text-ink-500 dark:text-ink-400">
               No seller reviews yet. Ratings only appear after real completed orders.
             </p>
           )}
         </section>
 
-        <section className="mt-10 flex flex-wrap items-center justify-between gap-4 rounded-3xl bg-[#eef5ef] p-6">
+        <section className="mt-10 flex flex-wrap items-center justify-between gap-4 rounded-3xl bg-jade-50 dark:bg-jade-500/10 p-6">
           <div>
-            <h2 className="text-lg font-bold text-[#032214]">Shopping safely on GoodSale</h2>
-            <p className="mt-1 text-sm text-emerald-950/65">Escrow payments, tracked delivery and support on every order.</p>
+            <h2 className="text-lg font-bold text-ink-900 dark:text-white">Shopping safely on GoodSale</h2>
+            <p className="mt-1 text-sm text-ink-600 dark:text-ink-300">Escrow payments, tracked delivery and support on every order.</p>
           </div>
-          <Link href="/trust-safety" className="rounded-full bg-[#032214] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#064e3b]">
+          <Link href="/trust-safety" className="rounded-full bg-jade-950 dark:bg-ink-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-jade-900 dark:hover:bg-ink-800">
             How buyer protection works
           </Link>
         </section>

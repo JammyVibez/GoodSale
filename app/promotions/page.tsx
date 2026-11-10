@@ -57,20 +57,20 @@ export default async function PromotionsPage() {
       />
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
         <Breadcrumbs items={breadcrumbs} />
-        <header className="mt-5 rounded-3xl bg-[#032214] px-6 py-9 text-white sm:px-10">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#d4af37]">GoodSale promotions</p>
+        <header className="mt-5 rounded-3xl bg-jade-950 dark:bg-ink-900 px-6 py-9 text-white sm:px-10">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gold-300">GoodSale promotions</p>
           <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">Featured deals</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-emerald-50/75">
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-jade-50/75">
             Featured listings are promoted by sellers and shown here with their live price and availability. Promotion
             never changes buyer protection: every order still uses GoodSale escrow and the same refund process.
           </p>
         </header>
 
         <section aria-labelledby="featured-listings" className="mt-8">
-          <h2 id="featured-listings" className="text-xl font-bold text-[#032214]">
+          <h2 id="featured-listings" className="text-xl font-bold text-ink-900 dark:text-white">
             Promoted listings
           </h2>
-          <p className="mt-1 text-sm text-emerald-950/55">Prices and stock reflect the live catalog at page load.</p>
+          <p className="mt-1 text-sm text-ink-500 dark:text-ink-400">Prices and stock reflect the live catalog at page load.</p>
           {products.length > 0 ? (
             <div className="mt-4 grid grid-cols-2 gap-2.5 md:grid-cols-4 xl:grid-cols-5">
               {products.map((product, index) => (
@@ -78,24 +78,24 @@ export default async function PromotionsPage() {
               ))}
             </div>
           ) : (
-            <p className="mt-4 rounded-2xl border border-emerald-950/10 bg-white p-6 text-sm text-emerald-950/60">
-              No promoted listings are active right now. <Link href="/categories" className="font-semibold text-emerald-800 underline">Browse all categories</Link> instead.
+            <p className="mt-4 rounded-2xl border border-ink-200 dark:border-ink-800 bg-white dark:bg-ink-900 p-6 text-sm text-ink-500 dark:text-ink-400">
+              No promoted listings are active right now. <Link href="/categories" className="font-semibold text-jade-700 dark:text-jade-300 underline">Browse all categories</Link> instead.
             </p>
           )}
         </section>
 
-        <section className="mt-10 rounded-3xl border border-emerald-950/10 bg-white p-6">
-          <h2 className="text-lg font-bold text-[#032214]">How promotions work</h2>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-emerald-950/65">
+        <section className="mt-10 rounded-3xl border border-ink-200 dark:border-ink-800 bg-white dark:bg-ink-900 p-6">
+          <h2 className="text-lg font-bold text-ink-900 dark:text-white">How promotions work</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-ink-600 dark:text-ink-300">
             Sellers can feature individual listings to increase visibility. Featured placement is labelled and does not
             alter search rankings, review scores or escrow terms. Always check the seller&apos;s verification badge,
             condition notes and return policy on the product page.
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
-            <Link href="/trust-safety" className="rounded-full bg-[#032214] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#064e3b]">
+            <Link href="/trust-safety" className="rounded-full bg-jade-950 dark:bg-ink-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-jade-900 dark:hover:bg-ink-800">
               Buyer protection
             </Link>
-            <Link href="/sellers" className="rounded-full border border-emerald-950/15 px-5 py-2.5 text-sm font-semibold hover:bg-emerald-50">
+            <Link href="/sellers" className="rounded-full border border-ink-300 dark:border-ink-700 px-5 py-2.5 text-sm font-semibold hover:bg-ink-100 dark:hover:bg-ink-800">
               Verified sellers
             </Link>
           </div>

@@ -40,8 +40,8 @@ export default async function CategoriesPage() {
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
         <Breadcrumbs items={breadcrumbs} />
         <header className="mt-5 max-w-3xl">
-          <h1 className="text-3xl font-black tracking-tight text-[#032214] sm:text-4xl">Shop by category</h1>
-          <p className="mt-3 text-[15px] leading-7 text-emerald-950/70">
+          <h1 className="text-3xl font-black tracking-tight text-ink-900 dark:text-white sm:text-4xl">Shop by category</h1>
+          <p className="mt-3 text-[15px] leading-7 text-ink-600 dark:text-ink-300">
             Every category below is generated from live GoodSale listings. Pick a category to compare prices, inspect
             real buyer reviews and buy from verified sellers with escrow protection.
           </p>
@@ -53,9 +53,9 @@ export default async function CategoriesPage() {
               <li key={category.slug}>
                 <Link
                   href={`/categories/${category.slug}`}
-                  className="group flex h-full items-center gap-4 rounded-2xl border border-emerald-950/10 bg-white p-4 transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-emerald-950/5"
+                  className="group flex h-full items-center gap-4 rounded-2xl border border-ink-200 dark:border-ink-800 bg-white dark:bg-ink-900 p-4 transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-ink-900/5 dark:hover:shadow-black/30"
                 >
-                  <span className="h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-[#f1eee5]">
+                  <span className="h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-ink-100 dark:bg-ink-850">
                     {category.sampleImage ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -68,14 +68,14 @@ export default async function CategoriesPage() {
                         className="h-full w-full object-cover"
                       />
                     ) : (
-                      <span className="flex h-full items-center justify-center text-xl font-black text-emerald-950/15" aria-hidden="true">
+                      <span className="flex h-full items-center justify-center text-xl font-black text-ink-300 dark:text-ink-700" aria-hidden="true">
                         GS
                       </span>
                     )}
                   </span>
                   <span>
-                    <span className="block text-lg font-bold text-[#032214] group-hover:underline">{category.name}</span>
-                    <span className="mt-1 block text-sm text-emerald-950/55">
+                    <span className="block text-lg font-bold text-ink-900 dark:text-white group-hover:underline">{category.name}</span>
+                    <span className="mt-1 block text-sm text-ink-500 dark:text-ink-400">
                       {category.count} live listing{category.count === 1 ? '' : 's'}
                     </span>
                   </span>
@@ -84,18 +84,18 @@ export default async function CategoriesPage() {
             ))}
           </ul>
         ) : (
-          <p className="mt-8 rounded-2xl border border-emerald-950/10 bg-white p-6 text-sm text-emerald-950/60">
+          <p className="mt-8 rounded-2xl border border-ink-200 dark:border-ink-800 bg-white dark:bg-ink-900 p-6 text-sm text-ink-500 dark:text-ink-400">
             Categories appear here as soon as sellers publish live listings.
           </p>
         )}
 
-        <section className="mt-12 rounded-3xl bg-[#032214] px-6 py-8 text-white sm:px-10">
+        <section className="mt-12 rounded-3xl bg-jade-950 dark:bg-ink-900 px-6 py-8 text-white sm:px-10">
           <h2 className="text-2xl font-bold">Not sure where to start?</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-emerald-50/75">
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-jade-50/75">
             Browse verified storefronts or read how GoodSale protects every order before you pay.
           </p>
           <div className="mt-5 flex flex-wrap gap-3">
-            <Link href="/sellers" className="rounded-full bg-[#d4af37] px-5 py-2.5 text-sm font-bold text-[#032214] hover:bg-[#e6c35a]">
+            <Link href="/sellers" className="rounded-full bg-gold-300 px-5 py-2.5 text-sm font-bold text-ink-950 hover:bg-gold-200">
               Browse sellers
             </Link>
             <Link href="/trust-safety" className="rounded-full border border-white/25 px-5 py-2.5 text-sm font-semibold text-white hover:bg-white/10">

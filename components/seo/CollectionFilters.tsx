@@ -31,9 +31,9 @@ export interface CollectionFiltersProps {
 }
 
 const selectClass =
-  'h-9 w-full appearance-none rounded-lg border border-emerald-950/15 bg-white px-2.5 text-[12px] font-medium text-emerald-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/15';
+  'h-9 w-full appearance-none rounded-lg border border-ink-300 dark:border-ink-700 bg-white dark:bg-ink-900 px-2.5 text-[12px] font-medium text-ink-900 dark:text-ink-100 outline-none transition focus:border-jade-600 dark:focus:border-jade-400 focus:ring-2 focus:ring-jade-600/20';
 
-const labelClass = 'text-[10px] font-bold uppercase tracking-wide text-emerald-950/45';
+const labelClass = 'text-[10px] font-bold uppercase tracking-wide text-ink-400 dark:text-ink-500';
 
 export default function CollectionFilters({
   basePath,
@@ -87,20 +87,20 @@ export default function CollectionFilters({
       }}
       onChange={() => setDirty(true)}
       aria-label="Filter listings"
-      className="rounded-xl border border-emerald-950/10 bg-white p-3"
+      className="rounded-xl border border-ink-200 dark:border-ink-800 bg-white dark:bg-ink-900 p-3"
     >
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-7">
         <div className="col-span-2">
           <label htmlFor="filter-q" className={labelClass}>Search in results</label>
           <div className="relative mt-1">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-emerald-950/35" aria-hidden="true" />
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-400 dark:text-ink-500" aria-hidden="true" />
             <input
               id="filter-q"
               name="q"
               type="search"
               defaultValue={query}
               placeholder="Brand, model, seller…"
-              className="h-9 w-full rounded-lg border border-emerald-950/15 bg-white pl-8 pr-2.5 text-[12px] text-emerald-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/15"
+              className="h-9 w-full rounded-lg border border-ink-300 dark:border-ink-700 bg-white dark:bg-ink-900 pl-8 pr-2.5 text-[12px] text-ink-900 dark:text-ink-100 outline-none transition focus:border-jade-600 dark:focus:border-jade-400 focus:ring-2 focus:ring-jade-600/20"
             />
           </div>
         </div>
@@ -165,9 +165,9 @@ export default function CollectionFilters({
               defaultValue={priceMin}
               placeholder="Min"
               aria-label="Minimum price in naira"
-              className="h-9 w-full min-w-0 rounded-lg border border-emerald-950/15 bg-white px-2 text-[12px] text-emerald-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/15"
+              className="h-9 w-full min-w-0 rounded-lg border border-ink-300 dark:border-ink-700 bg-white dark:bg-ink-900 px-2 text-[12px] text-ink-900 dark:text-ink-100 outline-none transition focus:border-jade-600 dark:focus:border-jade-400 focus:ring-2 focus:ring-jade-600/20"
             />
-            <span className="text-emerald-950/30" aria-hidden="true">–</span>
+            <span className="text-ink-400 dark:text-ink-500" aria-hidden="true">–</span>
             <input
               name="priceMax"
               type="number"
@@ -177,7 +177,7 @@ export default function CollectionFilters({
               defaultValue={priceMax}
               placeholder="Max"
               aria-label="Maximum price in naira"
-              className="h-9 w-full min-w-0 rounded-lg border border-emerald-950/15 bg-white px-2 text-[12px] text-emerald-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/15"
+              className="h-9 w-full min-w-0 rounded-lg border border-ink-300 dark:border-ink-700 bg-white dark:bg-ink-900 px-2 text-[12px] text-ink-900 dark:text-ink-100 outline-none transition focus:border-jade-600 dark:focus:border-jade-400 focus:ring-2 focus:ring-jade-600/20"
             />
           </div>
         </div>
@@ -200,7 +200,7 @@ export default function CollectionFilters({
         <div>
           <label htmlFor="filter-sort" className={labelClass}>Sort by</label>
           <div className="relative mt-1">
-            <SlidersHorizontal className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-emerald-950/35" aria-hidden="true" />
+            <SlidersHorizontal className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-400 dark:text-ink-500" aria-hidden="true" />
             <select
               id="filter-sort"
               name="sort"
@@ -234,14 +234,14 @@ export default function CollectionFilters({
       </div>
 
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[11px] text-emerald-950/50" aria-live="polite">
+        <p className="text-[11px] text-ink-500 dark:text-ink-400" aria-live="polite">
           {pending ? 'Updating results…' : hasFilters ? 'Filters applied to this collection.' : 'All live listings in this collection.'}
         </p>
         <div className="flex items-center gap-2">
           {hasFilters && (
             <a
               href={basePath}
-              className="inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] font-semibold text-emerald-950/60 hover:text-emerald-950"
+              className="inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] font-semibold text-ink-500 dark:text-ink-400 hover:text-ink-900 dark:hover:text-ink-100"
             >
               <X className="h-3 w-3" aria-hidden="true" />
               Clear filters
@@ -250,7 +250,7 @@ export default function CollectionFilters({
           <button
             type="submit"
             disabled={pending}
-            className="rounded-full bg-[#032214] px-4 py-1.5 text-[11px] font-bold text-white transition hover:bg-[#064e3b] disabled:opacity-60"
+            className="rounded-full bg-jade-950 dark:bg-ink-900 px-4 py-1.5 text-[11px] font-bold text-white transition hover:bg-jade-900 dark:hover:bg-ink-800 disabled:opacity-60"
           >
             {pending ? 'Loading…' : dirty ? 'Apply filters' : 'Apply'}
           </button>

@@ -41,8 +41,8 @@ export default async function SellersPage() {
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
         <Breadcrumbs items={breadcrumbs} />
         <header className="mt-5 max-w-3xl">
-          <h1 className="text-3xl font-black tracking-tight text-[#032214] sm:text-4xl">Sellers on GoodSale</h1>
-          <p className="mt-3 text-[15px] leading-7 text-emerald-950/70">
+          <h1 className="text-3xl font-black tracking-tight text-ink-900 dark:text-white sm:text-4xl">Sellers on GoodSale</h1>
+          <p className="mt-3 text-[15px] leading-7 text-ink-600 dark:text-ink-300">
             Every storefront below belongs to a GoodSale seller account. Verified sellers and registered businesses have
             completed identity checks. Ratings and reviews are shown only when real buyers have left feedback after an
             order.
@@ -56,9 +56,9 @@ export default async function SellersPage() {
               const location = [store.city, store.state].filter(Boolean).join(', ');
               return (
                 <li key={store.id}>
-                  <article className="flex h-full flex-col rounded-2xl border border-emerald-950/10 bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-emerald-950/5">
+                  <article className="flex h-full flex-col rounded-2xl border border-ink-200 dark:border-ink-800 bg-white dark:bg-ink-900 p-5 transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-ink-900/5 dark:hover:shadow-black/30">
                     <div className="flex items-start gap-3">
-                      <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#eef5ef] text-lg font-black text-[#032214]">
+                      <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-jade-50 dark:bg-jade-500/10 text-lg font-black text-ink-900 dark:text-white">
                         {store.logoUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={store.logoUrl} alt={`${name} logo`} width={112} height={112} loading="lazy" className="h-full w-full object-cover" />
@@ -67,24 +67,24 @@ export default async function SellersPage() {
                         )}
                       </span>
                       <div className="min-w-0">
-                        <h2 className="truncate text-lg font-bold text-[#032214]">
+                        <h2 className="truncate text-lg font-bold text-ink-900 dark:text-white">
                           <Link href={`/sellers/${store.id}`} className="hover:underline">{name}</Link>
                         </h2>
-                        <p className="mt-0.5 text-xs text-emerald-950/55">{location || 'Nigeria'}</p>
+                        <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{location || 'Nigeria'}</p>
                         <RatingStars rating={store.rating} count={store.reviewCount} />
                       </div>
                     </div>
-                    <p className="mt-3 line-clamp-3 flex-1 text-sm leading-6 text-emerald-950/65">
+                    <p className="mt-3 line-clamp-3 flex-1 text-sm leading-6 text-ink-600 dark:text-ink-300">
                       {store.businessDescription || store.bio || `${name} sells on GoodSale with escrow-protected payments.`}
                     </p>
                     <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                       <p className="flex flex-wrap gap-1.5 text-[11px] font-semibold">
-                        {store.verified && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-800">✓ Verified</span>}
-                        <span className="rounded-full bg-[#f4ead0] px-2 py-0.5 text-[#7a5c12]">
+                        {store.verified && <span className="rounded-full bg-jade-100 dark:bg-jade-500/15 px-2 py-0.5 text-jade-700 dark:text-jade-300">✓ Verified</span>}
+                        <span className="rounded-full bg-gold-100 dark:bg-gold-300/15 px-2 py-0.5 text-gold-700 dark:text-gold-200">
                           {store.productCount} listing{store.productCount === 1 ? '' : 's'}
                         </span>
                       </p>
-                      <Link href={`/sellers/${store.id}`} className="text-sm font-semibold text-emerald-800 hover:underline">
+                      <Link href={`/sellers/${store.id}`} className="text-sm font-semibold text-jade-700 dark:text-jade-300 hover:underline">
                         Storefront →
                       </Link>
                     </div>
@@ -94,7 +94,7 @@ export default async function SellersPage() {
             })}
           </ul>
         ) : (
-          <p className="mt-8 rounded-2xl border border-emerald-950/10 bg-white p-6 text-sm text-emerald-950/60">
+          <p className="mt-8 rounded-2xl border border-ink-200 dark:border-ink-800 bg-white dark:bg-ink-900 p-6 text-sm text-ink-500 dark:text-ink-400">
             Seller storefronts appear here as accounts publish listings.
           </p>
         )}
