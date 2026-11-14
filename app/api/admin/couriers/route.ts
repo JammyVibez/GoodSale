@@ -1,3 +1,4 @@
+import { callRustAdminRpc } from '@/lib/server/rust-rpc';
 import { createHash } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
@@ -84,7 +85,7 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
-      const { data, error } = await supabase.rpc('admin_manual_courier_update', {
+      const { data, error } = await callRustAdminRpc(supabase, 'admin_manual_courier_update', {
         p_delivery_id: deliveryId,
         p_courier_name: courierName,
         p_tracking_number: trackingNumber,
@@ -167,7 +168,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const { data, error } = await supabase.rpc('admin_record_courier_shipment', {
+      const { data, error } = await callRustAdminRpc(supabase, 'admin_record_courier_shipment', {
         p_delivery_id: deliveryId,
         p_provider: shipment.provider,
         p_tracking_number: shipment.trackingNumber,
@@ -179,7 +180,7 @@ export async function POST(req: NextRequest) {
       if (error) {
         return NextResponse.json({ success: false, error: error.message }, { status: 409 });
       }
-      return NextResponse.json({ success: true, data: { ...data, labelUrl: shipment.labelUrl || '' } });
+      return NextResponse.json({ success: true, data: { ...(data && typeof data === 'object' ? data as Record<string, unknown> : {}), labelUrl: shipment.labelUrl || '' } });
     }
 
     if (action === 'SYNC') {
@@ -237,7 +238,7 @@ export async function POST(req: NextRequest) {
             ].join('|')
           )
           .digest('hex');
-        const { error } = await service.rpc('courier_apply_tracking_event', {
+        const { error } = await callRustAdminRpc(supabase, 'courier_apply_tracking_event', {
           p_provider: shipmentRow.provider,
           p_event_id: eventId,
           p_tracking_number: shipmentRow.tracking_number,

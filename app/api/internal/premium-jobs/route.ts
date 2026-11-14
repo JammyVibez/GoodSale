@@ -1,3 +1,4 @@
+import { callRustInternalRpc, callRustJob } from '@/lib/server/rust-rpc';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { logger } from '@/lib/logger';
@@ -22,18 +23,22 @@ async function run(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'Server service role is not configured' }, { status: 503 });
   }
 
-  const { data, error } = await admin.rpc('run_premium_jobs');
+  const premiumRun = await callRustJob<Record<string, unknown>>('run_premium_jobs', process.env.PREMIUM_CRON_SECRET || process.env.DELIVERY_CRON_SECRET || '');
+  const data = premiumRun.data;
+  const error = premiumRun.error;
   if (error) {
     logger.error('Premium lifecycle jobs failed', { error: error.message });
     return NextResponse.json({ success: false, error: 'Premium lifecycle jobs failed' }, { status: 500 });
   }
-  const { data: expiredReservations, error: reservationError } = await admin.rpc('expire_unpaid_order_reservations');
+  const expiredRun = await callRustJob<Record<string, unknown>>('expire_unpaid_order_reservations', process.env.PREMIUM_CRON_SECRET || process.env.DELIVERY_CRON_SECRET || '');
+  const expiredReservations = expiredRun.data;
+  const reservationError = expiredRun.error;
   if (reservationError) {
     logger.error('Unpaid order reservation expiry failed', { error: reservationError.message });
     return NextResponse.json({ success: false, error: 'Order inventory reservations could not be expired' }, { status: 500 });
   }
 
-  return NextResponse.json({ success: true, jobs: { ...data, unpaidInventoryReservationsReleased: expiredReservations } });
+  return NextResponse.json({ success: true, jobs: { ...(data || {}), unpaidInventoryReservationsReleased: expiredReservations } });
 }
 
 /** POST /api/internal/premium-jobs — scheduler entry point (secret protected). */

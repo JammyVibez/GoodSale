@@ -1,3 +1,4 @@
+import { callRustInternalRpc } from '@/lib/server/rust-rpc';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { clientIpFromRequest, rateLimitAsync } from '@/lib/rate-limit';
@@ -26,6 +27,9 @@ export async function POST(req: NextRequest) {
   try {
     // Account creation is the most abused endpoint on any marketplace.
     const limited = await rateLimitAsync(`register:${clientIpFromRequest(req)}`, 6, 10 * 60_000);
+    if (limited.unavailable) {
+      return NextResponse.json({ success: false, error: 'Sign-up protection is temporarily unavailable.' }, { status: 503 });
+    }
     if (!limited.allowed) {
       return NextResponse.json(
         {
@@ -123,7 +127,7 @@ export async function POST(req: NextRequest) {
           .maybeSingle();
 
         if (profile?.id) {
-          const { data: attributed, error: referralError } = await admin.rpc(
+          const { data: attributed, error: referralError } = await callRustInternalRpc<{ success?: boolean }>(
             'attribute_referral',
             {
               p_referee_id: profile.id,

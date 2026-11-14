@@ -1,10 +1,8 @@
+import { callRustInternalRpc, callRustJob } from '@/lib/server/rust-rpc';
 import { NextRequest, NextResponse } from 'next/server';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { logger, publicErrorMessage } from '@/lib/logger';
-import { reconcilePaystackPayment } from '@/lib/data/payments';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { creditVerifiedWalletFunding } from '@/lib/wallet/server';
-import { activateVerifiedPremiumPayment } from '@/lib/premium/server';
 
 /**
  * Paystack webhook receiver.
@@ -43,35 +41,24 @@ export async function POST(req: NextRequest) {
       // Premium memberships are activated only from this signed event or a
       // server-to-server verify call — never from the browser callback.
       if (reference.startsWith('GSP_')) {
-        const premium = await activateVerifiedPremiumPayment(reference, event.data);
-        return NextResponse.json({ success: premium.success, received: true, premium });
+        const premium = await callRustInternalRpc('premium_activation_event', { reference });
+        return NextResponse.json({ success: !premium.error, received: true, premium: premium.data, ...(premium.error ? { error: premium.error.message } : {}) });
       }
 
       // Wallet funding is credited only after the signed event, amount and
       // intent identity are checked against the funding record.
       if (walletFundingId || reference.startsWith('GSW_')) {
-        const funding = await creditVerifiedWalletFunding(reference, event.data);
-        return NextResponse.json({ success: funding.success, received: true, funding });
+        const funding = await callRustInternalRpc('wallet_funding_event', { reference });
+        return NextResponse.json({ success: !funding.error, received: true, funding: funding.data, ...(funding.error ? { error: funding.error.message } : {}) });
       }
 
-      const metaOrderId = Number(
-        event.data?.metadata?.order_id || event.data?.metadata?.orderId || 0
-      ) || null;
-      const metaOrderIdsRaw = String(event.data?.metadata?.order_ids || '');
-      const metaOrderIds = metaOrderIdsRaw
-        ? metaOrderIdsRaw.split(',').map((s: string) => Number(s.trim())).filter((n: number) => n > 0)
-        : null;
-
-      const reconciliation = await reconcilePaystackPayment({
-        orderId: metaOrderId,
-        orderIds: metaOrderIds,
-        reference: event.data.reference,
-        amountKobo: event.data.amount,
-        channel: event.data.channel,
-        customerEmail: event.data.customer?.email,
+      const reconciliation = await callRustInternalRpc('order_payment_event', { reference });
+      return NextResponse.json({
+        success: !reconciliation.error,
+        received: true,
+        reconciliation: reconciliation.data,
+        ...(reconciliation.error ? { error: reconciliation.error.message } : {}),
       });
-
-      return NextResponse.json({ success: true, received: true, reconciliation });
     }
 
     // Payout settlement: only the provider can mark a transfer successful.
@@ -107,7 +94,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (event.event === 'transfer.success') {
-        const { error } = await admin.rpc('admin_payout_complete', {
+        const { error } = await callRustInternalRpc('admin_payout_complete', {
           p_withdrawal_id: withdrawal.id,
           p_provider_reference: providerReference || transferCode,
         });
@@ -119,7 +106,7 @@ export async function POST(req: NextRequest) {
         event.event === 'transfer.reversed'
           ? 'Paystack reversed the transfer'
           : String(event.data?.reason || event.data?.gateway_response || 'Paystack transfer failed');
-      const { error } = await admin.rpc('admin_payout_fail', {
+      const { error } = await callRustInternalRpc('admin_payout_fail', {
         p_withdrawal_id: withdrawal.id,
         p_reason: reason,
       });
