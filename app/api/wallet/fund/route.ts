@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const rustBackend = process.env.RUST_BACKEND_URL?.trim().replace(/\\/+$/, '');
+    const rustBackend = process.env.RUST_BACKEND_URL?.trim().replace(/\/+$/, '');
     if (rustBackend) {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
