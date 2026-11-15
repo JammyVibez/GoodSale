@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Check,
+  ChevronRight,
   Copy,
   Eye,
   EyeOff,
@@ -28,9 +29,14 @@ import { toast } from '@/lib/feedback';
 
 interface OfflineVaultDrawerProps {
   onNavigate: (view: string, payload?: unknown) => void;
+  /** `icon` (default) is the compact round button; `menu` is a full-width menu row. */
+  variant?: 'icon' | 'menu';
 }
 
-export default function OfflineVaultDrawer({ onNavigate }: OfflineVaultDrawerProps) {
+export default function OfflineVaultDrawer({
+  onNavigate,
+  variant = 'icon',
+}: OfflineVaultDrawerProps) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [online, setOnline] = useState(true);
@@ -38,6 +44,11 @@ export default function OfflineVaultDrawer({ onNavigate }: OfflineVaultDrawerPro
   const [revealedPinIds, setRevealedPinIds] = useState<number[]>([]);
 
   const refreshVault = () => setVault(readOfflineVault());
+
+  const openVault = () => {
+    refreshVault();
+    setOpen(true);
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -98,26 +109,47 @@ export default function OfflineVaultDrawer({ onNavigate }: OfflineVaultDrawerPro
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => {
-          refreshVault();
-          setOpen(true);
-        }}
-        aria-label={online ? 'Open offline PIN and saved vault' : 'Offline mode — view saved cart and PIN vault'}
-        className={`relative grid h-9 w-9 sm:h-10 sm:w-10 place-items-center rounded-full transition-colors cursor-pointer ${
-          online
-            ? 'hover:bg-ink-100 text-ink-600 dark:text-ink-200 dark:hover:bg-white/10'
-            : 'bg-amber-500/15 text-amber-700 ring-1 ring-amber-500/40 dark:text-amber-300'
-        }`}
-      >
-        {online ? <KeyRound className="h-[18px] w-[18px]" /> : <WifiOff className="h-[18px] w-[18px]" />}
-        {totalBadge > 0 && (
-          <span className="absolute right-1 top-1 grid h-4 min-w-4 place-items-center rounded-full bg-jade-600 px-1 text-[9px] font-black leading-none text-white dark:bg-gold-300 dark:text-jade-950">
-            {totalBadge > 9 ? '9+' : totalBadge}
+      {variant === 'menu' ? (
+        <button
+          type="button"
+          onClick={openVault}
+          aria-label={online ? 'Open offline PIN and saved vault' : 'Offline mode — view saved cart and PIN vault'}
+          className="flex min-h-[42px] w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-medium text-ink-700 transition-colors hover:bg-ink-100 hover:text-jade-700 dark:text-ink-200 dark:hover:bg-ink-800/80 dark:hover:text-jade-300 cursor-pointer"
+        >
+          <span className="inline-flex items-center gap-2">
+            {online ? (
+              <KeyRound className="h-4 w-4 text-jade-600 dark:text-jade-400" aria-hidden="true" />
+            ) : (
+              <WifiOff className="h-4 w-4 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+            )}
+            <span>Offline PIN &amp; saved vault</span>
+            {totalBadge > 0 && (
+              <span className="rounded-full bg-jade-600 px-1.5 py-0.5 text-[10px] font-black leading-none text-white dark:bg-gold-300 dark:text-jade-950">
+                {totalBadge > 9 ? '9+' : totalBadge}
+              </span>
+            )}
           </span>
-        )}
-      </button>
+          <ChevronRight className="h-4 w-4 text-ink-400" aria-hidden="true" />
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={openVault}
+          aria-label={online ? 'Open offline PIN and saved vault' : 'Offline mode — view saved cart and PIN vault'}
+          className={`relative grid h-9 w-9 sm:h-10 sm:w-10 place-items-center rounded-full transition-colors cursor-pointer ${
+            online
+              ? 'hover:bg-ink-100 text-ink-600 dark:text-ink-200 dark:hover:bg-white/10'
+              : 'bg-amber-500/15 text-amber-700 ring-1 ring-amber-500/40 dark:text-amber-300'
+          }`}
+        >
+          {online ? <KeyRound className="h-[18px] w-[18px]" /> : <WifiOff className="h-[18px] w-[18px]" />}
+          {totalBadge > 0 && (
+            <span className="absolute right-1 top-1 grid h-4 min-w-4 place-items-center rounded-full bg-jade-600 px-1 text-[9px] font-black leading-none text-white dark:bg-gold-300 dark:text-jade-950">
+              {totalBadge > 9 ? '9+' : totalBadge}
+            </span>
+          )}
+        </button>
+      )}
 
       {open && mounted && createPortal(
         <div

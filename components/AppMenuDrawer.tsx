@@ -12,6 +12,7 @@ import {
   ShoppingBag,
   HelpCircle,
   FileText,
+  Smartphone,
   Truck,
   Twitter,
   Instagram,
@@ -19,7 +20,7 @@ import {
   Linkedin,
 } from 'lucide-react';
 import Logo from '@/components/LogoIcon';
-import { PWAInstallButton } from '@/components/pwa/PWAInstallButton';
+import OfflineVaultDrawer from '@/components/offline/OfflineVaultDrawer';
 
 interface AppMenuDrawerProps {
   isOpen: boolean;
@@ -117,9 +118,6 @@ export default function AppMenuDrawer({
 
         {/* Scrollable directory links (relocated from footer) */}
         <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5">
-          {/* App & iOS installation card */}
-          <PWAInstallButton variant="card" showDesktopFallback />
-
           {/* Marketplace */}
           <section aria-labelledby="dir-marketplace">
             <h2
@@ -168,6 +166,23 @@ export default function AppMenuDrawer({
               {renderAction('Start selling / Seller hub', 'dashboard', '/?view=dashboard')}
               {renderAction('Account type & Settings', 'settings', '/?view=settings')}
               {renderAction('Payouts & wallet', 'wallet', '/?view=wallet')}
+            </div>
+          </section>
+
+          {/* On this device — offline vault lives here instead of the header */}
+          <section aria-labelledby="dir-device">
+            <h2
+              id="dir-device"
+              className="mb-2 flex items-center gap-2 px-3 text-xs font-bold uppercase tracking-wider text-ink-400"
+            >
+              <Smartphone className="h-3.5 w-3.5" aria-hidden="true" />
+              On this device
+            </h2>
+            <div className="space-y-0.5">
+              <OfflineVaultDrawer
+                onNavigate={(view, payload) => onNavigate?.(view, payload)}
+                variant="menu"
+              />
             </div>
           </section>
 

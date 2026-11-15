@@ -1,4 +1,5 @@
-import webpush from 'web-push';
+// web-push is CommonJS and exposes no default export, so import the namespace.
+import * as webpush from 'web-push';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { logger } from '@/lib/logger';
 import {

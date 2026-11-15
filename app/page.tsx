@@ -2,27 +2,32 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import MarketplaceHeader from '../components/MarketplaceHeader';
 import { useWishlist } from '@/lib/hooks/useWishlist';
 import LandingView from '../components/LandingView';
-import WalletView from '../components/WalletView';
-import ProductDetailView from '../components/ProductDetailView';
-import DashboardView from '../components/DashboardView';
-import AdminDashboard from '../components/AdminDashboard';
-import DispatchDashboardView from '../components/DispatchDashboardView';
-import RevenueCenterView from '../components/RevenueCenterView';
-import ChatView from '../components/ChatView';
-import CartCheckoutView from '../components/CartCheckoutView';
-import SellerVerificationCenter from '../components/seller/SellerVerificationCenter';
-import LoyaltyHubView from '../components/LoyaltyHubView';
-import ReferralCenter from '../components/referral/ReferralCenter';
-import BrandCenterView from '../components/BrandCenterView';
-import SellerProfileView from '../components/SellerProfileView';
-import SettingsView from '../components/SettingsView';
-import BuyerProfileView from '../components/BuyerProfileView';
-import TrustSafetyView from '../components/TrustSafetyView';
-import SupportCenterView from '../components/SupportCenterView';
 import AuthModal from '../components/AuthModal';
+
+// Every screen except Home is code-split: the marketplace shell boots without
+// the dashboard, admin, checkout and messaging bundles, and each view is
+// fetched the first time it is opened.
+const WalletView = dynamic(() => import('../components/WalletView'));
+const ProductDetailView = dynamic(() => import('../components/ProductDetailView'));
+const DashboardView = dynamic(() => import('../components/DashboardView'));
+const AdminDashboard = dynamic(() => import('../components/AdminDashboard'));
+const DispatchDashboardView = dynamic(() => import('../components/DispatchDashboardView'));
+const RevenueCenterView = dynamic(() => import('../components/RevenueCenterView'));
+const ChatView = dynamic(() => import('../components/ChatView'));
+const CartCheckoutView = dynamic(() => import('../components/CartCheckoutView'));
+const SellerVerificationCenter = dynamic(() => import('../components/seller/SellerVerificationCenter'));
+const LoyaltyHubView = dynamic(() => import('../components/LoyaltyHubView'));
+const ReferralCenter = dynamic(() => import('../components/referral/ReferralCenter'));
+const BrandCenterView = dynamic(() => import('../components/BrandCenterView'));
+const SellerProfileView = dynamic(() => import('../components/SellerProfileView'));
+const SettingsView = dynamic(() => import('../components/SettingsView'));
+const BuyerProfileView = dynamic(() => import('../components/BuyerProfileView'));
+const TrustSafetyView = dynamic(() => import('../components/TrustSafetyView'));
+const SupportCenterView = dynamic(() => import('../components/SupportCenterView'));
 import BottomNavigation from '../components/BottomNavigation';
 import SetupBanner from '../components/SetupBanner';
 import FeedbackHost from '../components/ui/FeedbackHost';
@@ -187,6 +192,9 @@ export default function Home() {
   const [activeChatRoomId, setActiveChatRoomId] = useState<number | null>(null);
 
   const [selectedSellerId, setSelectedSellerId] = useState<number | null>(null);
+  // Which panel the Account screen opens on — the Orders tab in the bottom nav
+  // deep-links straight to the buyer's orders.
+  const [profileSection, setProfileSection] = useState<string>('you-overview');
   const [history, setHistory] = useState<string[]>([]);
 
   useEffect(() => {
@@ -284,6 +292,9 @@ export default function Home() {
         setActiveChatRoomId(payload.roomId);
       }
       setCurrentView('chats');
+    } else if (view === 'buyer-profile') {
+      if (typeof payload?.section === 'string') setProfileSection(payload.section);
+      setCurrentView('buyer-profile');
     } else if (view === 'seller-profile') {
       if (payload?.sellerId) {
         setSelectedSellerId(payload.sellerId);
@@ -456,7 +467,12 @@ export default function Home() {
         )}
 
         {currentView === 'buyer-profile' && (
-          <BuyerProfileView onBack={handleGoBack} onNavigate={handleNavigate} onOpenAuth={() => setAuthModalOpen(true)} />
+          <BuyerProfileView
+            onBack={handleGoBack}
+            onNavigate={handleNavigate}
+            onOpenAuth={() => setAuthModalOpen(true)}
+            initialSection={profileSection as 'you-overview' | 'you-saved' | 'you-listings' | 'you-orders' | 'you-reviews'}
+          />
         )}
 
         {currentView === 'trust-safety' && (
@@ -500,6 +516,7 @@ export default function Home() {
         }}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        activeProfileSection={profileSection}
       />
 
     </div>

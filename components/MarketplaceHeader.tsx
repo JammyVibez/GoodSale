@@ -21,8 +21,6 @@ import NotificationMenu from './NotificationMenu';
 import { isVerifiedSeller } from '@/lib/verification';
 import { VerifiedMark } from './verification/VerifiedBadge';
 import AppMenuDrawer from './AppMenuDrawer';
-import { PWAInstallButton } from './pwa/PWAInstallButton';
-import OfflineVaultDrawer from './offline/OfflineVaultDrawer';
 
 interface MarketplaceHeaderProps {
   searchQuery: string;
@@ -99,8 +97,6 @@ export default function MarketplaceHeader({
           </button>
 
           <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
-            <PWAInstallButton variant="compact" className="hidden sm:inline-flex mr-1" />
-            <OfflineVaultDrawer onNavigate={onNavigate} />
             <NotificationMenu onNavigate={onNavigate} onOpenAuth={onOpenAuth} />
 
             {/* wishlist */}

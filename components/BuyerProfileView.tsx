@@ -1,7 +1,7 @@
 // components/BuyerProfileView.tsx
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Shield, Award, MapPin, CheckCircle, Package, Clock, AlertTriangle, 
   ChevronRight, Calendar, Star, ArrowLeft, Key, CreditCard, Lock,
@@ -30,11 +30,18 @@ interface BuyerProfileViewProps {
   onBack?: () => void;
   onNavigate?: (view: string, payload?: any) => void;
   onOpenAuth?: () => void;
+  /** Panel to open on mount — the bottom-nav Orders tab deep-links here. */
+  initialSection?: YouSection;
 }
 
 type YouSection = 'you-overview' | 'you-saved' | 'you-listings' | 'you-orders' | 'you-reviews';
 
-export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: BuyerProfileViewProps) {
+export default function BuyerProfileView({
+  onBack,
+  onNavigate,
+  onOpenAuth,
+  initialSection,
+}: BuyerProfileViewProps) {
   const db = useDBState();
   const wishlist = useWishlist();
   const currentUser = db.currentUser;
@@ -127,8 +134,13 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
 
   // Which account surface is open. Tabs beat one long scroll here: every panel
   // starts at the top of the viewport, so nothing hides under the sticky bar.
-  const [section, setSection] = useState<YouSection>('you-overview');
+  const [section, setSection] = useState<YouSection>(initialSection ?? 'you-overview');
   const [orderFilter, setOrderFilter] = useState<'all' | 'active' | 'completed' | 'closed'>('all');
+
+  // A later deep link (bottom-nav Orders) can retarget an already-mounted hub.
+  useEffect(() => {
+    if (initialSection) setSection(initialSection);
+  }, [initialSection]);
 
   // Switching panels while scrolled deep into a long order list would leave the
   // new panel half-read, so bring the hub back to the top of the view.

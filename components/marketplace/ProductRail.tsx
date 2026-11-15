@@ -104,7 +104,7 @@ export default function ProductRail({
       }
       aria-label={label}
     >
-      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           {icon && (
             <span
@@ -175,13 +175,13 @@ export default function ProductRail({
         tabIndex={0}
         role="region"
         aria-label={`${label} — scroll horizontally`}
-        className="-mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-2 scrollbar-hide gs-scroll-fade focus-ring"
+        className="-mx-1 flex snap-x snap-mandatory gap-2 overflow-x-auto px-1 pb-1.5 scrollbar-hide gs-scroll-fade focus-ring"
         style={{ scrollbarWidth: 'none' }}
       >
         {products.map((item, index) => (
           <div
             key={item.product.id}
-            className="w-[148px] shrink-0 snap-start sm:w-[166px] xl:w-[182px]"
+            className="w-[44vw] max-w-[168px] shrink-0 snap-start sm:w-[158px] xl:w-[174px]"
           >
             <ProductTile
               product={item.product}

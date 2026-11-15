@@ -4,9 +4,10 @@
 /**
  * The one product card used across the marketplace.
  *
- * Compact by design: a square image, two title lines, price, rating, seller and
- * a quick-add control. Every badge is derived from real rows — a discount only
- * appears when the seller set a higher reference price or a flash sale is live.
+ * Compact by design — it follows the density of the reference designs: a square
+ * image, two title lines, rating, price with the struck-through reference and a
+ * single delivery/trust line. Quantity, discount and stock badges are all
+ * derived from real rows; nothing here is invented.
  */
 import React, { useEffect, useState } from 'react';
 import {
@@ -17,6 +18,7 @@ import {
   ShieldCheck,
   ShoppingCart,
   Star,
+  Truck,
   Zap,
 } from 'lucide-react';
 import type { Product } from '@/lib/types';
@@ -108,7 +110,7 @@ export default function ProductTile({
     setTimeout(() => setJustAdded(false), 900);
   };
 
-  // Single primary media badge on top-left to keep the image calm and clean.
+  // One media badge only, top-left, so the image stays calm.
   const topLeftLabel =
     discount > 0 ? `-${discount}%` : statusBadge ? BADGE_LABELS[statusBadge] : null;
   const topLeftStyle =
@@ -121,7 +123,7 @@ export default function ProductTile({
   return (
     <article
       onClick={onSelect}
-      className={`group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-[1.35rem] border border-ink-200/80 bg-white transition-[border-color,box-shadow,transform] duration-150 ease-glide hover:-translate-y-0.5 hover:border-jade-500/45 motion-reduce:transform-none motion-reduce:transition-none dark:border-ink-800 dark:bg-ink-900 dark:hover:border-jade-400/40 gs-product-card ${badge === 'featured' ? 'gs-iridescent' : ''} ${className}`}
+      className={`group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-xl border border-ink-200/80 bg-white transition-[border-color,box-shadow,transform] duration-150 ease-glide hover:-translate-y-0.5 hover:border-jade-500/45 hover:shadow-[0_10px_24px_-18px_rgba(16,54,38,0.55)] motion-reduce:transform-none motion-reduce:transition-none dark:border-ink-800 dark:bg-ink-900 dark:hover:border-jade-400/40 gs-product-card ${className}`}
     >
       {/* ── media ── */}
       <div className="relative aspect-square w-full overflow-hidden bg-ink-50 dark:bg-ink-950">
@@ -146,7 +148,7 @@ export default function ProductTile({
 
         {topLeftLabel && (
           <span
-            className={`pointer-events-none absolute left-2 top-2 rounded-md px-1.5 py-0.5 text-[10px] font-black uppercase leading-4 tracking-wide shadow-sm ${topLeftStyle}`}
+            className={`pointer-events-none absolute left-1.5 top-1.5 rounded px-1 py-0.5 text-[9px] font-black uppercase leading-[14px] tracking-wide shadow-sm ${topLeftStyle}`}
           >
             {topLeftLabel}
           </span>
@@ -162,35 +164,73 @@ export default function ProductTile({
             onToggleFavorite();
           }}
           iconClassName={isFavorite ? 'fill-jade-500 text-jade-500 dark:fill-jade-400 dark:text-jade-400' : ''}
-          className="absolute right-1.5 top-1.5 !rounded-full !border-transparent !bg-white/90 !text-ink-500 shadow-sm backdrop-blur hover:!text-jade-600 active:scale-90 dark:!bg-ink-950/80 dark:!text-ink-300 dark:hover:!text-jade-300"
+          className="absolute right-1 top-1 !h-7 !w-7 !rounded-full !border-transparent !bg-white/85 !text-ink-500 shadow-sm backdrop-blur hover:!text-jade-600 active:scale-90 dark:!bg-ink-950/80 dark:!text-ink-300 dark:hover:!text-jade-300"
         />
 
         {eta.hasVideoDemo && !soldOut && (
           <span
             aria-label="Video demo available"
-            className="pointer-events-none absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-ink-950/75 px-2 py-0.5 text-[9px] font-bold text-white backdrop-blur-sm"
+            className="pointer-events-none absolute bottom-1.5 left-1.5 inline-flex items-center gap-0.5 rounded-full bg-ink-950/70 px-1.5 py-0.5 text-[8px] font-bold text-white backdrop-blur-sm"
           >
-            <Play className="h-2.5 w-2.5 fill-white" aria-hidden="true" />
+            <Play className="h-2 w-2 fill-white" aria-hidden="true" />
             Demo
           </span>
         )}
 
         {lowStock && !discount && (
-          <span className="pointer-events-none absolute bottom-2 left-2 rounded bg-ink-900/85 px-1.5 py-0.5 text-[9px] font-bold text-white">
+          <span className="pointer-events-none absolute bottom-1.5 left-1.5 rounded bg-ink-900/85 px-1 py-0.5 text-[8px] font-bold text-white">
             {product.quantity} left
           </span>
         )}
 
+        {/* Cart / quick-buy sit on the image so the card body stays short.
+            Hidden until hover on pointer devices, always tappable on touch. */}
+        {!soldOut && (
+          <div className="absolute bottom-1.5 right-1.5 flex items-center gap-1 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+            {onQuickBuy && !product.isAuction && (
+              <button
+                type="button"
+                aria-label={`Quick buy ${product.title}`}
+                title="Quick buy"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onQuickBuy();
+                }}
+                className="grid h-7 w-7 place-items-center rounded-full bg-gold-300 text-ink-950 shadow-sm transition-transform duration-150 hover:bg-gold-200 active:scale-95 cursor-pointer"
+              >
+                <Zap className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
+              </button>
+            )}
+            <button
+              type="button"
+              aria-label={`Add ${product.title} to cart`}
+              title="Add to cart"
+              onClick={handleOptimisticAdd}
+              className={`grid h-7 w-7 place-items-center rounded-full text-white shadow-sm transition-transform duration-150 active:scale-95 cursor-pointer ${
+                justAdded ? 'bg-jade-700 ring-2 ring-jade-300/60' : 'bg-jade-600 hover:bg-jade-700'
+              }`}
+            >
+              {justAdded ? (
+                <Check className="h-3.5 w-3.5" aria-hidden="true" />
+              ) : flashSale ? (
+                <Zap className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
+              ) : (
+                <ShoppingCart className="h-3.5 w-3.5" aria-hidden="true" />
+              )}
+            </button>
+          </div>
+        )}
+
         {soldOut && (
-          <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-ink-900/80 py-1 text-center text-[10px] font-bold uppercase tracking-wide text-white">
+          <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-ink-900/80 py-0.5 text-center text-[9px] font-bold uppercase tracking-wide text-white">
             Out of stock
           </span>
         )}
       </div>
 
       {/* ── body ── */}
-      <div className="flex flex-1 flex-col gap-1.5 p-3">
-        <h3 className="line-clamp-2 min-h-[2rem] text-[13px] font-semibold leading-[1.35] text-ink-900 dark:text-ink-100">
+      <div className="flex flex-1 flex-col gap-0.5 px-2 pb-2 pt-1.5">
+        <h3 className="line-clamp-2 min-h-[2.1rem] text-[11.5px] font-semibold leading-[1.3] text-ink-900 dark:text-ink-100">
           <button
             type="button"
             onClick={(event) => {
@@ -203,12 +243,12 @@ export default function ProductTile({
           </button>
         </h3>
 
-        <div className="flex min-h-[14px] items-center gap-1 text-[10px] leading-none">
+        <div className="flex min-h-[13px] items-center gap-1 text-[10px] leading-none">
           {rating ? (
             <>
-              <Star className="h-3 w-3 fill-gold-400 text-gold-400" aria-hidden="true" />
+              <Star className="h-2.5 w-2.5 fill-gold-400 text-gold-400" aria-hidden="true" />
               <span className="font-bold text-ink-700 dark:text-ink-200">{rating.toFixed(1)}</span>
-              <span className="text-ink-500 dark:text-ink-400">
+              <span className="truncate text-ink-500 dark:text-ink-400">
                 ({reviewCount >= 1000 ? `${(reviewCount / 1000).toFixed(1)}k` : reviewCount})
               </span>
             </>
@@ -217,71 +257,35 @@ export default function ProductTile({
           )}
         </div>
 
-        <div className="flex flex-wrap items-baseline gap-1.5">
-          <span className="text-[16px] font-extrabold leading-5 tracking-tight tabular-nums text-ink-900 dark:text-white">
+        <div className="flex flex-wrap items-baseline gap-1">
+          <span className="text-[13px] font-extrabold leading-4 tracking-tight tabular-nums text-ink-900 dark:text-white">
             {naira(price)}
           </span>
           {discount > 0 && compareAt > price && (
-            <span className="text-[10px] font-medium tabular-nums text-ink-400 line-through">{naira(compareAt)}</span>
+            <span className="text-[9.5px] font-medium tabular-nums text-ink-400 line-through">{naira(compareAt)}</span>
           )}
         </div>
 
-        {/* Unboxed Escrow Confidence Strip */}
-        <p className="flex items-center gap-1 text-[10px] leading-3.5 text-ink-600 dark:text-ink-300">
+        <p className="flex items-center gap-1 text-[9.5px] leading-tight text-ink-600 dark:text-ink-300">
           {soldOut ? (
             <span className="truncate">Currently unavailable</span>
           ) : (
             <>
-              <ShieldCheck className="h-3 w-3 shrink-0 text-jade-600 dark:text-jade-400" aria-hidden="true" />
-              <span className="truncate">
-                Escrow held · {eta.shortLabel}
-                {eta.supportsSplitPay ? ` · ${product.partialPercent || 30}% deposit` : ''}
-              </span>
+              <Truck className="h-2.5 w-2.5 shrink-0 text-jade-600 dark:text-jade-400" aria-hidden="true" />
+              <span className="truncate">{eta.shortLabel}</span>
+              <ShieldCheck className="h-2.5 w-2.5 shrink-0 text-jade-600/80 dark:text-jade-400/80" aria-hidden="true" />
+              {sellerVerified && (
+                <span
+                  className="ml-auto inline-grid shrink-0 place-items-center text-jade-600 dark:text-jade-300"
+                  aria-label={`${sellerName || 'Seller'} is verified`}
+                  title={`${sellerName || 'Seller'} is verified`}
+                >
+                  <BadgeCheck className="h-3 w-3" aria-hidden="true" />
+                </span>
+              )}
             </>
           )}
         </p>
-
-        <div className="mt-auto flex items-center justify-between gap-1 pt-1">
-          <span className="flex min-w-0 items-center gap-1 text-[10px] text-ink-600 dark:text-ink-300">
-            <span className="truncate">{sellerName || 'GoodSale seller'}</span>
-            {sellerVerified && (
-              <span
-                className="inline-grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full bg-jade-500/15 text-jade-700 dark:text-jade-300"
-                aria-label="Verified seller"
-                title="Verified seller"
-              >
-                <BadgeCheck className="h-3 w-3" aria-hidden="true" />
-              </span>
-            )}
-          </span>
-
-          <div className="flex shrink-0 items-center gap-1">
-            {onQuickBuy && !soldOut && !product.isAuction && (
-              <button
-                type="button"
-                aria-label={`Quick buy ${product.title}`}
-                title="Quick buy"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onQuickBuy();
-                }}
-                className="inline-flex h-8 items-center gap-1 rounded-xl border border-gold-400/50 bg-gold-300/20 px-2 text-[10px] font-black text-ink-900 transition-transform duration-150 hover:bg-gold-300/40 active:scale-95 dark:border-gold-300/30 dark:bg-gold-300/15 dark:text-gold-200 cursor-pointer"
-              >
-                <Zap className="h-3 w-3 fill-current" aria-hidden="true" />
-                <span className="hidden sm:inline">Buy</span>
-              </button>
-            )}
-            <IconButton
-              icon={justAdded ? Check : flashSale ? Zap : ShoppingCart}
-              size="sm"
-              tone="primary"
-              label={`Add ${product.title} to cart`}
-              disabled={soldOut}
-              onClick={handleOptimisticAdd}
-              className={`shrink-0 !rounded-xl transition-transform duration-150 active:scale-95 ${justAdded ? '!bg-jade-700 ring-2 ring-jade-400/40' : ''}`}
-            />
-          </div>
-        </div>
       </div>
     </article>
   );

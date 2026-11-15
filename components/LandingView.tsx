@@ -778,30 +778,6 @@ export default function LandingView({
           </nav>
         )}
 
-        {/* ───────────────────── Flash deals ───────────────────── */}
-        {flashDeals.length >= 3 && !countdown.ended && (
-          <div className="mt-4">
-            <ProductRail
-              label="Flash deals"
-              title={COLLECTIONS['flash-deals'].title}
-              subtitle={`${COLLECTIONS['flash-deals'].ordering} · prices return to normal when the timer ends`}
-              href={COLLECTIONS['flash-deals'].href}
-              icon={<Zap className="h-4 w-4 fill-gold-400" />}
-              variant="jade"
-              headerExtra={
-                flashEndsAt ? (
-                  <span className="hidden items-center gap-1.5 text-[10px] font-semibold text-jade-100/70 sm:inline-flex">
-                    <Clock className="h-3 w-3" aria-hidden="true" />
-                    Ends {new Date(flashEndsAt).toLocaleString('en-NG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                ) : null
-              }
-              products={flashDeals.map((product) => asRail(product, 'flash'))}
-              {...railCommon}
-            />
-          </div>
-        )}
-
         {/* ───────────────────── Featured ───────────────────── */}
         {railSections.featured.length > 0 && (
           <div className="mt-6">
@@ -830,60 +806,28 @@ export default function LandingView({
           </div>
         )}
 
-        {/* ───────────────────── Shop by category ───────────────────── */}
-        {categories.length > 0 && (
-          <section className="mt-6" aria-labelledby="shop-by-category">
-            <div className="mb-2.5 flex items-end justify-between gap-2">
-              <div>
-                <h2 id="shop-by-category" className="font-display text-base font-extrabold tracking-tight text-ink-900 dark:text-white sm:text-lg">
-                  Shop by category
-                </h2>
-                <p className="text-[11px] text-ink-500 dark:text-ink-400">Every category below has live listings.</p>
-              </div>
-              <Link href="/categories" className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold text-jade-700 hover:underline dark:text-jade-300">
-                All categories
-                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-              </Link>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
-              {categories.slice(0, 8).map((category) => {
-                const { label, Icon } = categoryMeta(category.name);
-                return (
-                  <button
-                    key={category.name}
-                    type="button"
-                    onClick={() => {
-                      setSelectedCategory(category.name);
-                      scrollToId('catalog-section');
-                    }}
-                    className="group relative flex h-20 flex-col justify-end overflow-hidden rounded-xl border border-ink-150 bg-ink-50 p-2 text-left transition-colors hover:border-jade-500/40 sm:h-24 dark:border-ink-800 dark:bg-ink-900 focus-ring"
-                  >
-                    {category.image ? (
-                      <span className="absolute inset-0 block overflow-hidden">
-                        <SmartImage
-                          src={category.image}
-                          alt=""
-                          seed={`cat-${category.name}`}
-                          className="h-full w-full opacity-90 transition-transform duration-300 group-hover:scale-105 motion-reduce:transition-none"
-                        />
-                      </span>
-                    ) : (
-                      <span className="absolute inset-0 grid place-items-center text-jade-600 dark:text-jade-300">
-                        <Icon className="h-7 w-7" />
-                      </span>
-                    )}
-                    <span aria-hidden className="absolute inset-0 bg-gradient-to-t from-ink-950/80 via-ink-950/10 to-transparent" />
-                    <span className="relative flex items-center gap-1 text-[11px] font-bold leading-tight text-white">
-                      <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
-                      <span className="line-clamp-2">{label}</span>
-                    </span>
-                    <span className="relative text-[10px] text-white/70">{category.count} listings</span>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
+        {/* ───────────────────── Flash deals ───────────────────── */}
+        {flashDeals.length >= 3 && !countdown.ended && (
+          <div className="mt-6">
+            <ProductRail
+              label="Flash deals"
+              title={COLLECTIONS['flash-deals'].title}
+              subtitle={`${COLLECTIONS['flash-deals'].ordering} · prices return to normal when the timer ends`}
+              href={COLLECTIONS['flash-deals'].href}
+              icon={<Zap className="h-4 w-4 fill-gold-400" />}
+              variant="jade"
+              headerExtra={
+                flashEndsAt ? (
+                  <span className="hidden items-center gap-1.5 text-[10px] font-semibold text-jade-100/70 sm:inline-flex">
+                    <Clock className="h-3 w-3" aria-hidden="true" />
+                    Ends {new Date(flashEndsAt).toLocaleString('en-NG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                ) : null
+              }
+              products={flashDeals.map((product) => asRail(product, 'flash'))}
+              {...railCommon}
+            />
+          </div>
         )}
 
         {/* ───────────────────── Repeat Buyer Loop ───────────────────── */}
@@ -979,6 +923,49 @@ export default function LandingView({
               {...railCommon}
             />
           </div>
+        )}
+
+        {/* ───────────────────── Shop by category ───────────────────── */}
+        {categories.length > 0 && (
+          <section className="mt-6" aria-labelledby="shop-by-category">
+            <div className="mb-2 flex items-end justify-between gap-2">
+              <div>
+                <h2 id="shop-by-category" className="font-display text-base font-extrabold tracking-tight text-ink-900 dark:text-white sm:text-lg">
+                  Shop by category
+                </h2>
+                <p className="text-[11px] text-ink-500 dark:text-ink-400">Every category below has live listings.</p>
+              </div>
+              <Link href="/categories" className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold text-jade-700 hover:underline dark:text-jade-300">
+                All categories
+                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 xl:grid-cols-8">
+              {categories.slice(0, 8).map((category) => {
+                const { label, Icon } = categoryMeta(category.name);
+                return (
+                  <button
+                    key={category.name}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategory(category.name);
+                      scrollToId('catalog-section');
+                    }}
+                    className="group relative flex h-[74px] flex-col items-center justify-center gap-1 overflow-hidden rounded-xl border border-ink-150 bg-white p-1.5 text-center transition-colors hover:border-jade-500/45 hover:bg-jade-50/40 dark:border-ink-800 dark:bg-ink-900 dark:hover:bg-ink-800/70 focus-ring"
+                  >
+                    <span className="grid h-8 w-8 place-items-center rounded-full bg-jade-500/10 text-jade-700 dark:bg-jade-400/10 dark:text-jade-300">
+                      <Icon className="h-4 w-4" aria-hidden="true" />
+                    </span>
+                    <span className="line-clamp-2 text-[10px] font-bold leading-tight text-ink-800 dark:text-ink-100">
+                      {label}
+                    </span>
+                    <span className="text-[9px] text-ink-400 dark:text-ink-500">{category.count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
         )}
 
         {/* ───────────────────── Seller band ───────────────────── */}
@@ -1268,7 +1255,7 @@ export default function LandingView({
             )
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4 xl:grid-cols-5">
+              <div className="grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                 {visibleProducts.map((product) => (
                   <ProductTile
                     key={product.id}
@@ -1327,7 +1314,7 @@ export default function LandingView({
                 Live auctions
               </h2>
             </div>
-            <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4 xl:grid-cols-5">
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {auctions.map((product) => {
                 const auction = db.auctions.find((a) => a.productId === product.id);
                 const bids = db.bids.filter((b) => b.auctionId === auction?.id);
