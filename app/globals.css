@@ -98,6 +98,18 @@
     scroll-behavior: smooth;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html[data-display-mode='standalone'] body {
+    overscroll-behavior-y: contain;
+  }
+
+  button,
+  a,
+  [role='button'],
+  summary {
+    touch-action: manipulation;
   }
 
   ::selection {
@@ -613,9 +625,16 @@
   animation: glow-pulse 2s ease-in-out infinite;
 }
 
-/* Bottom safe area for mobile */
+/* Safe area insets for notched devices and standalone iOS mode */
+.pt-safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
 .pb-safe-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.px-safe {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }
 
 /* Stagger delay utilities for cascading animations */

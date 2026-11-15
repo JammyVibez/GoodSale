@@ -41,13 +41,21 @@ export async function middleware(request: NextRequest) {
     }
 
     let requestOrigin = '';
+    let requestHost = '';
     try {
-      requestOrigin = new URL(origin).origin;
+      const parsed = new URL(origin);
+      requestOrigin = parsed.origin;
+      requestHost = parsed.host;
     } catch {
       requestOrigin = '';
     }
 
-    if (!requestOrigin || !allowedOrigins.has(requestOrigin)) {
+    const sameHost =
+      Boolean(requestHost) &&
+      (requestHost === request.headers.get('host') ||
+        requestHost === request.headers.get('x-forwarded-host'));
+
+    if (!requestOrigin || (!allowedOrigins.has(requestOrigin) && !(allowedOrigins.size === 0 && sameHost))) {
       return NextResponse.json(
         { success: false, error: 'This request origin is not allowed.' },
         { status: 403 }
@@ -98,7 +106,9 @@ export async function middleware(request: NextRequest) {
   response.headers.set('x-request-id', crypto.randomUUID());
   response.headers.set('x-content-type-options', 'nosniff');
   response.headers.set('referrer-policy', 'strict-origin-when-cross-origin');
-  response.headers.set('x-frame-options', 'SAMEORIGIN');
+  if (process.env.NODE_ENV === 'production') {
+    response.headers.set('x-frame-options', 'SAMEORIGIN');
+  }
   return response;
 }
 

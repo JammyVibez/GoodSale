@@ -22,6 +22,7 @@ import { isVerifiedSeller } from '@/lib/verification';
 import { resolveEntitlements, membershipLabel } from '@/lib/entitlements';
 import { useWishlist } from '@/lib/hooks/useWishlist';
 import VerifiedBadge from '@/components/verification/VerifiedBadge';
+import { PWAInstallButton } from '@/components/pwa/PWAInstallButton';
 
 interface BuyerProfileViewProps {
   onBack?: () => void;
@@ -850,7 +851,28 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
               </p>
             </div>
           </button>
+
+          {/* Trust & safety */}
+          <button
+            type="button"
+            onClick={() => onNavigate?.('trust-safety')}
+            className="flex items-center gap-3 p-3.5 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 hover:border-jade-500 dark:hover:border-jade-500 rounded-2xl shadow-xs text-left cursor-pointer transition-all group"
+          >
+            <div className="p-2.5 rounded-xl bg-jade-500/10 text-jade-600 dark:text-jade-400 group-hover:bg-jade-500 group-hover:text-white transition-all">
+              <Shield className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-ink-900 dark:text-white group-hover:text-jade-500 transition-colors">
+                Trust &amp; Safety
+              </h4>
+              <p className="text-xs text-ink-400 mt-0.5 leading-snug">
+                Escrow rules, verification &amp; buyer protection.
+              </p>
+            </div>
+          </button>
         </div>
+
+        <PWAInstallButton variant="row" showDesktopFallback />
       </Card>
       </div>
 

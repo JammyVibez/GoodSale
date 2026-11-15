@@ -22,8 +22,10 @@ import {
   NOTIFICATION_PREFERENCE_META,
 } from '@/lib/notificationPrefs';
 import type { NotificationPreferences } from '@/lib/types';
+import Link from 'next/link';
 import { salesStates, salesCitiesFor } from '@/lib/serviceAreas';
 import { resolveEntitlements, membershipLabel } from '@/lib/entitlements';
+import { PWAInstallButton } from './pwa/PWAInstallButton';
 
 /** Human-readable description of the current browser/OS for the session list. */
 function describeDevice(): string {
@@ -2564,12 +2566,26 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
                 <div className="grid grid-cols-2 gap-3 max-w-sm mx-auto text-xs font-mono pt-4 border-t border-ink-100 dark:border-ink-800">
                   <div className="p-3 bg-ink-50 dark:bg-ink-800/40 rounded-xl">
                     <p className="text-xs text-ink-400">Environment</p>
-                    <p className="font-bold mt-1">Cloud Sandbox</p>
+                    <p className="font-bold mt-1">Web, App &amp; iOS</p>
                   </div>
                   <div className="p-3 bg-ink-50 dark:bg-ink-800/40 rounded-xl">
-                    <p className="text-xs text-ink-400">Database</p>
-                    <p className="font-bold mt-1">Local Relational State</p>
+                    <p className="text-xs text-ink-400">Payments</p>
+                    <p className="font-bold mt-1">Escrow by Paystack</p>
                   </div>
+                </div>
+
+                <div className="max-w-md mx-auto text-left pt-2">
+                  <PWAInstallButton variant="card" showDesktopFallback />
+                </div>
+
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2 text-xs font-medium text-ink-500 dark:text-ink-400">
+                  <Link href="/trust-safety" className="hover:text-jade-600 dark:hover:text-jade-300">Trust &amp; Safety</Link>
+                  <span aria-hidden="true">·</span>
+                  <Link href="/track" className="hover:text-jade-600 dark:hover:text-jade-300">Track Shipment</Link>
+                  <span aria-hidden="true">·</span>
+                  <Link href="/terms" className="hover:text-jade-600 dark:hover:text-jade-300">Terms</Link>
+                  <span aria-hidden="true">·</span>
+                  <Link href="/privacy" className="hover:text-jade-600 dark:hover:text-jade-300">Privacy</Link>
                 </div>
               </div>
             </div>

@@ -1,10 +1,11 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter, Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
 import { JsonLd } from '@/components/seo/JsonLd';
 import { organizationLd, websiteLd } from '@/lib/seo/structured';
 import NetworkStatus from '@/components/ui/NetworkStatus';
 import FeedbackHost from '@/components/ui/FeedbackHost';
+import ServiceWorkerRegistrar from '@/components/pwa/ServiceWorkerRegistrar';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -21,6 +22,16 @@ const plusJakarta = Plus_Jakarta_Sans({
 
 const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://goodsale.ng';
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#faf9f6' },
+    { media: '(prefers-color-scheme: dark)', color: '#0c110e' },
+  ],
+};
+
 export const metadata: Metadata = {
   metadataBase: new URL(appUrl),
   title: {
@@ -30,6 +41,14 @@ export const metadata: Metadata = {
   description:
     "GoodSale is Nigeria's escrow-protected marketplace for buying and selling from verified sellers, with tracked delivery and real buyer reviews.",
   applicationName: 'GoodSale',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'GoodSale',
+  },
+  formatDetection: {
+    telephone: false,
+  },
   keywords: [
     'GoodSale',
     'Nigeria marketplace',
@@ -44,7 +63,14 @@ export const metadata: Metadata = {
   publisher: 'GoodSale',
   category: 'shopping',
   alternates: { canonical: '/' },
-  icons: { icon: [{ url: '/goodsale-mark.svg', type: 'image/svg+xml' }] },
+  icons: {
+    icon: [
+      { url: '/goodsale-mark.svg', type: 'image/svg+xml' },
+      { url: '/pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/pwa-512x512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+  },
   openGraph: {
     type: 'website',
     locale: 'en_NG',
@@ -85,7 +111,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body suppressHydrationWarning>{children}<NetworkStatus /><FeedbackHost /></body>
+      <body suppressHydrationWarning>
+        {children}
+        <NetworkStatus />
+        <FeedbackHost />
+        <ServiceWorkerRegistrar />
+      </body>
     </html>
   );
 }

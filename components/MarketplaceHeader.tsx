@@ -9,10 +9,10 @@
  * Two skins, one bar: a clean white bar with ink text in light mode, and the
  * deep-jade bar with gold accents in dark mode.
  */
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Search, ShoppingCart, Heart, MapPin, X, ChevronDown,
-  User as UserIcon,
+  User as UserIcon, Menu,
 } from 'lucide-react';
 import { useDBState } from '../lib/store';
 import { SmartAvatar } from './ui/SmartImage';
@@ -20,6 +20,8 @@ import Logo from './LogoIcon';
 import NotificationMenu from './NotificationMenu';
 import { isVerifiedSeller } from '@/lib/verification';
 import { VerifiedMark } from './verification/VerifiedBadge';
+import AppMenuDrawer from './AppMenuDrawer';
+import { PWAInstallButton } from './pwa/PWAInstallButton';
 
 interface MarketplaceHeaderProps {
   searchQuery: string;
@@ -64,8 +66,10 @@ export default function MarketplaceHeader({
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [db.products, db.profiles]);
 
+  const [menuOpen, setMenuOpen] = useState(false);
+
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-ink-200/80 bg-white/95 text-ink-900 shadow-[0_8px_30px_-24px_rgba(23,29,26,0.28)] backdrop-blur-xl transition-colors duration-300 dark:border-ink-800/80 dark:bg-ink-950/95 dark:text-ink-50 dark:shadow-xl dark:shadow-black/20">
+    <header className="sticky top-0 z-50 w-full border-b border-ink-200/80 bg-white/95 pt-safe-top text-ink-900 shadow-[0_8px_30px_-24px_rgba(23,29,26,0.28)] backdrop-blur-xl transition-colors duration-300 dark:border-ink-800/80 dark:bg-ink-950/95 dark:text-ink-50 dark:shadow-xl dark:shadow-black/20">
       {/* aurora glow — dark skin only */}
       <div
         aria-hidden
@@ -93,6 +97,7 @@ export default function MarketplaceHeader({
           </button>
 
           <div className="flex items-center gap-1">
+            <PWAInstallButton variant="compact" className="hidden sm:inline-flex mr-1" />
             <NotificationMenu onNavigate={onNavigate} onOpenAuth={onOpenAuth} />
 
             {/* wishlist */}
@@ -140,6 +145,16 @@ export default function MarketplaceHeader({
               )}
               <ChevronDown className="hidden h-4 w-4 text-ink-400 dark:text-white/60 sm:block" />
             </button>
+
+            {/* GoodSale directory drawer (relocated footer + app install) */}
+            <button
+              type="button"
+              onClick={() => setMenuOpen(true)}
+              aria-label="Open GoodSale directory"
+              className="grid h-10 w-10 place-items-center rounded-full text-ink-700 transition-colors hover:bg-ink-100 dark:text-ink-200 dark:hover:bg-white/10 cursor-pointer"
+            >
+              <Menu className="h-5 w-5" aria-hidden="true" />
+            </button>
           </div>
         </div>
 
@@ -171,7 +186,7 @@ export default function MarketplaceHeader({
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder="Search for products…"
               aria-label="Search products"
-              className="h-10 w-full rounded-full border border-ink-200 bg-white pl-9 pr-9 text-sm font-medium text-ink-900 shadow-sm placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-jade-500/50 dark:border-white/20 dark:shadow-none dark:focus:ring-gold-300"
+              className="h-10 w-full rounded-full border border-ink-200 bg-white pl-9 pr-9 text-base sm:text-sm font-medium text-ink-900 shadow-sm placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-jade-500/50 dark:border-white/20 dark:shadow-none dark:focus:ring-gold-300"
             />
             {searchQuery && (
               <button
@@ -201,6 +216,11 @@ export default function MarketplaceHeader({
         </div>
 
       </div>
+      <AppMenuDrawer
+        isOpen={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        onNavigate={onNavigate}
+      />
     </header>
   );
 }
