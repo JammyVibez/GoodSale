@@ -3,12 +3,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Settings, User, Shield, Bell, HelpCircle, Save, Database, Key, 
+  Settings, User, Shield, Bell, BellRing, HelpCircle, Save, Database, Key, 
   MapPin, CheckCircle, RefreshCw, Smartphone, Mail, Sparkles, ArrowLeft,
   Sun, Moon, Monitor, Eye, EyeOff, Lock, Users, CreditCard, ShoppingBag, Gift,
   Phone, Building, Info, FileText, Download, Trash2, ShieldAlert,
   Grid, Menu, AlertTriangle, Play, HelpCircle as HelpIcon, Calendar, Clock, Wallet, ChevronRight,
-  LogOut, Store
+  LogOut, Store, Send, MessageCircle
 } from 'lucide-react';
 import { useDBState, dbOperations, getDBState, saveDBState, reloadFromSupabase, UserRole } from '../lib/store';
 import { SmartImage } from './ui/SmartImage';
@@ -26,6 +26,7 @@ import Link from 'next/link';
 import { salesStates, salesCitiesFor } from '@/lib/serviceAreas';
 import { resolveEntitlements, membershipLabel } from '@/lib/entitlements';
 import { PWAInstallButton } from './pwa/PWAInstallButton';
+import { useWebPush } from '@/lib/hooks/useWebPush';
 
 /** Human-readable description of the current browser/OS for the session list. */
 function describeDevice(): string {
@@ -63,6 +64,7 @@ interface SettingsViewProps {
 export default function SettingsView({ onBack, onNavigate, onOpenAuth }: SettingsViewProps) {
   const db = useDBState();
   const currentUser = db.currentUser;
+  const webPush = useWebPush(Boolean(currentUser));
   
   const currentProfile = currentUser 
     ? db.profiles.find(p => p.userId === currentUser.id) 
@@ -1380,6 +1382,159 @@ export default function SettingsView({ onBack, onNavigate, onOpenAuth }: Setting
           {/* TAB 3: NOTIFICATIONS ROUTING */}
           {activeTab === 'notifications' && (
             <div className="space-y-6 animate-fade-in">
+              <div className="bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 p-6 sm:p-8 rounded-[32px] shadow-sm space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                  <div>
+                    <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">
+                      <BellRing className="w-5 h-5 text-jade-500" />
+                      Real-Time Web Push Alerts
+                    </h2>
+                    <p className="text-xs text-ink-400 mt-1">
+                      Receive instant browser &amp; Home Screen notifications when escrow moves, disputes update, or chat messages arrive.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {webPush.isSubscribed ? (
+                      <>
+                        <button
+                          type="button"
+                          disabled={webPush.busy}
+                          onClick={async () => {
+                            const res = await webPush.sendTestPush();
+                            if (res.ok) toast.success('Test alert sent to your subscribed device.');
+                            else if (res.error) toast.error(res.error);
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-jade-200 dark:border-jade-800 bg-jade-50 dark:bg-jade-900/20 px-3.5 py-2 text-xs font-bold text-jade-700 dark:text-jade-300 hover:bg-jade-100 dark:hover:bg-jade-900/40 transition-colors disabled:opacity-60"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          Send test alert
+                        </button>
+                        <button
+                          type="button"
+                          disabled={webPush.busy}
+                          onClick={async () => {
+                            const res = await webPush.unsubscribe();
+                            if (res.ok) toast.success('Device push alerts turned off.');
+                            else if (res.error) toast.error(res.error);
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-ink-200 dark:border-ink-700 px-3.5 py-2 text-xs font-bold text-ink-700 dark:text-ink-200 hover:bg-ink-100 dark:hover:bg-ink-800 transition-colors disabled:opacity-60"
+                        >
+                          Disable device
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={webPush.busy || webPush.loading || !webPush.isConfigured || webPush.requiresIOSHomeScreen || !webPush.isSupported}
+                        onClick={async () => {
+                          const res = await webPush.subscribe();
+                          if (res.ok) toast.success('Web Push alerts enabled on this device.');
+                          else if (res.error) toast.error(res.error);
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-jade-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-jade-700 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <BellRing className="w-3.5 h-3.5" />
+                        {webPush.busy ? 'Enabling…' : 'Enable push on this device'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {webPush.requiresIOSHomeScreen && (
+                  <div className="rounded-2xl border border-gold-300/60 bg-gold-50/70 dark:border-gold-700/40 dark:bg-gold-950/20 p-3.5 text-xs text-ink-700 dark:text-ink-200 flex items-start gap-2.5">
+                    <Smartphone className="w-4 h-4 text-gold-600 dark:text-gold-300 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold">iOS Home Screen required</p>
+                      <p className="text-[11px] text-ink-500 dark:text-ink-400 mt-0.5">
+                        On iPhone and iPad, tap Share → Add to Home Screen and open GoodSale from your Home Screen to enable Web Push alerts.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {!webPush.loading && !webPush.isConfigured && (
+                  <div className="rounded-2xl border border-ink-150 dark:border-ink-800 bg-ink-50/70 dark:bg-ink-950/50 p-3.5 text-xs text-ink-600 dark:text-ink-300 flex items-start gap-2.5">
+                    <Info className="w-4 h-4 text-ink-400 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold text-ink-800 dark:text-ink-100">VAPID server keys not yet configured</p>
+                      <p className="text-[11px] text-ink-500 dark:text-ink-400 mt-0.5">
+                        Configure <code className="font-mono">NEXT_PUBLIC_VAPID_PUBLIC_KEY</code> and <code className="font-mono">VAPID_PRIVATE_KEY</code> in your server environment to activate live browser push delivery.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {webPush.permission === 'denied' && (
+                  <div className="rounded-2xl border border-rose-200 dark:border-rose-900/50 bg-rose-50/70 dark:bg-rose-950/20 p-3.5 text-xs text-rose-700 dark:text-rose-300 flex items-start gap-2.5">
+                    <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+                    <p>Browser notifications are currently blocked for this site. Re-allow them in your browser site settings to receive push alerts.</p>
+                  </div>
+                )}
+
+                {webPush.error && (
+                  <p className="text-xs font-medium text-rose-600 dark:text-rose-400">{webPush.error}</p>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {[
+                    {
+                      key: 'escrow' as const,
+                      label: 'Escrow updates',
+                      description: 'Payment lock, dispatch, PIN handover & payout release',
+                      Icon: Lock,
+                    },
+                    {
+                      key: 'disputes' as const,
+                      label: 'Dispute resolutions',
+                      description: 'Case filings, escrow holds & arbitration verdicts',
+                      Icon: ShieldAlert,
+                    },
+                    {
+                      key: 'messages' as const,
+                      label: 'Chat room messages',
+                      description: 'Instant buyer & seller DMs (respects muted rooms)',
+                      Icon: MessageCircle,
+                    },
+                  ].map(({ key, label, description, Icon }) => {
+                    const checked = webPush.topics[key] !== false;
+                    return (
+                      <div
+                        key={key}
+                        className="flex items-start justify-between gap-3 rounded-2xl border border-ink-150 dark:border-ink-800 p-4"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <Icon className="w-3.5 h-3.5 text-jade-600 dark:text-jade-300 shrink-0" />
+                            <p className="text-xs font-bold text-ink-900 dark:text-white">{label}</p>
+                          </div>
+                          <p className="text-[11px] text-ink-400 mt-1 leading-snug">{description}</p>
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-label={label}
+                          aria-checked={checked}
+                          onClick={async () => {
+                            const res = await webPush.updateTopics({ [key]: !checked });
+                            if (res.ok) toast.success(`${label} push ${!checked ? 'enabled' : 'muted'}.`);
+                            else if (res.error) toast.error(res.error);
+                          }}
+                          className={`relative h-6 w-11 shrink-0 rounded-full transition-colors cursor-pointer ${
+                            checked ? 'bg-jade-500' : 'bg-ink-200 dark:bg-ink-700'
+                          }`}
+                        >
+                          <span
+                            className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                              checked ? 'left-[1.375rem]' : 'left-0.5'
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="bg-white dark:bg-ink-900 border border-ink-150 dark:border-ink-800 p-6 sm:p-8 rounded-[32px] shadow-sm space-y-6">
                 <div>
                   <h2 className="font-display font-bold text-lg text-ink-900 dark:text-white flex items-center gap-2">

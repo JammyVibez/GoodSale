@@ -6,7 +6,7 @@ import {
   ArrowLeft, Shield, ShieldCheck, MapPin, MessageSquare,
   ShoppingCart, Star, Zap, Clock, Award, Tag, Send,
   Bell, BellOff, Check, ThumbsUp, CornerDownRight, X,
-  Share2, Sparkles, Play, Truck, RotateCcw, ChevronRight, Flame
+  Share2, Sparkles, Play, Truck, RotateCcw, ChevronRight, Flame, Video,
 } from 'lucide-react';
 import {
   UserRole, getDBState, saveDBState, dbOperations
@@ -18,6 +18,8 @@ import { computeSellerTrust } from '@/lib/trust';
 import VerifiedBadge, { VerifiedMark } from '@/components/verification/VerifiedBadge';
 import { isVerifiedSeller } from '@/lib/verification';
 import { activeFlashSale } from '@/lib/productPricing';
+import { calculateSplitPayBreakdown } from '@/lib/escrow/proofAndSplit';
+import { computeFulfillmentEta } from '@/lib/marketplace/discovery';
 import AdSlot from './AdSlot';
 
 interface ProductDetailViewProps {
@@ -25,6 +27,7 @@ interface ProductDetailViewProps {
   onBack: () => void;
   onNavigate: (view: string, payload?: any) => void;
   onAddToCart: (productId: number) => void;
+  onQuickBuy?: (productId: number) => void;
   onOpenAuth?: () => void;
 }
 
@@ -35,6 +38,7 @@ export default function ProductDetailView({
   onBack,
   onNavigate,
   onAddToCart,
+  onQuickBuy,
   onOpenAuth,
 }: ProductDetailViewProps) {
   const [db, setDb] = useState(getDBState());
@@ -326,12 +330,31 @@ export default function ProductDetailView({
     }
   };
 
+  const handleRequestConditionClip = async () => {
+    if (!db.currentUser) {
+      onOpenAuth?.();
+      return;
+    }
+    const roomId = await dbOperations.getOrCreateChatRoom(product.id);
+    if (roomId) {
+      await dbOperations.sendMessage(
+        roomId,
+        `Hi! Could you share a live condition photo/video for "${product.title}" before I check out? I'll pay via GoodSale Escrow.`
+      );
+      toast.success('Live condition clip requested in seller chat.');
+      onNavigate('chats', { roomId });
+    }
+  };
+
   const handleBuyNow = () => {
     if (!db.currentUser) {
       onOpenAuth?.();
       return;
     }
-    // Navigate straight to checkout
+    if (onQuickBuy) {
+      onQuickBuy(product.id);
+      return;
+    }
     onNavigate('checkout', { productId: product.id });
   };
 
@@ -449,6 +472,18 @@ export default function ProductDetailView({
   const sellerLocation = sellerProfile?.city
     ? `${sellerProfile.city}${sellerProfile.state ? `, ${sellerProfile.state}` : ''}`
     : 'Nigeria';
+  const buyerProfile = db.currentUser
+    ? db.profiles.find((p) => p.userId === db.currentUser?.id)
+    : undefined;
+  const eta = computeFulfillmentEta(product, sellerProfile?.state, buyerProfile?.state);
+  const splitPreview = eta.supportsSplitPay
+    ? calculateSplitPayBreakdown({
+        itemTotal: displayedPrice,
+        deliveryFee: 0,
+        depositPercent: product.partialPercent || 30,
+        remainingDays: product.partialRemainingDays || 7,
+      })
+    : null;
   const galleryCount = product.images.length || 1;
 
   return (
@@ -796,8 +831,8 @@ export default function ProductDetailView({
               <div className="flex items-start gap-2 px-2.5">
                 <Truck className="h-5 w-5 shrink-0 text-jade-600 dark:text-jade-400" />
                 <div className="min-w-0">
-                  <p className="text-[11px] font-bold leading-tight text-ink-900 dark:text-white">Fast Delivery</p>
-                  <p className="truncate text-[10px] leading-tight text-ink-500 dark:text-ink-400">{deliveryLabel}</p>
+                  <p className="text-[11px] font-bold leading-tight text-ink-900 dark:text-white">{eta.shortLabel}</p>
+                  <p className="truncate text-[10px] leading-tight text-ink-500 dark:text-ink-400">{eta.hasSafeMeet ? 'SafeMeet ready' : deliveryLabel}</p>
                 </div>
               </div>
               <div className="flex items-start gap-2 px-2.5">
@@ -808,6 +843,20 @@ export default function ProductDetailView({
                 </div>
               </div>
             </div>
+
+            {splitPreview && !product.isAuction && (
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-jade-500/20 bg-jade-50/70 px-3.5 py-2.5 text-xs dark:bg-jade-950/35">
+                <div className="min-w-0">
+                  <p className="font-bold text-jade-900 dark:text-jade-100">
+                    Split-Pay Escrow available · {splitPreview.depositPercent}% deposit
+                  </p>
+                  <p className="text-[11px] text-ink-600 dark:text-ink-300">
+                    Pay ₦{splitPreview.depositAmountPaid.toLocaleString()} now, settle ₦{splitPreview.balanceRemaining.toLocaleString()} before PIN release.
+                  </p>
+                </div>
+                <Zap className="h-4 w-4 shrink-0 text-jade-600 dark:text-gold-300" />
+              </div>
+            )}
 
             {/* Quantity + stock */}
             {!product.isAuction && (
@@ -860,10 +909,19 @@ export default function ProductDetailView({
                 <button
                   onClick={handleBuyNow}
                   disabled={!inStock}
-                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-gold-300 to-gold-400 px-4 py-4 text-base font-black text-ink-900 shadow-lg shadow-gold-400/30 transition-all hover:from-gold-200 hover:to-gold-300 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                  className="mt-3 flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-gold-300 to-gold-400 px-4 py-3.5 text-base font-black text-ink-900 shadow-lg shadow-gold-400/30 transition-all hover:from-gold-200 hover:to-gold-300 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                 >
                   <Zap className="h-5 w-5 fill-ink-900" />
-                  Buy Now
+                  {onQuickBuy ? 'Quick Buy (Escrow)' : 'Buy Now'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleRequestConditionClip}
+                  className="mt-2.5 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-ink-200 bg-ink-50 px-3 py-2.5 text-xs font-bold text-ink-700 transition-colors hover:border-jade-500/40 hover:text-jade-700 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-200 dark:hover:text-jade-300 cursor-pointer"
+                >
+                  <Video className="h-4 w-4 text-jade-600 dark:text-jade-400" />
+                  Request live condition video before buying
                 </button>
 
                 {product.isNegotiable && (

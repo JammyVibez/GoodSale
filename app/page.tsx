@@ -32,6 +32,8 @@ import BrandLoader from '../components/ui/BrandLoader';
 import { getDBState, useDBState } from '../lib/store';
 import { trackProductMetric } from '../lib/productMetrics';
 import { toast } from '../lib/feedback';
+import QuickBuySheet from '../components/marketplace/QuickBuySheet';
+import { enqueueOfflineAction, syncOfflineProducts } from '@/lib/offline/vault';
 
 function BootSplash() {
   return (
@@ -86,7 +88,13 @@ export default function Home() {
     // /?view=dashboard lets onboarding land a seller on their hub. It waits for
     // the session to load so a guest still sees the marketplace.
     const viewParam = params.get('view');
-    if (viewParam) setPendingView(viewParam);
+    const roomIdParam = Number(params.get('roomId'));
+    if (viewParam) {
+      setPendingView(viewParam);
+      if (viewParam === 'chats' && Number.isInteger(roomIdParam) && roomIdParam > 0) {
+        setActiveChatRoomId(roomIdParam);
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -107,9 +115,33 @@ export default function Home() {
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
       url.searchParams.delete('view');
+      url.searchParams.delete('roomId');
       window.history.replaceState({}, '', `${url.pathname}${url.search}`);
     }
   }, [pendingView, db.currentUser]);
+
+  // Receive deep-link navigation requests from the Service Worker when the user
+  // taps a Web Push notification while the app is already open.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type !== 'GOODSALE_NAVIGATE' || typeof event.data?.url !== 'string') return;
+      try {
+        const parsed = new URL(event.data.url, window.location.origin);
+        const viewParam = parsed.searchParams.get('view');
+        const roomIdParam = Number(parsed.searchParams.get('roomId'));
+        if (!viewParam) return;
+        if (viewParam === 'chats' && Number.isInteger(roomIdParam) && roomIdParam > 0) {
+          setActiveChatRoomId(roomIdParam);
+        }
+        setCurrentView(viewParam);
+      } catch {
+        /* ignore malformed url */
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+  }, []);
 
   const [isAuthModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
@@ -151,10 +183,16 @@ export default function Home() {
 
   // Dynamic payloads
   const [checkoutProductId, setCheckoutProductId] = useState<number | null>(null);
+  const [quickBuyProductId, setQuickBuyProductId] = useState<number | null>(null);
   const [activeChatRoomId, setActiveChatRoomId] = useState<number | null>(null);
 
   const [selectedSellerId, setSelectedSellerId] = useState<number | null>(null);
   const [history, setHistory] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!cartReady || db.products.length === 0) return;
+    syncOfflineProducts(db.products, [...cart, ...wishlist.favorites]);
+  }, [cartReady, db.products, cart, wishlist.favorites]);
 
   const triggerToast = (msg: string, kind: 'success' | 'info' | 'error' = 'success') => {
     if (kind === 'error') toast.error(msg);
@@ -168,6 +206,9 @@ export default function Home() {
       setAuthModalOpen(true);
       triggerToast('Create an account to add items to your cart.', 'info');
       return;
+    }
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      enqueueOfflineAction({ kind: 'CART_ADD', productId });
     }
     setCart(prev => {
       if (prev.includes(productId)) {
@@ -318,6 +359,7 @@ export default function Home() {
             searchQuery={searchQuery}
             onNavigate={handleNavigate}
             onAddToCart={handleAddToCart}
+            onQuickBuy={(id: number) => setQuickBuyProductId(id)}
             selectedState={marketState}
             onSelectState={setMarketState}
             wishlistOnly={wishlistOnly}
@@ -342,6 +384,7 @@ export default function Home() {
             onBack={handleGoBack}
             onNavigate={handleNavigate}
             onAddToCart={handleAddToCart}
+            onQuickBuy={(id: number) => setQuickBuyProductId(id)}
             onOpenAuth={() => setAuthModalOpen(true)}
           />
         )}
@@ -432,6 +475,17 @@ export default function Home() {
 
       {/* App-wide real-time call overlay */}
       <CallHost />
+
+      {/* Bottom-Sheet Quick Buy Express Escrow */}
+      <QuickBuySheet
+        productId={quickBuyProductId}
+        onClose={() => setQuickBuyProductId(null)}
+        onOpenAuth={(mode) => {
+          setAuthModalMode(mode || 'register');
+          setAuthModalOpen(true);
+        }}
+        onNavigate={handleNavigate}
+      />
 
       {/* Persistent Secure Auth Modal Portal */}
       <AuthModal isOpen={isAuthModalOpen} initialMode={authModalMode} onClose={() => setAuthModalOpen(false)} />

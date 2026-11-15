@@ -1,7 +1,8 @@
-const CACHE_VERSION = 'goodsale-shell-v1';
+const CACHE_VERSION = 'goodsale-shell-v3';
 const OFFLINE_URL = '/offline';
 
 const PRECACHE_URLS = [
+  '/',
   OFFLINE_URL,
   '/goodsale-mark.svg',
   '/apple-touch-icon.png',
@@ -82,4 +83,70 @@ self.addEventListener('fetch', (event) => {
       })
     );
   }
+});
+
+self.addEventListener('push', (event) => {
+  let payload = {
+    title: 'GoodSale',
+    body: 'You have a new marketplace update.',
+    url: '/',
+    icon: '/pwa-192x192.png',
+    badge: '/pwa-192x192.png',
+    tag: 'goodsale-alert',
+    category: 'escrow',
+    requireInteraction: false,
+  };
+
+  if (event.data) {
+    try {
+      const parsed = event.data.json();
+      if (parsed && typeof parsed === 'object') {
+        payload = { ...payload, ...parsed };
+      }
+    } catch {
+      const text = event.data.text();
+      if (text) payload.body = text;
+    }
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title || 'GoodSale', {
+      body: payload.body,
+      icon: payload.icon || '/pwa-192x192.png',
+      badge: payload.badge || '/pwa-192x192.png',
+      tag: payload.tag || 'goodsale-alert',
+      renotify: true,
+      requireInteraction: Boolean(payload.requireInteraction),
+      data: {
+        url: typeof payload.url === 'string' ? payload.url : '/',
+        category: payload.category || 'escrow',
+      },
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const rawUrl =
+    event.notification.data && typeof event.notification.data.url === 'string'
+      ? event.notification.data.url
+      : '/';
+  const targetUrl = rawUrl.startsWith('/') && !rawUrl.startsWith('//') ? rawUrl : '/';
+
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .then(async (clientList) => {
+        for (const client of clientList) {
+          if ('focus' in client) {
+            await client.focus();
+            client.postMessage({ type: 'GOODSALE_NAVIGATE', url: targetUrl });
+            return;
+          }
+        }
+        if (self.clients.openWindow) {
+          return self.clients.openWindow(targetUrl);
+        }
+      })
+  );
 });

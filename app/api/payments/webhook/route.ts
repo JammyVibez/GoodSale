@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { logger, publicErrorMessage } from '@/lib/logger';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { parseOrderIdFromReference } from '@/lib/payments/helpers';
+import { notifyOrderPushParticipants } from '@/lib/push/server';
 
 /**
  * Paystack webhook receiver.
@@ -53,6 +55,24 @@ export async function POST(req: NextRequest) {
       }
 
       const reconciliation = await callRustInternalRpc('order_payment_event', { reference });
+      if (!reconciliation.error) {
+        const orderId = parseOrderIdFromReference(reference);
+        if (orderId) {
+          void notifyOrderPushParticipants({
+            orderId,
+            buildSpec: ({ orderNumber, totalAmount, buyerId, sellerId }) => [
+              {
+                profileId: sellerId,
+                spec: { kind: 'ESCROW_LOCKED', orderNumber, amountNaira: totalAmount, recipientRole: 'seller' },
+              },
+              {
+                profileId: buyerId,
+                spec: { kind: 'ESCROW_LOCKED', orderNumber, amountNaira: totalAmount, recipientRole: 'buyer' },
+              },
+            ],
+          }).catch(() => {});
+        }
+      }
       return NextResponse.json({
         success: !reconciliation.error,
         received: true,

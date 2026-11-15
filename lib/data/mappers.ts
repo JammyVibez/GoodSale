@@ -324,6 +324,14 @@ export function mapOrder(row: Record<string, unknown>): Order {
     shippingQuoteId: row.shipping_quote_id != null ? s(row.shipping_quote_id) : undefined,
     estimatedDeliveryMinDays: row.estimated_delivery_min_days != null ? n(row.estimated_delivery_min_days) : undefined,
     estimatedDeliveryMaxDays: row.estimated_delivery_max_days != null ? n(row.estimated_delivery_max_days) : undefined,
+    dispatchProof:
+      row.dispatch_proof && typeof row.dispatch_proof === 'object'
+        ? (row.dispatch_proof as Order['dispatchProof'])
+        : undefined,
+    safeMeetLocationId: row.safe_meet_location_id != null ? n(row.safe_meet_location_id) : undefined,
+    safeMeetScheduledAt: row.safe_meet_scheduled_at != null ? s(row.safe_meet_scheduled_at) : undefined,
+    instantPayoutAt: row.instant_payout_at != null ? s(row.instant_payout_at) : undefined,
+    payoutAmount: row.payout_amount != null ? n(row.payout_amount) : undefined,
   };
 }
 
@@ -378,6 +386,11 @@ export function orderToRow(o: Order): Record<string, unknown> {
     shipping_snapshot: o.shippingBreakdown ?? {},
     estimated_delivery_min_days: o.estimatedDeliveryMinDays ?? null,
     estimated_delivery_max_days: o.estimatedDeliveryMaxDays ?? null,
+    dispatch_proof: o.dispatchProof ?? null,
+    safe_meet_location_id: o.safeMeetLocationId ?? null,
+    safe_meet_scheduled_at: o.safeMeetScheduledAt ?? null,
+    instant_payout_at: o.instantPayoutAt ?? null,
+    payout_amount: o.payoutAmount ?? null,
     created_at: o.createdAt,
     updated_at: o.updatedAt,
   };
@@ -444,6 +457,7 @@ export function mapMessage(row: Record<string, unknown>): Message {
     imageUrl: row.image_url != null ? s(row.image_url) : undefined,
     videoUrl: row.video_url != null ? s(row.video_url) : undefined,
     voiceNoteUrl: row.voice_note_url != null ? s(row.voice_note_url) : undefined,
+    voiceDurationSeconds: row.voice_duration_seconds != null ? n(row.voice_duration_seconds) : undefined,
     createdAt: s(row.created_at, new Date().toISOString()),
     receiptDetails: row.receipt_details as Message['receiptDetails'],
     productDetails: row.product_details as Message['productDetails'],

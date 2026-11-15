@@ -8,10 +8,20 @@
  * a quick-add control. Every badge is derived from real rows — a discount only
  * appears when the seller set a higher reference price or a flash sale is live.
  */
-import React, { useEffect } from 'react';
-import { Heart, ShoppingCart, Star, Truck, Zap, BadgeCheck } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import {
+  BadgeCheck,
+  Check,
+  Heart,
+  Play,
+  ShieldCheck,
+  ShoppingCart,
+  Star,
+  Zap,
+} from 'lucide-react';
 import type { Product } from '@/lib/types';
 import { activeFlashSale } from '@/lib/productPricing';
+import { computeFulfillmentEta } from '@/lib/marketplace/discovery';
 import { trackProductMetric } from '@/lib/productMetrics';
 import { SmartImage } from '../ui/SmartImage';
 import IconButton from '@/components/ui/IconButton';
@@ -25,11 +35,13 @@ export interface ProductTileProps {
   sellerName?: string;
   sellerVerified?: boolean;
   sellerState?: string;
+  buyerState?: string;
   badge?: ProductTileBadge;
   isFavorite: boolean;
   onToggleFavorite: () => void;
   onSelect: () => void;
   onAdd: () => void;
+  onQuickBuy?: () => void;
   /** Load the image immediately — use for above-the-fold cards only. */
   eager?: boolean;
   className?: string;
@@ -60,14 +72,18 @@ export default function ProductTile({
   sellerName,
   sellerVerified = false,
   sellerState,
+  buyerState,
   badge = null,
   isFavorite,
   onToggleFavorite,
   onSelect,
   onAdd,
+  onQuickBuy,
   eager = false,
   className = '',
 }: ProductTileProps) {
+  const [justAdded, setJustAdded] = useState(false);
+
   const flashSale = activeFlashSale(product);
   const price = flashSale?.price ?? product.price;
   const compareAt = flashSale ? product.price : Number(product.compareAtPrice || 0);
@@ -78,15 +94,34 @@ export default function ProductTile({
     ['SOLD', 'UNAVAILABLE', 'OUT_OF_STOCK'].includes(product.stockStatus);
   const lowStock = !soldOut && product.quantity <= 8;
   const statusBadge: ProductTileBadge = flashSale ? 'flash' : badge;
+  const eta = computeFulfillmentEta(product, sellerState, buyerState);
 
   useEffect(() => {
     trackProductMetric(product.id, 'impression', true);
   }, [product.id]);
 
+  const handleOptimisticAdd = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    if (soldOut) return;
+    setJustAdded(true);
+    onAdd();
+    setTimeout(() => setJustAdded(false), 900);
+  };
+
+  // Single primary media badge on top-left to keep the image calm and clean.
+  const topLeftLabel =
+    discount > 0 ? `-${discount}%` : statusBadge ? BADGE_LABELS[statusBadge] : null;
+  const topLeftStyle =
+    discount > 0
+      ? 'bg-jade-600 text-white'
+      : statusBadge
+        ? BADGE_STYLES[statusBadge]
+        : '';
+
   return (
     <article
       onClick={onSelect}
-      className={`group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-[1.35rem] border border-ink-200/80 bg-white transition-[border-color,box-shadow,transform] duration-200 ease-glide hover:-translate-y-1 hover:border-jade-500/45 motion-reduce:transform-none motion-reduce:transition-none dark:border-ink-800 dark:bg-ink-900 dark:hover:border-jade-400/40 gs-product-card ${badge === 'featured' ? 'gs-iridescent' : ''} ${className}`}
+      className={`group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-[1.35rem] border border-ink-200/80 bg-white transition-[border-color,box-shadow,transform] duration-150 ease-glide hover:-translate-y-0.5 hover:border-jade-500/45 motion-reduce:transform-none motion-reduce:transition-none dark:border-ink-800 dark:bg-ink-900 dark:hover:border-jade-400/40 gs-product-card ${badge === 'featured' ? 'gs-iridescent' : ''} ${className}`}
     >
       {/* ── media ── */}
       <div className="relative aspect-square w-full overflow-hidden bg-ink-50 dark:bg-ink-950">
@@ -109,18 +144,13 @@ export default function ProductTile({
           />
         </button>
 
-        <div className="pointer-events-none absolute left-1.5 top-1.5 flex flex-col items-start gap-1">
-          {discount > 0 && (
-            <span className="rounded bg-jade-600 px-1.5 py-0.5 text-[10px] font-black leading-4 text-white shadow-sm">
-              -{discount}%
-            </span>
-          )}
-          {statusBadge && (
-            <span className={`rounded-lg px-2 py-1 text-[9px] font-black uppercase leading-4 tracking-wide shadow-sm ${BADGE_STYLES[statusBadge]}`}>
-              {BADGE_LABELS[statusBadge]}
-            </span>
-          )}
-        </div>
+        {topLeftLabel && (
+          <span
+            className={`pointer-events-none absolute left-2 top-2 rounded-md px-1.5 py-0.5 text-[10px] font-black uppercase leading-4 tracking-wide shadow-sm ${topLeftStyle}`}
+          >
+            {topLeftLabel}
+          </span>
+        )}
 
         <IconButton
           icon={Heart}
@@ -132,11 +162,21 @@ export default function ProductTile({
             onToggleFavorite();
           }}
           iconClassName={isFavorite ? 'fill-jade-500 text-jade-500 dark:fill-jade-400 dark:text-jade-400' : ''}
-          className="absolute right-1.5 top-1.5 !rounded-full !border-transparent !bg-white/90 !text-ink-500 shadow-sm backdrop-blur hover:!text-jade-600 dark:!bg-ink-950/80 dark:!text-ink-300 dark:hover:!text-jade-300"
+          className="absolute right-1.5 top-1.5 !rounded-full !border-transparent !bg-white/90 !text-ink-500 shadow-sm backdrop-blur hover:!text-jade-600 active:scale-90 dark:!bg-ink-950/80 dark:!text-ink-300 dark:hover:!text-jade-300"
         />
 
+        {eta.hasVideoDemo && !soldOut && (
+          <span
+            aria-label="Video demo available"
+            className="pointer-events-none absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-ink-950/75 px-2 py-0.5 text-[9px] font-bold text-white backdrop-blur-sm"
+          >
+            <Play className="h-2.5 w-2.5 fill-white" aria-hidden="true" />
+            Demo
+          </span>
+        )}
+
         {lowStock && !discount && (
-          <span className="pointer-events-none absolute bottom-1.5 left-1.5 rounded bg-ink-900/85 px-1.5 py-0.5 text-[9px] font-bold text-white">
+          <span className="pointer-events-none absolute bottom-2 left-2 rounded bg-ink-900/85 px-1.5 py-0.5 text-[9px] font-bold text-white">
             {product.quantity} left
           </span>
         )}
@@ -178,21 +218,25 @@ export default function ProductTile({
         </div>
 
         <div className="flex flex-wrap items-baseline gap-1.5">
-          <span className="text-[16px] font-extrabold leading-5 tracking-tight text-ink-900 dark:text-white">
+          <span className="text-[16px] font-extrabold leading-5 tracking-tight tabular-nums text-ink-900 dark:text-white">
             {naira(price)}
           </span>
           {discount > 0 && compareAt > price && (
-            <span className="text-[10px] font-medium text-ink-400 line-through">{naira(compareAt)}</span>
+            <span className="text-[10px] font-medium tabular-nums text-ink-400 line-through">{naira(compareAt)}</span>
           )}
         </div>
 
-        <p className="flex items-center gap-1 text-[10px] leading-3 text-ink-600 dark:text-ink-300">
+        {/* Unboxed Escrow Confidence Strip */}
+        <p className="flex items-center gap-1 text-[10px] leading-3.5 text-ink-600 dark:text-ink-300">
           {soldOut ? (
             <span className="truncate">Currently unavailable</span>
           ) : (
             <>
-              <Truck className="h-3 w-3 shrink-0 text-ink-400" aria-hidden="true" />
-              <span className="truncate">{sellerState ? `Ships from ${sellerState}` : 'Escrow protected'}</span>
+              <ShieldCheck className="h-3 w-3 shrink-0 text-jade-600 dark:text-jade-400" aria-hidden="true" />
+              <span className="truncate">
+                Escrow held · {eta.shortLabel}
+                {eta.supportsSplitPay ? ` · ${product.partialPercent || 30}% deposit` : ''}
+              </span>
             </>
           )}
         </p>
@@ -210,18 +254,33 @@ export default function ProductTile({
               </span>
             )}
           </span>
-          <IconButton
-            icon={flashSale ? Zap : ShoppingCart}
-            size="sm"
-            tone="primary"
-            label={`Add ${product.title} to cart`}
-            disabled={soldOut}
-            onClick={(event) => {
-              event.stopPropagation();
-              onAdd();
-            }}
-            className="shrink-0 !rounded-xl"
-          />
+
+          <div className="flex shrink-0 items-center gap-1">
+            {onQuickBuy && !soldOut && !product.isAuction && (
+              <button
+                type="button"
+                aria-label={`Quick buy ${product.title}`}
+                title="Quick buy"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onQuickBuy();
+                }}
+                className="inline-flex h-8 items-center gap-1 rounded-xl border border-gold-400/50 bg-gold-300/20 px-2 text-[10px] font-black text-ink-900 transition-transform duration-150 hover:bg-gold-300/40 active:scale-95 dark:border-gold-300/30 dark:bg-gold-300/15 dark:text-gold-200 cursor-pointer"
+              >
+                <Zap className="h-3 w-3 fill-current" aria-hidden="true" />
+                <span className="hidden sm:inline">Buy</span>
+              </button>
+            )}
+            <IconButton
+              icon={justAdded ? Check : flashSale ? Zap : ShoppingCart}
+              size="sm"
+              tone="primary"
+              label={`Add ${product.title} to cart`}
+              disabled={soldOut}
+              onClick={handleOptimisticAdd}
+              className={`shrink-0 !rounded-xl transition-transform duration-150 active:scale-95 ${justAdded ? '!bg-jade-700 ring-2 ring-jade-400/40' : ''}`}
+            />
+          </div>
         </div>
       </div>
     </article>

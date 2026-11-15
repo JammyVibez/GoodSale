@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { logger, publicErrorMessage } from '@/lib/logger';
 import { rateLimit, clientIpFromRequest } from '@/lib/rate-limit';
+import { notifyOrderPushParticipants } from '@/lib/push/server';
 
 /**
  * Buyer confirms delivery PIN and releases escrow to seller wallet.
@@ -44,6 +45,20 @@ export async function POST(req: NextRequest) {
       logger.warn('Escrow release failed', { error: error.message, orderId });
       return NextResponse.json({ success: false, error: error.message }, { status: 400 });
     }
+
+    void notifyOrderPushParticipants({
+      orderId,
+      buildSpec: ({ orderNumber, totalAmount, buyerId, sellerId }) => [
+        {
+          profileId: sellerId,
+          spec: { kind: 'ESCROW_RELEASED', orderNumber, amountNaira: totalAmount, recipientRole: 'seller' },
+        },
+        {
+          profileId: buyerId,
+          spec: { kind: 'ESCROW_RELEASED', orderNumber, amountNaira: totalAmount, recipientRole: 'buyer' },
+        },
+      ],
+    }).catch(() => {});
 
     return NextResponse.json({ success: true, data });
   } catch (error) {

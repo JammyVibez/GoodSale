@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { logger, publicErrorMessage } from '@/lib/logger';
 import { rateLimit, clientIpFromRequest } from '@/lib/rate-limit';
+import { notifyOrderPushParticipants } from '@/lib/push/server';
 
 /** POST { orderId } — atomically debit available wallet balance into escrow. */
 export async function POST(req: NextRequest) {
@@ -36,6 +37,20 @@ export async function POST(req: NextRequest) {
       logger.warn('pay_order_with_wallet failed', { orderId, error: error.message });
       return NextResponse.json({ success: false, error: error.message }, { status: 400 });
     }
+
+    void notifyOrderPushParticipants({
+      orderId,
+      buildSpec: ({ orderNumber, totalAmount, buyerId, sellerId }) => [
+        {
+          profileId: sellerId,
+          spec: { kind: 'ESCROW_LOCKED', orderNumber, amountNaira: totalAmount, recipientRole: 'seller' },
+        },
+        {
+          profileId: buyerId,
+          spec: { kind: 'ESCROW_LOCKED', orderNumber, amountNaira: totalAmount, recipientRole: 'buyer' },
+        },
+      ],
+    }).catch(() => {});
 
     return NextResponse.json({ success: true, data });
   } catch (error) {

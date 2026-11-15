@@ -22,6 +22,7 @@ import { isVerifiedSeller } from '@/lib/verification';
 import { VerifiedMark } from './verification/VerifiedBadge';
 import AppMenuDrawer from './AppMenuDrawer';
 import { PWAInstallButton } from './pwa/PWAInstallButton';
+import OfflineVaultDrawer from './offline/OfflineVaultDrawer';
 
 interface MarketplaceHeaderProps {
   searchQuery: string;
@@ -81,23 +82,25 @@ export default function MarketplaceHeader({
 
       <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Row 1 — logo + actions */}
-        <div className="flex h-16 items-center justify-between gap-3">
+        <div className="flex h-16 items-center justify-between gap-2 sm:gap-3">
           <button
             type="button"
             onClick={() => onNavigate('marketplace')}
             aria-label="GoodSale marketplace"
-            className="flex items-center"
+            className="flex shrink-0 items-center"
           >
             <Logo
-              iconSize={38}
+              iconSize={34}
+              wordmarkClassName="text-[17px] sm:text-xl"
               textColorClass="text-ink-900 dark:text-white"
               subtitleColorClass="text-ink-400 dark:text-jade-300"
               accentClassName="from-jade-500 to-jade-700 dark:from-jade-300 dark:to-jade-500"
             />
           </button>
 
-          <div className="flex items-center gap-1">
+          <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
             <PWAInstallButton variant="compact" className="hidden sm:inline-flex mr-1" />
+            <OfflineVaultDrawer onNavigate={onNavigate} />
             <NotificationMenu onNavigate={onNavigate} onOpenAuth={onOpenAuth} />
 
             {/* wishlist */}
@@ -105,7 +108,7 @@ export default function MarketplaceHeader({
               type="button"
               aria-label="Wishlist"
               onClick={onOpenWishlist}
-              className="relative grid h-10 w-10 place-items-center rounded-full transition-colors hover:bg-ink-100 dark:hover:bg-white/10"
+              className="relative grid h-9 w-9 sm:h-10 sm:w-10 place-items-center rounded-full transition-colors hover:bg-ink-100 dark:hover:bg-white/10"
             >
               <Heart className="h-5 w-5" />
               {wishlistCount > 0 && (
@@ -151,7 +154,7 @@ export default function MarketplaceHeader({
               type="button"
               onClick={() => setMenuOpen(true)}
               aria-label="Open GoodSale directory"
-              className="grid h-10 w-10 place-items-center rounded-full text-ink-700 transition-colors hover:bg-ink-100 dark:text-ink-200 dark:hover:bg-white/10 cursor-pointer"
+              className="grid h-9 w-9 sm:h-10 sm:w-10 place-items-center rounded-full text-ink-700 transition-colors hover:bg-ink-100 dark:text-ink-200 dark:hover:bg-white/10 cursor-pointer"
             >
               <Menu className="h-5 w-5" aria-hidden="true" />
             </button>

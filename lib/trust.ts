@@ -29,19 +29,25 @@ export interface TrustScore {
   score: number;
   band: 'NEW' | 'BUILDING' | 'TRUSTED' | 'EXCELLENT';
   bandLabel: string;
+  isVerified: boolean;
+  totalOrders: number;
   completedOrders: number;
   cancelledOrders: number;
   disputes: number;
   averageRating: number;
   reviewCount: number;
   responseRate: number;
+  fulfilmentRate: number;
+  onTimeRate: number;
+  disputeFreeRate: number;
+  proofRate: number;
+  repeatBuyerCount: number;
   factors: TrustFactor[];
 }
 
 const round = (value: number) => Math.round(value * 10) / 10;
 
 export function computeSellerTrust(state: GoodSaleDBState, sellerId: number): TrustScore {
-  const seller = state.users.find((u) => u.id === sellerId);
   const sellerOrders = state.orders.filter((o) => o.sellerId === sellerId);
   const completed = sellerOrders.filter((o) => o.status === OrderStatus.DELIVERED_SUCCESS);
   const cancelled = sellerOrders.filter((o) => o.status === OrderStatus.CANCELLED);
@@ -86,6 +92,47 @@ export function computeSellerTrust(state: GoodSaleDBState, sellerId: number): Tr
   const reliabilityRatio = sellerOrders.length
     ? Math.max(0, 1 - (cancelled.length + disputes.length) / sellerOrders.length)
     : 0;
+
+  // Pre-dispatch proof adherence among paid/dispatched orders
+  const eligibleProofOrders = sellerOrders.filter((o) =>
+    [
+      OrderStatus.PAID_ESCROW,
+      OrderStatus.PARTIAL_DEPOSIT_PAID,
+      OrderStatus.SHIPPED,
+      OrderStatus.OUT_FOR_DELIVERY,
+      OrderStatus.DELIVERED_SUCCESS,
+    ].includes(o.status)
+  );
+  const proofSubmittedCount = eligibleProofOrders.filter((o) =>
+    Boolean(o.dispatchProof && o.dispatchProof.mediaUrl)
+  ).length;
+  const proofRate = eligibleProofOrders.length
+    ? Math.round((proofSubmittedCount / eligibleProofOrders.length) * 100)
+    : 0;
+
+  // Delivery punctuality / clean completion rate across tracked deliveries
+  const sellerDeliveries = (state.deliveries || []).filter((d) => d.sellerId === sellerId);
+  const deliveredShipments = sellerDeliveries.filter((d) => d.status === 'DELIVERED');
+  const failedShipments = sellerDeliveries.filter((d) =>
+    ['FAILED_DELIVERY', 'RETURNED_TO_SELLER', 'CANCELLED'].includes(d.status)
+  );
+  const onTimeNumerator = deliveredShipments.length || completed.length;
+  const onTimeDenominator = deliveredShipments.length + failedShipments.length || (completed.length + badEndings);
+  const onTimeRate = onTimeDenominator > 0
+    ? Math.round((onTimeNumerator / onTimeDenominator) * 100)
+    : 0;
+
+  const disputeFreeRate = sellerOrders.length > 0
+    ? Math.max(0, Math.round((1 - disputes.length / sellerOrders.length) * 100))
+    : 0;
+
+  // Repeat buyers (distinct buyers with 2+ non-cancelled orders with this seller)
+  const buyerOrderCounts = new Map<number, number>();
+  for (const ord of sellerOrders) {
+    if (ord.status === OrderStatus.CANCELLED) continue;
+    buyerOrderCounts.set(ord.buyerId, (buyerOrderCounts.get(ord.buyerId) || 0) + 1);
+  }
+  const repeatBuyerCount = Array.from(buyerOrderCounts.values()).filter((count) => count >= 2).length;
 
   const factors: TrustFactor[] = [
     {
@@ -146,12 +193,19 @@ export function computeSellerTrust(state: GoodSaleDBState, sellerId: number): Tr
     score,
     band,
     bandLabel,
+    isVerified,
+    totalOrders: sellerOrders.length,
     completedOrders: completed.length,
     cancelledOrders: cancelled.length,
     disputes: disputes.length,
     averageRating: Number(averageRating.toFixed(1)),
     reviewCount: reviews.length,
     responseRate: Math.round(responseRate * 100),
+    fulfilmentRate: Math.round(fulfilmentRatio * 100),
+    onTimeRate,
+    disputeFreeRate,
+    proofRate,
+    repeatBuyerCount,
     factors,
   };
 }

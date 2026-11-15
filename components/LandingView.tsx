@@ -18,14 +18,19 @@ import {
   Heart, ShoppingCart, Zap, ShieldCheck, Truck, Headphones,
   BadgeCheck, ArrowRight, ChevronRight, Sparkles, Store, Flame, Gavel,
   Shirt, Cpu, Smartphone, Laptop, Armchair, Apple, Car, BookOpen, LayoutGrid,
-  Package, SlidersHorizontal, TrendingUp, Tag, Clock, Plus,
+  Package, SlidersHorizontal, TrendingUp, Tag, Clock, Plus, Play, RotateCcw,
 } from 'lucide-react';
 import { Product, useDBState } from '../lib/store';
-import type { Profile, User } from '@/lib/types';
+import { ProductCondition, type Profile, type User } from '@/lib/types';
 import { isVerifiedSeller } from '@/lib/verification';
 import VerifiedBadge from './verification/VerifiedBadge';
 import { activeFlashSale } from '@/lib/productPricing';
-import { discoveryScore } from '@/lib/ranking';
+import {
+  getRepeatBuyerPicks,
+  matchesDiscoveryFilters,
+  sortProductsByMode,
+  type DiscoverySortMode,
+} from '@/lib/marketplace/discovery';
 import { useWishlist } from '@/lib/hooks/useWishlist';
 import { SmartImage } from './ui/SmartImage';
 import EmptyState from './ui/EmptyState';
@@ -39,6 +44,7 @@ interface LandingViewProps {
   searchQuery: string;
   onNavigate: (view: string, payload?: any) => void;
   onAddToCart: (productId: number) => void;
+  onQuickBuy?: (productId: number) => void;
   onOpenAuth?: (mode?: 'login' | 'register') => void;
   /** Delivery-location filter, driven by the marketplace header. */
   selectedState: string;
@@ -47,7 +53,7 @@ interface LandingViewProps {
   onWishlistOnlyChange: (value: boolean) => void;
 }
 
-type SortMode = 'smart' | 'rating' | 'price_asc' | 'price_desc' | 'newest';
+type SortMode = DiscoverySortMode;
 
 const PAGE_SIZE = 24;
 
@@ -134,6 +140,7 @@ export default function LandingView({
   searchQuery,
   onNavigate,
   onAddToCart,
+  onQuickBuy,
   onOpenAuth,
   selectedState,
   onSelectState,
@@ -147,6 +154,11 @@ export default function LandingView({
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [onlyVerified, setOnlyVerified] = useState(false);
   const [dealsOnly, setDealsOnly] = useState(false);
+  const [sameDayOnly, setSameDayOnly] = useState(false);
+  const [safeMeetOnly, setSafeMeetOnly] = useState(false);
+  const [splitPayOnly, setSplitPayOnly] = useState(false);
+  const [videoOnly, setVideoOnly] = useState(false);
+  const [conditionFilter, setConditionFilter] = useState<'ALL' | ProductCondition>('ALL');
   const [sortMode, setSortMode] = useState<SortMode>('smart');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
@@ -241,64 +253,78 @@ export default function LandingView({
     [db.verifiedPlusSubscriptions]
   );
 
+  const buyerState = db.profiles.find((profile) => profile.userId === db.currentUser?.id)?.state || '';
+
+  const sellerStatesMap = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const p of db.profiles) {
+      if (p.state) map.set(p.userId, p.state);
+    }
+    return map;
+  }, [db.profiles]);
+
+  const verifiedSellerIdsSet = useMemo(() => {
+    const set = new Set<number>();
+    for (const p of db.profiles) {
+      if (isVerifiedSeller({ verificationStatus: p.verificationStatus, verificationExpiresAt: p.verificationExpiresAt })) {
+        set.add(p.userId);
+      }
+    }
+    return set;
+  }, [db.profiles]);
+
   /* ---- filtering ---- */
   const filteredProducts = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    let list = db.products.filter((product) => {
-      if (query) {
-        const haystack = `${product.title} ${product.description} ${product.category} ${product.brand}`.toLowerCase();
-        if (!haystack.includes(query)) return false;
-      }
-      if (selectedCategory && product.category.toLowerCase() !== selectedCategory.toLowerCase()) return false;
-      if (selectedState && stateOf(product.sellerId) !== selectedState) return false;
-      if (onlyVerified) {
-        const sellerProfile = profilesByUserId.get(product.sellerId);
-        const verified = isVerifiedSeller({
-          verificationStatus: sellerProfile?.verificationStatus,
-          verificationExpiresAt: sellerProfile?.verificationExpiresAt,
-        });
-        if (!verified) return false;
-      }
-      if (wishlistOnly && !favorites.includes(product.id)) return false;
-      if (dealsOnly && discountPercent(product) === null && !activeFlashSale(product)) return false;
-      return true;
-    });
+    const ratings = new Map<number, number>();
+    reviewStats.forEach((value, key) => ratings.set(key, value.average));
 
-    list = [...list].sort((a, b) => {
-      switch (sortMode) {
-        case 'price_asc':
-          return a.price - b.price;
-        case 'price_desc':
-          return b.price - a.price;
-        case 'newest':
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-        case 'rating':
-          return (ratingOf(b.id) || 0) - (ratingOf(a.id) || 0);
-        default: {
-          const ratings = new Map<number, number>();
-          reviewStats.forEach((value, key) => ratings.set(key, value.average));
-          const context = {
-            ratings,
-            featuredProductIds: activeFeaturedIds,
-            verifiedPlusSellerIds: activeVerifiedPlusSellers,
-            featuredBoost: db.revenueSettings.featuredRankingBoost,
-            verifiedPlusBoost: db.revenueSettings.verifiedPlusRankingBoost,
-          };
-          return discoveryScore(b, context) - discoveryScore(a, context);
-        }
-      }
-    });
-    return list;
+    const ctx = {
+      buyerState: selectedState || buyerState,
+      favorites,
+      sellerStates: sellerStatesMap,
+      verifiedSellerIds: verifiedSellerIdsSet,
+      ratings,
+      featuredProductIds: activeFeaturedIds,
+      verifiedPlusSellerIds: activeVerifiedPlusSellers,
+      featuredBoost: db.revenueSettings.featuredRankingBoost,
+      verifiedPlusBoost: db.revenueSettings.verifiedPlusRankingBoost,
+    };
+
+    const list = db.products.filter((product) =>
+      matchesDiscoveryFilters(
+        product,
+        {
+          query: searchQuery,
+          category: selectedCategory,
+          state: selectedState,
+          onlyVerified,
+          dealsOnly,
+          wishlistOnly,
+          sameDayOnly,
+          safeMeetOnly,
+          splitPayOnly,
+          videoOnly,
+          condition: conditionFilter,
+        },
+        ctx
+      )
+    );
+
+    return sortProductsByMode(list, sortMode, ctx);
   }, [
-    db.products, db.revenueSettings, searchQuery, selectedCategory, selectedState, onlyVerified,
-    wishlistOnly, dealsOnly, favorites, profilesByUserId, stateOf, sortMode, ratingOf, reviewStats,
+    db.products, db.revenueSettings, searchQuery, selectedCategory, selectedState, buyerState,
+    onlyVerified, dealsOnly, wishlistOnly, sameDayOnly, safeMeetOnly, splitPayOnly, videoOnly,
+    conditionFilter, favorites, sellerStatesMap, verifiedSellerIdsSet, sortMode, reviewStats,
     activeFeaturedIds, activeVerifiedPlusSellers,
   ]);
 
   // A new filter or search always restarts the catalogue at page one.
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
-  }, [searchQuery, selectedCategory, selectedState, onlyVerified, dealsOnly, wishlistOnly, sortMode]);
+  }, [
+    searchQuery, selectedCategory, selectedState, onlyVerified, dealsOnly, wishlistOnly,
+    sameDayOnly, safeMeetOnly, splitPayOnly, videoOnly, conditionFilter, sortMode,
+  ]);
 
   /* ---- Flash Deals come only from approved, currently running sales. ---- */
   const flashDeals = useMemo(
@@ -438,11 +464,27 @@ export default function LandingView({
     [ratingOf, reviewCountOf, stateOf, sellerProps]
   );
 
+  const repeatBuyerPicks = useMemo(() => {
+    if (!db.currentUser) return [] as Product[];
+    const buyerOrders = db.orders.filter((o) => o.buyerId === db.currentUser?.id);
+    return getRepeatBuyerPicks({ buyerOrders, products: db.products, maxItems: 10 });
+  }, [db.currentUser, db.orders, db.products]);
+
+  const videoDemoProducts = useMemo(
+    () =>
+      db.products
+        .filter((p) => Boolean(p.videoUrl && p.videoUrl.trim()) && inStock(p))
+        .slice(0, 12),
+    [db.products]
+  );
+
   const railCommon = {
     favorites,
+    buyerState: selectedState || buyerState,
     onToggleFavorite: toggleFavorite,
     onSelectProduct: onSelectProduct,
     onAddToCart,
+    onQuickBuy,
   };
 
   /* ---- hero ---- */
@@ -515,7 +557,6 @@ export default function LandingView({
   }, [db.products, activeSlide, ratingOf]);
 
   const slide = heroSlides[activeSlide] ?? heroSlides[0];
-  const buyerState = db.profiles.find((profile) => profile.userId === db.currentUser?.id)?.state || '';
   const visibleProducts = filteredProducts.slice(0, visibleCount);
   const hasMore = filteredProducts.length > visibleProducts.length;
 
@@ -544,7 +585,7 @@ export default function LandingView({
                   <Flame className="h-3 w-3" aria-hidden="true" />
                   {slide.eyebrow}
                 </span>
-                <h1 className="mt-3 font-display text-3xl font-extrabold leading-[1.04] tracking-[-0.04em] sm:text-4xl lg:text-[2.8rem]">
+                <h1 className="mt-3 font-display text-3xl font-extrabold leading-[1.04] tracking-[-0.04em] [text-wrap:balance] sm:text-4xl lg:text-[2.8rem]">
                   {slide.title}
                   <br />
                   <span className="text-gold-300">{slide.highlight}</span>
@@ -845,6 +886,36 @@ export default function LandingView({
           </section>
         )}
 
+        {/* ───────────────────── Repeat Buyer Loop ───────────────────── */}
+        {repeatBuyerPicks.length >= 2 && (
+          <div className="mt-6">
+            <ProductRail
+              label="Buy again and trusted picks"
+              title="Buy again & trusted restocks"
+              subtitle="Fresh stock from merchants and categories you already trust"
+              href="/recommended"
+              icon={<RotateCcw className="h-4 w-4" />}
+              products={repeatBuyerPicks.map((product) => asRail(product))}
+              {...railCommon}
+            />
+          </div>
+        )}
+
+        {/* ───────────────────── Video-First Demos ───────────────────── */}
+        {videoDemoProducts.length >= 2 && (
+          <div className="mt-6">
+            <ProductRail
+              label="Video-first product demos"
+              title="Video-verified listings"
+              subtitle="Inspect live seller videos before adding to your escrow cart"
+              href="/featured"
+              icon={<Play className="h-4 w-4" />}
+              products={videoDemoProducts.map((product) => asRail(product))}
+              {...railCommon}
+            />
+          </div>
+        )}
+
         {/* ───────────────────── Recommended ───────────────────── */}
         {railSections.recommended.length > 0 && (
           <div className="mt-6">
@@ -1005,20 +1076,80 @@ export default function LandingView({
 
         {/* ───────────────────── Catalogue ───────────────────── */}
         <section id="catalog-section" className="mt-6 scroll-mt-28">
-          <div className="mb-2.5 flex flex-wrap items-end justify-between gap-2">
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
             <div className="min-w-0">
-              <h2 className="font-display text-base font-extrabold tracking-tight text-ink-900 dark:text-white sm:text-lg">
+              <h2 className="font-display text-base font-extrabold tracking-tight [text-wrap:balance] text-ink-900 dark:text-white sm:text-lg">
                 {catalogHeading}
               </h2>
               <p className="text-[11px] text-ink-500 dark:text-ink-400">
                 {filteredProducts.length} item{filteredProducts.length === 1 ? '' : 's'}
                 {selectedState ? ` · ${selectedState}` : ' · across Nigeria'}
+                {sameDayOnly ? ' · same-day delivery' : ''}
+                {safeMeetOnly ? ' · SafeMeet pickup' : ''}
+                {splitPayOnly ? ' · split-pay deposit' : ''}
+                {videoOnly ? ' · video demo' : ''}
                 {onlyVerified ? ' · verified sellers only' : ''}
                 {dealsOnly ? ' · discounted only' : ''}
               </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setSameDayOnly((v) => !v)}
+                aria-pressed={sameDayOnly}
+                className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition-colors ${
+                  sameDayOnly
+                    ? 'border-jade-600 bg-jade-600 text-white'
+                    : 'border-ink-200 bg-white text-ink-600 hover:border-jade-300 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300'
+                }`}
+              >
+                <Truck className="h-3.5 w-3.5" aria-hidden="true" />
+                Same-Day
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSafeMeetOnly((v) => !v)}
+                aria-pressed={safeMeetOnly}
+                className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition-colors ${
+                  safeMeetOnly
+                    ? 'border-jade-600 bg-jade-600 text-white'
+                    : 'border-ink-200 bg-white text-ink-600 hover:border-jade-300 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300'
+                }`}
+              >
+                <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                SafeMeet
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSplitPayOnly((v) => !v)}
+                aria-pressed={splitPayOnly}
+                className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition-colors ${
+                  splitPayOnly
+                    ? 'border-jade-600 bg-jade-600 text-white'
+                    : 'border-ink-200 bg-white text-ink-600 hover:border-jade-300 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300'
+                }`}
+              >
+                <Zap className="h-3.5 w-3.5" aria-hidden="true" />
+                Split-Pay
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setVideoOnly((v) => !v)}
+                aria-pressed={videoOnly}
+                className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition-colors ${
+                  videoOnly
+                    ? 'border-jade-600 bg-jade-600 text-white'
+                    : 'border-ink-200 bg-white text-ink-600 hover:border-jade-300 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300'
+                }`}
+              >
+                <Play className="h-3.5 w-3.5" aria-hidden="true" />
+                Video Demo
+              </button>
+
               <button
                 type="button"
                 onClick={() => onWishlistOnlyChange(!wishlistOnly)}
@@ -1067,6 +1198,22 @@ export default function LandingView({
               </button>
 
               <label className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-[11px] font-bold text-ink-600 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300">
+                <select
+                  aria-label="Filter by condition"
+                  value={conditionFilter}
+                  onChange={(e) => setConditionFilter(e.target.value as 'ALL' | ProductCondition)}
+                  className="cursor-pointer bg-transparent pr-1 outline-none"
+                >
+                  <option value="ALL">All conditions</option>
+                  <option value={ProductCondition.NEW}>Brand New</option>
+                  <option value={ProductCondition.LIKE_NEW}>Like New</option>
+                  <option value={ProductCondition.EXCELLENT}>Excellent</option>
+                  <option value={ProductCondition.GOOD}>Good</option>
+                  <option value={ProductCondition.FAIR}>Fair</option>
+                </select>
+              </label>
+
+              <label className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-[11px] font-bold text-ink-600 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300">
                 <SlidersHorizontal className="h-3.5 w-3.5 text-ink-400" aria-hidden="true" />
                 <select
                   aria-label="Sort listings"
@@ -1075,6 +1222,7 @@ export default function LandingView({
                   className="cursor-pointer bg-transparent pr-1 outline-none"
                 >
                   <option value="smart">Recommended</option>
+                  <option value="fastest">Fastest ETA</option>
                   <option value="rating">Top rated</option>
                   <option value="price_asc">Price: low to high</option>
                   <option value="price_desc">Price: high to low</option>
@@ -1129,11 +1277,13 @@ export default function LandingView({
                     reviewCount={reviewCountOf(product.id)}
                     {...sellerProps(product.sellerId)}
                     sellerState={stateOf(product.sellerId)}
+                    buyerState={selectedState || buyerState}
                     badge={activeFeaturedIds.has(product.id) ? 'featured' : null}
                     isFavorite={favorites.includes(product.id)}
                     onToggleFavorite={() => toggleFavorite(product.id)}
                     onSelect={() => onSelectProduct(product.id)}
                     onAdd={() => onAddToCart(product.id)}
+                    onQuickBuy={onQuickBuy ? () => onQuickBuy(product.id) : undefined}
                   />
                 ))}
               </div>

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { logger, publicErrorMessage } from '@/lib/logger';
 import { rateLimit, clientIpFromRequest } from '@/lib/rate-limit';
+import { notifyOrderPushParticipants } from '@/lib/push/server';
 
 const ALLOWED = new Set(['SHIPPED', 'OUT_FOR_DELIVERY', 'CANCELLED']);
 
@@ -45,6 +46,17 @@ export async function POST(req: NextRequest) {
     if (error) {
       return NextResponse.json({ success: false, error: error.message }, { status: 400 });
     }
+
+    const typedStatus = status as 'SHIPPED' | 'OUT_FOR_DELIVERY' | 'CANCELLED';
+    void notifyOrderPushParticipants({
+      orderId,
+      buildSpec: ({ orderNumber, buyerId }) => [
+        {
+          profileId: buyerId,
+          spec: { kind: 'ESCROW_STATUS', orderNumber, status: typedStatus, recipientRole: 'buyer' },
+        },
+      ],
+    }).catch(() => {});
 
     return NextResponse.json({ success: true, data });
   } catch (error) {

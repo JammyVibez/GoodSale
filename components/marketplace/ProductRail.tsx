@@ -32,9 +32,11 @@ interface ProductRailProps {
   headerExtra?: React.ReactNode;
   products: RailProduct[];
   favorites: number[];
+  buyerState?: string;
   onToggleFavorite: (productId: number) => void;
   onSelectProduct: (productId: number) => void;
   onAddToCart: (productId: number) => void;
+  onQuickBuy?: (productId: number) => void;
   variant?: 'plain' | 'jade';
   label: string;
 }
@@ -51,9 +53,11 @@ export default function ProductRail({
   headerExtra,
   products,
   favorites,
+  buyerState,
   onToggleFavorite,
   onSelectProduct,
   onAddToCart,
+  onQuickBuy,
   variant = 'plain',
   label,
 }: ProductRailProps) {
@@ -186,11 +190,13 @@ export default function ProductRail({
               sellerName={item.sellerName}
               sellerVerified={item.sellerVerified}
               sellerState={item.sellerState}
+              buyerState={buyerState}
               badge={item.badge ?? null}
               isFavorite={favorites.includes(item.product.id)}
               onToggleFavorite={() => onToggleFavorite(item.product.id)}
               onSelect={() => onSelectProduct(item.product.id)}
               onAdd={() => onAddToCart(item.product.id)}
+              onQuickBuy={onQuickBuy ? () => onQuickBuy(item.product.id) : undefined}
               eager={index < 4}
             />
           </div>

@@ -8,7 +8,8 @@ import {
   MapPin, Award, Trash2, KeyRound, QrCode, ClipboardCheck, ArrowLeft, RefreshCw,
   Truck, ExternalLink, Sparkles, ShieldAlert, ShieldCheck, CheckCircle,
   Coins, FileText, Upload, Navigation, Minus, Plus, Check, BadgeCheck,
-  ShoppingBag, Bell, Headphones, ChevronLeft, Gift, Clock, ChevronDown, Copy, Package
+  ShoppingBag, Bell, Headphones, ChevronLeft, Gift, Clock, ChevronDown, Copy, Package,
+  RotateCcw, Video,
 } from 'lucide-react';
 import { 
   getDBState, saveDBState, dbOperations, Product, Order, OrderStatus, UserRole
@@ -32,6 +33,7 @@ import { orderPaymentDue } from '@/lib/payments/helpers';
 import { effectiveProductPrice } from '@/lib/productPricing';
 import { isVerifiedSeller } from '@/lib/verification';
 import { recordSponsoredConversion } from '@/lib/ads/conversion';
+import { canBuyerReviewProof } from '@/lib/escrow/proofAndSplit';
 import type { ShippingQuoteResult } from '@/lib/types';
 
 interface CartCheckoutViewProps {
@@ -217,6 +219,9 @@ export default function CartCheckoutView({
   const [orderFilter, setOrderFilter] = useState<OrderFilter>('all');
   const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
   const [visiblePinOrderId, setVisiblePinOrderId] = useState<number | null>(null);
+  const [proofChangeOrderId, setProofChangeOrderId] = useState<number | null>(null);
+  const [proofChangeNote, setProofChangeNote] = useState('');
+  const [proofBusyId, setProofBusyId] = useState<number | null>(null);
 
   // Selected Order for Receipt View
   const [selectedReceiptOrder, setSelectedReceiptOrder] = useState<Order | null>(null);
@@ -2076,13 +2081,24 @@ export default function CartCheckoutView({
                             </Link>
                           )}
                           {isDelivered && (
-                            <button
-                              type="button"
-                              onClick={() => setSelectedReceiptOrder(order)}
-                              className="inline-flex items-center justify-center gap-1 rounded-xl border border-ink-200 bg-white px-3 py-2 text-[10px] font-bold text-ink-600 hover:border-jade-400 hover:text-jade-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-300 cursor-pointer"
-                            >
-                              <ClipboardCheck className="h-3.5 w-3.5" /> Receipt
-                            </button>
+                            <>
+                              {isBuyer && (
+                                <button
+                                  type="button"
+                                  onClick={() => onNavigate('product', { id: order.productId })}
+                                  className="inline-flex items-center justify-center gap-1 rounded-xl bg-gold-300 px-3 py-2 text-[10px] font-black text-ink-950 hover:bg-gold-200 cursor-pointer"
+                                >
+                                  <RotateCcw className="h-3.5 w-3.5" /> Buy again
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setSelectedReceiptOrder(order)}
+                                className="inline-flex items-center justify-center gap-1 rounded-xl border border-ink-200 bg-white px-3 py-2 text-[10px] font-bold text-ink-600 hover:border-jade-400 hover:text-jade-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-300 cursor-pointer"
+                              >
+                                <ClipboardCheck className="h-3.5 w-3.5" /> Receipt
+                              </button>
+                            </>
                           )}
                           <button
                             type="button"
@@ -2115,6 +2131,119 @@ export default function CartCheckoutView({
 
                           {/* Existing detailed delivery, PIN and dispute controls stay available when expanded. */}
                           <div className="space-y-4">
+
+                        {isBuyer && Number(order.balanceRemaining || 0) > 0 && !order.isBalanceSettled && (
+                          <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-gold-400/40 bg-gold-300/15 p-3.5 text-xs">
+                            <div>
+                              <p className="font-bold text-ink-900 dark:text-white">
+                                Split-Pay balance remaining: ₦{Number(order.balanceRemaining).toLocaleString()}
+                              </p>
+                              <p className="text-[10px] text-ink-600 dark:text-ink-300">
+                                Complete this balance into escrow before sharing your PIN at handover.
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const res = await dbOperations.settleSplitPayBalance(order.id);
+                                if (res && 'error' in res && res.error) toast.error(res.error);
+                                else toast.success('Remaining balance locked in escrow.');
+                              }}
+                              className="rounded-xl bg-jade-600 px-3 py-2 text-[10px] font-bold text-white hover:bg-jade-700 cursor-pointer"
+                            >
+                              Settle balance
+                            </button>
+                          </div>
+                        )}
+
+                        {order.dispatchProof && (
+                          <div className="rounded-2xl border border-jade-500/20 bg-white p-3.5 dark:bg-ink-900">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-ink-900 dark:text-white">
+                                <Video className="h-3.5 w-3.5 text-jade-600" />
+                                Live pre-dispatch condition proof
+                              </span>
+                              <span className="rounded-full bg-jade-500/10 px-2 py-0.5 text-[9px] font-bold text-jade-700 dark:text-jade-300">
+                                {order.dispatchProof.status === 'APPROVED'
+                                  ? 'Approved'
+                                  : order.dispatchProof.status === 'CHANGES_REQUESTED'
+                                    ? 'Fresh clip requested'
+                                    : 'Awaiting review'}
+                              </span>
+                            </div>
+                            <div className="mt-2.5 flex flex-col gap-3 sm:flex-row sm:items-center">
+                              <div className="h-20 w-28 shrink-0 overflow-hidden rounded-xl bg-ink-950">
+                                {order.dispatchProof.mediaType === 'video' ? (
+                                  <video src={order.dispatchProof.mediaUrl} controls className="h-full w-full object-cover" />
+                                ) : (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={order.dispatchProof.mediaUrl} alt="Condition proof" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1 space-y-2">
+                                <p className="text-[11px] text-ink-600 dark:text-ink-300">{order.dispatchProof.note}</p>
+                                {isBuyer && canBuyerReviewProof(order) && (
+                                  <div className="flex flex-wrap gap-2">
+                                    <button
+                                      type="button"
+                                      disabled={proofBusyId === order.id}
+                                      onClick={async () => {
+                                        setProofBusyId(order.id);
+                                        const res = await dbOperations.reviewDispatchProof(order.id, 'APPROVED');
+                                        setProofBusyId(null);
+                                        if (res && 'error' in res && res.error) toast.error(res.error);
+                                        else toast.success('Condition approved — ready for dispatch.');
+                                      }}
+                                      className="rounded-xl bg-jade-600 px-3 py-1.5 text-[10px] font-bold text-white hover:bg-jade-700 cursor-pointer"
+                                    >
+                                      Approve for dispatch
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setProofChangeOrderId(proofChangeOrderId === order.id ? null : order.id);
+                                        setProofChangeNote('');
+                                      }}
+                                      className="rounded-xl border border-ink-200 px-3 py-1.5 text-[10px] font-bold text-ink-700 hover:border-jade-400 dark:border-ink-700 dark:text-ink-200 cursor-pointer"
+                                    >
+                                      Request fresh clip
+                                    </button>
+                                  </div>
+                                )}
+                                {proofChangeOrderId === order.id && (
+                                  <div className="flex gap-2">
+                                    <input
+                                      type="text"
+                                      value={proofChangeNote}
+                                      onChange={(e) => setProofChangeNote(e.target.value)}
+                                      placeholder="Describe what you want checked..."
+                                      className="min-w-0 flex-1 rounded-xl border border-ink-200 bg-ink-50 px-2.5 py-1.5 text-xs text-ink-900 dark:border-ink-700 dark:bg-ink-950 dark:text-white"
+                                    />
+                                    <button
+                                      type="button"
+                                      disabled={proofBusyId === order.id || !proofChangeNote.trim()}
+                                      onClick={async () => {
+                                        setProofBusyId(order.id);
+                                        const res = await dbOperations.reviewDispatchProof(order.id, 'CHANGES_REQUESTED', proofChangeNote);
+                                        setProofBusyId(null);
+                                        if (res && 'error' in res && res.error) {
+                                          toast.error(res.error);
+                                          return;
+                                        }
+                                        setProofChangeOrderId(null);
+                                        setProofChangeNote('');
+                                        toast.info('Fresh condition clip requested from seller.');
+                                      }}
+                                      className="rounded-xl bg-ink-900 px-3 py-1.5 text-[10px] font-bold text-white dark:bg-gold-300 dark:text-ink-950 cursor-pointer"
+                                    >
+                                      Send
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Delivery PIN display / verification forms */}
                         {isBuyer ? (

@@ -1,8 +1,10 @@
 import { callRustRpc } from '@/lib/server/rust-rpc';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { logger, publicErrorMessage } from '@/lib/logger';
 import { rateLimit, clientIpFromRequest } from '@/lib/rate-limit';
+import { notifyOrderPushParticipants } from '@/lib/push/server';
 
 /**
  * POST /api/deliveries/confirm { deliveryId, code }
@@ -55,6 +57,42 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    const admin = createAdminClient();
+    if (admin) {
+      void (async () => {
+        const { data: delivery } = await admin
+          .from('deliveries')
+          .select('order_id')
+          .eq('id', deliveryId)
+          .maybeSingle();
+        if (delivery?.order_id) {
+          await notifyOrderPushParticipants({
+            orderId: Number(delivery.order_id),
+            buildSpec: ({ orderNumber, buyerId, sellerId }) => [
+              {
+                profileId: buyerId,
+                spec: {
+                  kind: 'ESCROW_STATUS',
+                  orderNumber,
+                  status: 'DELIVERY_CONFIRMED',
+                  recipientRole: 'buyer',
+                },
+              },
+              {
+                profileId: sellerId,
+                spec: {
+                  kind: 'ESCROW_STATUS',
+                  orderNumber,
+                  status: 'DELIVERY_CONFIRMED',
+                  recipientRole: 'seller',
+                },
+              },
+            ],
+          });
+        }
+      })().catch(() => {});
+    }
+
     return NextResponse.json({ success: true, data });
   } catch (error) {
     logger.error('Delivery confirmation failed', { error: String(error) });
