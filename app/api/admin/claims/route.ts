@@ -35,7 +35,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const limited = await rateLimitAsync(`admin:claims:${clientIpFromRequest(req)}`, 30, 60_000);
-    if (!limited.allowed) return NextResponse.json({ success: false, error: 'Too many attempts' }, { status: limited.unavailable ? 503 : 429 });
+    if (!limited.allowed) return NextResponse.json({ success: false, error: 'Too many attempts' }, { status: 429 });
 
     const ctx = await adminContext();
     if ('error' in ctx) return NextResponse.json({ success: false, error: ctx.error }, { status: ctx.status });

@@ -213,6 +213,6 @@ npm run backend:test
 npm run backend:check
 ```
 
-Before running Compose, set a strong random `RATE_LIMIT_SHARED_SECRET` in `.env.local`. The Next.js middleware uses that secret to ask the Rust service for shared Redis-backed rate-limit decisions. Redis is internal to the Compose network and is not published to the host.
+Shared API rate limiting is handled by Supabase Postgres (`check_rate_limit` RPC, migration 042), so no Redis or Rust service is needed. The Compose stack below is optional and only for the legacy Rust helpers.
 
 **Migration status:** media uploads and Paystack order verification are routed to Rust when `RUST_BACKEND_URL` is configured. The rest of the current Next.js API handlers remain in place while their Supabase, checkout, escrow, payout, webhook, delivery and admin contracts are migrated and tested. This is deliberate: financial handlers must retain their idempotency, role checks and exact database RPC semantics.

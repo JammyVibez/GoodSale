@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter, Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
 import { JsonLd } from '@/components/seo/JsonLd';
 import { organizationLd, websiteLd } from '@/lib/seo/structured';
@@ -7,18 +6,12 @@ import NetworkStatus from '@/components/ui/NetworkStatus';
 import FeedbackHost from '@/components/ui/FeedbackHost';
 import ServiceWorkerRegistrar from '@/components/pwa/ServiceWorkerRegistrar';
 
-const inter = Inter({
-  subsets: ['latin'],
-  variable: '--font-sans',
-});
-
-// Softer, friendlier display face than a techy geometric sans — reads premium
-// and commerce-focused rather than developer-tooling.
-const plusJakarta = Plus_Jakarta_Sans({
-  subsets: ['latin'],
-  variable: '--font-display',
-  weight: ['500', '600', '700', '800'],
-});
+// Fonts are linked at runtime rather than fetched at build time. `next/font/google`
+// needs network access to a font CDN while bundling, which fails the build (and
+// Turbopack entirely) in offline/CI sandboxes. The CSS stacks in globals.css are
+// the fallback, so the app renders immediately even if Google Fonts is blocked.
+const FONTS_HREF =
+  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap';
 
 const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://goodsale.ng';
 
@@ -101,8 +94,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${inter.variable} ${plusJakarta.variable}`}>
+    <html lang="en">
       <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link rel="stylesheet" href={FONTS_HREF} />
         <JsonLd data={[organizationLd(), websiteLd()]} />
         {/* Pre-paint theme: apply the saved mode before first render to avoid a flash */}
         <script

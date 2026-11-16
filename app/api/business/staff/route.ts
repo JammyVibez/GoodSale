@@ -38,7 +38,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const limited = await rateLimitAsync(`business:staff:${clientIpFromRequest(req)}`, 20, 60_000);
-    if (!limited.allowed) return NextResponse.json({ success: false, error: 'Too many requests' }, { status: limited.unavailable ? 503 : 429 });
+    if (!limited.allowed) return NextResponse.json({ success: false, error: 'Too many requests' }, { status: 429 });
     const auth = await authenticatedClient();
     if ('error' in auth) return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
 

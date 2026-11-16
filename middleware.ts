@@ -74,21 +74,16 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // The health endpoint remains reachable when Redis is being recovered.
+  // The health endpoint bypasses the limiter so monitors never get throttled.
   if (isApi && pathname !== '/api/health' && method !== 'OPTIONS') {
     const ip = clientIpFromRequest(request);
     const route = pathname.startsWith('/api/auth/') ? 'auth' :
       pathname.startsWith('/api/payments/') ? 'payments' :
       pathname === '/api/upload' ? 'uploads' : 'api';
     const limit = route === 'auth' ? 20 : route === 'payments' ? 40 : route === 'uploads' ? 30 : 120;
+    // Supabase-backed shared counter. A limiter outage degrades to allowing the
+    // request instead of taking every API route offline with a 503.
     const result = await rateLimitAsync(`middleware:${route}:${ip}`, limit, 60_000);
-
-    if (result.unavailable) {
-      return NextResponse.json(
-        { success: false, error: 'Request protection is temporarily unavailable. Please retry shortly.' },
-        { status: 503, headers: { 'Retry-After': '2' } }
-      );
-    }
 
     if (!result.allowed) {
       return NextResponse.json(
