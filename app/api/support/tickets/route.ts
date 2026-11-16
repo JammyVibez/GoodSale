@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
   try {
     const ip = clientIpFromRequest(req);
     const limited = await rateLimitAsync(`support:ticket:${ip}`, 8, 60_000);
-    if (!limited.allowed) return NextResponse.json({ success: false, error: 'Too many requests' }, { status: limited.unavailable ? 503 : 429 });
+    if (!limited.allowed) return NextResponse.json({ success: false, error: 'Too many requests' }, { status: 429 });
 
     const supabase = await createServerSupabaseClient();
     if (!supabase) return NextResponse.json({ success: false, error: 'Supabase not configured' }, { status: 503 });

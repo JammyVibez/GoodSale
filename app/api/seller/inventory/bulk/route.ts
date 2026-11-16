@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     if (!limited.allowed) {
       return NextResponse.json(
         { success: false, error: 'Too many bulk updates' },
-        { status: limited.unavailable ? 503 : 429 },
+        { status: 429 },
       );
     }
 
