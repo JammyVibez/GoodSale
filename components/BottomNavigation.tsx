@@ -2,7 +2,7 @@
 'use client';
 
 import React from 'react';
-import { Home, MessageSquare, Package, Plus, User } from 'lucide-react';
+import { Home, LayoutGrid, MessageSquare, Plus, User } from 'lucide-react';
 import { useDBState } from '../lib/store';
 import { totalUnreadMessages } from '../lib/chat';
 
@@ -12,8 +12,6 @@ interface BottomNavigationProps {
   onOpenAuth: (mode?: 'login' | 'register') => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
-  /** Panel currently open on the Account screen, so Orders/Account select correctly. */
-  activeProfileSection?: string;
 }
 
 interface Tab {
@@ -28,17 +26,17 @@ interface Tab {
 /**
  * Mobile shell — the five primary destinations.
  *
- * Home · Orders · Sell · Chats · Account, with Sell as the raised circular
- * action in the middle. The bar stays a clean white surface in both themes so it
- * reads as chrome rather than content; categories live on the homepage and in
- * the app menu, not here.
+ * Home · Categories · Sell · Chats · Account, with Sell as the raised circular
+ * action in the middle. Categories sits next to Home because browsing the
+ * catalogue is the second thing a shopper does; cart, wishlist and support
+ * already live in the header, and orders stays inside Account. The bar stays a
+ * clean white surface in both themes so it reads as chrome rather than content.
  */
 export default function BottomNavigation({
   currentView,
   onNavigate,
   onOpenAuth,
   onSearchChange,
-  activeProfileSection,
 }: BottomNavigationProps) {
   const db = useDBState();
   const user = db.currentUser;
@@ -56,7 +54,6 @@ export default function BottomNavigation({
   };
 
   const onAccount = ['buyer-profile', 'settings', 'referrals', 'loyalty'].includes(currentView);
-  const ordersSelected = onAccount && (activeProfileSection ?? 'you-overview') === 'you-orders';
 
   const tabs: Tab[] = [
     {
@@ -70,11 +67,11 @@ export default function BottomNavigation({
       },
     },
     {
-      id: 'orders',
-      label: 'Orders',
-      icon: Package,
-      active: ordersSelected,
-      onClick: () => go('buyer-profile', { section: 'you-orders' }),
+      id: 'categories',
+      label: 'Categories',
+      icon: LayoutGrid,
+      active: currentView === 'categories',
+      onClick: () => onNavigate('categories'),
     },
     {
       id: 'chats',
@@ -88,7 +85,7 @@ export default function BottomNavigation({
       id: 'account',
       label: 'Account',
       icon: User,
-      active: onAccount && !ordersSelected,
+      active: onAccount,
       onClick: () => go('buyer-profile', { section: 'you-overview' }),
     },
   ];

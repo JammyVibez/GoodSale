@@ -17,8 +17,7 @@ import Link from 'next/link';
 import {
   Heart, ShoppingCart, Zap, ShieldCheck, Truck, Headphones,
   BadgeCheck, ArrowRight, ChevronRight, Sparkles, Store, Flame, Gavel,
-  Shirt, Cpu, Smartphone, Laptop, Armchair, Apple, Car, BookOpen, LayoutGrid,
-  Package, SlidersHorizontal, TrendingUp, Tag, Clock, Plus, Play, RotateCcw,
+  LayoutGrid, SlidersHorizontal, TrendingUp, Tag, Clock, Plus, Play, RotateCcw,
 } from 'lucide-react';
 import { Product, useDBState } from '../lib/store';
 import { ProductCondition, type Profile, type User } from '@/lib/types';
@@ -38,6 +37,7 @@ import AdSlot from './AdSlot';
 import ProductTile from './marketplace/ProductTile';
 import ProductRail, { type RailProduct } from './marketplace/ProductRail';
 import { COLLECTIONS } from '@/lib/marketplace/collections';
+import { categoryMeta } from '@/lib/marketplace/categoryMeta';
 
 interface LandingViewProps {
   onSelectProduct: (productId: number) => void;
@@ -51,27 +51,13 @@ interface LandingViewProps {
   onSelectState: (state: string) => void;
   wishlistOnly: boolean;
   onWishlistOnlyChange: (value: boolean) => void;
+  /** Category preselected by the Categories screen; applied on mount. */
+  initialCategory?: string | null;
 }
 
 type SortMode = DiscoverySortMode;
 
 const PAGE_SIZE = 24;
-
-const CATEGORY_META: Record<string, { label: string; Icon: React.ComponentType<{ className?: string }> }> = {
-  phones: { label: 'Phones & Tablets', Icon: Smartphone },
-  laptops: { label: 'Laptops', Icon: Laptop },
-  electronics: { label: 'Electronics', Icon: Cpu },
-  fashion: { label: 'Fashion', Icon: Shirt },
-  furniture: { label: 'Home & Living', Icon: Armchair },
-  groceries: { label: 'Groceries', Icon: Apple },
-  beauty: { label: 'Beauty', Icon: Sparkles },
-  vehicles: { label: 'Vehicles', Icon: Car },
-  books: { label: 'Books', Icon: BookOpen },
-};
-
-function categoryMeta(category: string) {
-  return CATEGORY_META[category.trim().toLowerCase()] || { label: category, Icon: Package };
-}
 
 function naira(value: number): string {
   return `₦${Math.round(Number(value) || 0).toLocaleString('en-NG')}`;
@@ -146,12 +132,13 @@ export default function LandingView({
   onSelectState,
   wishlistOnly,
   onWishlistOnlyChange,
+  initialCategory = null,
 }: LandingViewProps) {
   const db = useDBState();
   const { favorites, toggle: toggleFavorite } = useWishlist();
 
   const [activeSlide, setActiveSlide] = useState(0);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(initialCategory);
   const [onlyVerified, setOnlyVerified] = useState(false);
   const [dealsOnly, setDealsOnly] = useState(false);
   const [sameDayOnly, setSameDayOnly] = useState(false);

@@ -25,6 +25,7 @@ const ReferralCenter = dynamic(() => import('../components/referral/ReferralCent
 const BrandCenterView = dynamic(() => import('../components/BrandCenterView'));
 const SellerProfileView = dynamic(() => import('../components/SellerProfileView'));
 const SettingsView = dynamic(() => import('../components/SettingsView'));
+const CategoriesView = dynamic(() => import('../components/CategoriesView'));
 const BuyerProfileView = dynamic(() => import('../components/BuyerProfileView'));
 const TrustSafetyView = dynamic(() => import('../components/TrustSafetyView'));
 const SupportCenterView = dynamic(() => import('../components/SupportCenterView'));
@@ -195,6 +196,9 @@ export default function Home() {
   // Which panel the Account screen opens on — the Orders tab in the bottom nav
   // deep-links straight to the buyer's orders.
   const [profileSection, setProfileSection] = useState<string>('you-overview');
+  // Category the catalogue opens on — set by the Categories screen, cleared
+  // whenever the shopper lands on Home or starts a new search.
+  const [marketplaceCategory, setMarketplaceCategory] = useState<string | null>(null);
   const [history, setHistory] = useState<string[]>([]);
 
   useEffect(() => {
@@ -305,6 +309,9 @@ export default function Home() {
         setSelectedProductId(payload.id);
       }
       setCurrentView('product');
+    } else if (view === 'marketplace') {
+      setMarketplaceCategory(typeof payload?.category === 'string' ? payload.category : null);
+      setCurrentView('marketplace');
     } else {
       setCurrentView(view);
     }
@@ -334,6 +341,7 @@ export default function Home() {
         searchQuery={searchQuery}
         onSearchChange={(query) => {
           setSearchQuery(query);
+          if (query) setMarketplaceCategory(null);
           if (query && currentView !== 'marketplace') setCurrentView('marketplace');
         }}
         cartCount={cart.length}
@@ -375,11 +383,16 @@ export default function Home() {
             onSelectState={setMarketState}
             wishlistOnly={wishlistOnly}
             onWishlistOnlyChange={setWishlistOnly}
+            initialCategory={marketplaceCategory}
             onOpenAuth={(mode?: 'login' | 'register') => {
               setAuthModalMode(mode || 'login');
               setAuthModalOpen(true);
             }}
           />
+        )}
+
+        {currentView === 'categories' && (
+          <CategoriesView onNavigate={handleNavigate} />
         )}
 
         {currentView === 'wallet' && (
@@ -516,7 +529,6 @@ export default function Home() {
         }}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        activeProfileSection={profileSection}
       />
 
     </div>
