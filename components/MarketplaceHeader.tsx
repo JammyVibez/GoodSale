@@ -12,9 +12,10 @@
 import React, { useMemo, useState } from 'react';
 import {
   Search, ShoppingCart, Heart, MapPin, X, ChevronDown,
-  User as UserIcon, Menu,
+  User as UserIcon, Menu, ShieldCheck,
 } from 'lucide-react';
 import { useDBState } from '../lib/store';
+import { UserRole } from '../lib/types';
 import { SmartAvatar } from './ui/SmartImage';
 import Logo from './LogoIcon';
 import NotificationMenu from './NotificationMenu';
@@ -55,6 +56,8 @@ export default function MarketplaceHeader({
     verificationStatus: profile?.verificationStatus,
     verificationExpiresAt: profile?.verificationExpiresAt,
   });
+  // Role comes from the database, never from a client toggle. Only staff see this.
+  const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
   const states = useMemo(() => {
     const set = new Set<string>();
     const profiles = new Map(db.profiles.map((p) => [p.userId, p]));
@@ -97,6 +100,19 @@ export default function MarketplaceHeader({
           </button>
 
           <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => onNavigate('admin')}
+                aria-label="Open admin panel"
+                title="Admin panel"
+                className="inline-flex h-9 w-9 items-center justify-center gap-1.5 rounded-full border border-gold-400/50 bg-gold-300/20 text-[11px] font-bold text-gold-700 transition-colors hover:bg-gold-300/35 focus-ring dark:border-gold-300/35 dark:bg-gold-300/10 dark:text-gold-200 dark:hover:bg-gold-300/20 sm:h-10 sm:w-auto sm:px-3"
+              >
+                <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="hidden sm:inline">Admin</span>
+              </button>
+            )}
+
             <NotificationMenu onNavigate={onNavigate} onOpenAuth={onOpenAuth} />
 
             {/* wishlist */}
