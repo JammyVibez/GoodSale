@@ -1,4 +1,4 @@
-import { callRustAdminRpc } from '@/lib/server/rust-rpc';
+import { callRustAdminRpc, callRustInternalRpc } from '@/lib/server/rust-rpc';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -70,12 +70,17 @@ export async function POST(req: NextRequest) {
             reason: notes || 'Admin refund',
           });
           if (providerRefund?.success && refundId) {
-            await callRustAdminRpc(supabase, 'mark_refund_completed', {
+            const args = {
               p_refund_id: refundId,
               p_provider_reference:
                 (providerRefund as { data?: { transaction_reference?: string } }).data?.transaction_reference ||
                 tx.transaction_id,
-            });
+            };
+            if (process.env.RUST_BACKEND_URL) {
+              await callRustInternalRpc('mark_refund_completed', args);
+            } else {
+              await admin.rpc('mark_refund_completed', args);
+            }
           }
         }
       }
