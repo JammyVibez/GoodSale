@@ -1,4 +1,4 @@
-import { callRustRpc } from '@/lib/server/rust-rpc';
+import { callRustInternalRpc } from '@/lib/server/rust-rpc';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Choose valid campaign dates' }, { status: 400 });
     }
 
-    const { data, error } = await callRustRpc(supabase, 'purchase_sponsored_campaign_v2', {
+    const args = {
       p_user_id: profileId,
       p_ad_type: type,
       p_target_id: Number.isInteger(targetId) && targetId > 0 ? targetId : 0,
@@ -96,7 +96,10 @@ export async function POST(req: NextRequest) {
       p_ends_at: endsAt ? endsAt.toISOString() : null,
       p_daily_budget: dailyBudget == null ? null : Math.round(dailyBudget),
       p_cpc_bid: cpcBid == null ? null : Math.round(cpcBid),
-    });
+    };
+    const { data, error } = process.env.RUST_BACKEND_URL
+      ? await callRustInternalRpc('purchase_sponsored_campaign_v2', args)
+      : await admin.rpc('purchase_sponsored_campaign_v2', args);
 
     if (error) {
       logger.warn('Sponsored campaign creation failed', { type, error: error.message });

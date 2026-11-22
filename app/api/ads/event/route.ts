@@ -1,4 +1,4 @@
-import { callRustRpc } from '@/lib/server/rust-rpc';
+import { callRustInternalRpc } from '@/lib/server/rust-rpc';
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'crypto';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
       .update(`${type}:${type === 'CONVERSION' ? orderId : ip}:${adId}:${bucket}`)
       .digest('hex');
 
-    const { data, error } = await callRustRpc(supabase, 'record_sponsored_ad_event_v2', {
+    const args = {
       p_ad_id: adId,
       p_event_type: type,
       p_dedup_key: dedupKey,
@@ -104,7 +104,10 @@ export async function POST(req: NextRequest) {
       p_category: category,
       p_order_id: orderId,
       p_order_value: orderValue,
-    });
+    };
+    const { data, error } = process.env.RUST_BACKEND_URL
+      ? await callRustInternalRpc('record_sponsored_ad_event_v2', args)
+      : await admin.rpc('record_sponsored_ad_event_v2', args);
 
     if (error) {
       logger.warn('Ad event recording failed', { adId, type, error: error.message });
