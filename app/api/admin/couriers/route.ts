@@ -252,7 +252,7 @@ export async function POST(req: NextRequest) {
         };
         const { error } = process.env.RUST_BACKEND_URL
           ? await callRustInternalRpc('courier_apply_tracking_event', args)
-          : await admin.rpc('courier_apply_tracking_event', args);
+          : await service.rpc('courier_apply_tracking_event', args);
         if (!error) applied += 1;
       }
 
