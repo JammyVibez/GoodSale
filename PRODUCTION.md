@@ -140,10 +140,11 @@ The Next.js API middleware uses Rust/Redis when both `RUST_BACKEND_URL` and `RAT
 
 - `POST /api/upload` → Rust `POST /v1/uploads`: authenticated session verification, account/IP limits, bucket-specific MIME policies, file-signature checks, size limits, generated object names, private identity-document storage and server-side Cloudinary signing.
 - `POST /api/payments/verify` → Rust `POST /v1/payments/verify`: server-to-server Paystack verification, NGN/reference/amount checks, partial-payment reconciliation and the existing idempotent `mark_order_paid_by_reference` RPC.
+- `POST /api/payments/webhook` → Rust `POST /v1/payments/webhook`: Next.js forwards the raw bytes unchanged; Rust verifies the Paystack HMAC-SHA512 signature, then handles successful charges, wallet/premium events, transfer settlement and refund status notifications.
 - All Next.js `/api/*` paths receive a distributed middleware rate-limit check and request-size guard.
 - `POST /api/security/inspect-text` and `POST /api/security/validate-url` expose Rust validation for untrusted plain text and links.
 
-**Not yet migrated:** the remaining account/auth, listing, wallet, premium subscription, Paystack webhook, withdrawal, refund, escrow, dispute, delivery, courier, chat, notification, referral and admin route handlers still run in Next.js. Keep them there until Rust replacements pass contract, authorization, replay/idempotency and financial-flow tests. Do not treat this incremental rollout as a complete Rust backend migration.
+**Not yet migrated:** the remaining account/auth, listing, wallet, premium subscription, withdrawal initiation, refund initiation, escrow, dispute, delivery, courier, chat, notification, referral and admin route handlers still run in Next.js. The signed Paystack webhook receiver is already Rust-backed. Keep them there until Rust replacements pass contract, authorization, replay/idempotency and financial-flow tests. Do not treat this incremental rollout as a complete Rust backend migration.
 
 ### Input and upload safety boundaries
 
@@ -158,4 +159,4 @@ The Rust CI workflow runs formatting, Clippy, unit tests and a release build. A 
 The Next.js middleware also checks the `Origin` header on browser-originated API writes against `NEXT_PUBLIC_APP_URL` and `APP_ALLOWED_ORIGINS`. Provider webhook paths are exempt from browser-origin checks and must rely on their provider signature verification instead. Keep the allowlist exact and include every legitimate production frontend origin.
 
 
-Set a long random `RUST_INTERNAL_SECRET` for trusted Next.js-to-Rust server calls. It protects webhook settlement, courier tracking-event application and server-side referral attribution. It must be set on both the Next.js and Rust containers and must never use a `NEXT_PUBLIC_` prefix. The Rust API exposes only allowlisted database functions; user RPCs retain the caller's Supabase token and admin RPCs are role-checked again inside Rust.
+Set a long random `RUST_INTERNAL_SECRET` for trusted Next.js-to-Rust server calls. It protects internal RPC/job calls, courier tracking-event application and server-side referral attribution. Paystack webhooks use their own HMAC-SHA512 signature verification in Rust. It must be set on both the Next.js and Rust containers and must never use a `NEXT_PUBLIC_` prefix. The Rust API exposes only allowlisted database functions; user RPCs retain the caller's Supabase token and admin RPCs are role-checked again inside Rust.
