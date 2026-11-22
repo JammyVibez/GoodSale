@@ -26,7 +26,8 @@ Fill in at minimum:
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Project Settings → API → `anon` `public` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Project Settings → API → `service_role` (server only) |
 | `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` | Paystack Dashboard → Settings → API Keys |
-| `PAYSTACK_SECRET_KEY` | Paystack secret key |
+| `PAYSTACK_SECRET_KEY` | Paystack secret key (server only) |
+| `PAYSTACK_WEBHOOK_SECRET` | Dedicated Paystack webhook HMAC secret; defaults to `PAYSTACK_SECRET_KEY` when omitted |
 | `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` locally |
 | `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` + `CLOUDINARY_API_KEY` + `CLOUDINARY_API_SECRET` | Cloudinary dashboard → Settings → API Keys (optional, see below) |
 
@@ -215,4 +216,4 @@ npm run backend:check
 
 Before running Compose, set a strong random `RATE_LIMIT_SHARED_SECRET` in `.env.local`. The Next.js middleware uses that secret to ask the Rust service for shared Redis-backed rate-limit decisions. Redis is internal to the Compose network and is not published to the host.
 
-**Migration status:** media uploads and Paystack order verification are routed to Rust when `RUST_BACKEND_URL` is configured. The rest of the current Next.js API handlers remain in place while their Supabase, checkout, escrow, payout, webhook, delivery and admin contracts are migrated and tested. This is deliberate: financial handlers must retain their idempotency, role checks and exact database RPC semantics.
+**Migration status:** media uploads, Paystack order verification and signed Paystack webhook processing are routed to Rust when `RUST_BACKEND_URL` is configured. The webhook route forwards the original request bytes unchanged. The remaining Next.js API handlers stay in place while their Supabase, checkout, escrow, payout, delivery and admin contracts are migrated and tested. This is deliberate: financial handlers must retain their idempotency, role checks and exact database RPC semantics.
