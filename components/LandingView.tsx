@@ -645,7 +645,7 @@ export default function LandingView({
 
         {/* ───────────────────── Quick category navigation ───────────────────── */}
         {categories.length > 0 && (
-          <nav aria-label="Browse categories" className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
+          <nav aria-label="Browse categories" className="mt-3 grid grid-cols-6 gap-1.5 sm:gap-2">
             {categories.slice(0, 5).map((category) => {
               const { Icon, label } = categoryMeta(category.name);
               const selected = selectedCategory?.toLowerCase() === category.name.toLowerCase();
@@ -658,7 +658,7 @@ export default function LandingView({
                     setSelectedCategory(selected ? null : category.name);
                     scrollToId('catalog-section');
                   }}
-                  className={`group flex min-h-[82px] flex-col items-center justify-center gap-2 rounded-2xl border px-2 py-3 text-center transition-all active:scale-[0.97] focus-ring ${selected
+                  className={`group flex min-h-[76px] flex-col items-center justify-center gap-1.5 rounded-2xl border px-1.5 py-2 text-center transition-all active:scale-[0.97] focus-ring ${selected
                     ? 'border-jade-600 bg-jade-600 text-white shadow-md shadow-jade-900/10'
                     : 'border-ink-150 bg-white text-ink-700 hover:border-jade-400 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-200'}`}
                 >
@@ -671,7 +671,7 @@ export default function LandingView({
             })}
             <Link
               href="/categories"
-              className="flex min-h-[82px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-ink-200 bg-ink-50 text-ink-600 transition-colors hover:border-jade-400 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-300"
+              className="flex min-h-[76px] flex-col items-center justify-center gap-1.5 rounded-2xl border border-dashed border-ink-200 bg-ink-50 text-ink-600 transition-colors hover:border-jade-400 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-300"
             >
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-gold-300/20 text-gold-600 dark:text-gold-300">
                 <LayoutGrid className="h-5 w-5" aria-hidden="true" />
