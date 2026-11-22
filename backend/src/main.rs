@@ -373,6 +373,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/v1/rpc/:name",
             post(rpc::user_rpc).layer(DefaultBodyLimit::max(256 * 1024)),
         )
+        .route("/v1/wallet/status", get(wallet_premium::wallet_status))
+        .route("/v1/premium/subscriptions", get(wallet_premium::premium_subscriptions))
+        .route("/v1/public/premium-benefits", get(wallet_premium::premium_benefits))
         .route(
             "/v1/wallet/fund/initialize",
             post(wallet_premium::initialize_wallet).layer(DefaultBodyLimit::max(16 * 1024)),

@@ -5,6 +5,13 @@ import { logger, publicErrorMessage } from '@/lib/logger';
 /** GET /api/premium/benefits — public, admin-owned membership benefit copy. */
 export async function GET() {
   try {
+    const rustBackend = process.env.RUST_BACKEND_URL?.trim().replace(/\/+$/, '');
+    if (rustBackend) {
+      const upstream = await fetch(`${rustBackend}/v1/public/premium-benefits`, { cache: 'no-store' });
+      const payload = await upstream.json().catch(() => ({ success: true, benefits: [] }));
+      return NextResponse.json(payload, { status: upstream.status });
+    }
+
     const admin = createAdminClient();
     if (!admin) return NextResponse.json({ success: true, benefits: [] });
     const { data, error } = await admin

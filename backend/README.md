@@ -26,6 +26,9 @@ The repository originally contained 84 Next.js API route handlers. This migratio
 | POST | `/v1/uploads` | Authenticated and validated media upload |
 | POST | `/v1/payments/verify` | Paystack order verification and buyer-bound reconciliation |
 | POST | `/v1/payments/webhook` | Raw-body Paystack signature verification and event reconciliation |
+| GET | `/v1/wallet/status` | Authenticated wallet limits, provider status and funding history |
+| GET | `/v1/premium/subscriptions` | Authenticated membership state and payment history |
+| GET | `/v1/public/premium-benefits` | Public membership plan benefit copy |
 | POST | `/internal/rate-limit` | Private Next.js-to-Rust Redis rate-limit decision (shared-secret protected) |
 | POST | `/v1/security/inspect-text` | Unicode/control-character validation for plain text |
 | POST | `/v1/security/validate-url` | HTTP(S) URL validation for displayed links |

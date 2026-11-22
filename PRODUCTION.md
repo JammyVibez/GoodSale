@@ -149,6 +149,7 @@ while forwarding the relevant server work to Rust:
 - `POST /api/upload` → `POST /v1/uploads`: authentication, bucket policy, content-signature checks, size limits, generated object names and signed media storage.
 - `POST /api/payments/verify` → `POST /v1/payments/verify`: Paystack verification, amount/currency/reference checks, buyer ownership and idempotent order reconciliation.
 - `POST /api/payments/webhook` → `POST /v1/payments/webhook`: Next.js forwards raw bytes unchanged; Rust verifies Paystack HMAC-SHA512 and processes charge, wallet, premium, transfer and refund events.
+- `GET /api/wallet/status` and `GET /api/premium/subscriptions` → authenticated Rust read endpoints; `GET /api/premium/benefits` → Rust public benefit catalogue.
 
 The Rust container requires Supabase URL, anon and service-role credentials,
 `PAYSTACK_SECRET_KEY`, `REDIS_URL`, `RATE_LIMIT_REQUIRE_REDIS=true`,
