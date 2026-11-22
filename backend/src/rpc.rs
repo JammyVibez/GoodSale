@@ -255,7 +255,8 @@ async fn admin_auth(s: &AppState, token: &str, name: &str) -> Result<(), StatusC
     }
 }
 pub async fn require_admin(state: &AppState, headers: &HeaderMap) -> Result<String, StatusCode> {
-    let token = headers.get(header::AUTHORIZATION)
+    let token = headers
+        .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
         .filter(|v| !v.is_empty())
