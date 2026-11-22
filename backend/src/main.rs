@@ -1,4 +1,5 @@
 mod account;
+mod ads;
 mod config;
 mod payments;
 mod rate_limit;
@@ -343,6 +344,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let app = Router::new()
         .route("/health/live", get(live))
+        .route("/v1/ads/serve", get(ads::serve))
         .route("/health/ready", get(ready))
         .route(
             "/internal/rate-limit",

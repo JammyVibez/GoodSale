@@ -5,13 +5,30 @@ import { logger } from '@/lib/logger';
 const PLACEMENTS = new Set(['HOME', 'CATEGORY', 'DETAIL', 'CHAT', 'DASHBOARD', 'SEARCH']);
 
 /**
- * GET /api/ads/serve?placement=HOME&state=Lagos&category=Phones
- *
- * Server-authoritative ad selection. It never trusts the browser's cached ad
- * list: status, moderation, schedule, budget, placement and targeting are all
- * rechecked before a creative is returned.
+ * GET /api/ads/serve — Rust-backed targeting and spend-cap enforcement.
+ * Supabase fallback remains available during a staged Rust rollout.
  */
 export async function GET(req: NextRequest) {
+  const rustBackend = process.env.RUST_BACKEND_URL?.trim().replace(/\/+$/, '');
+  if (rustBackend) {
+    try {
+      const query = req.nextUrl.searchParams.toString();
+      const upstream = await fetch(
+        `${rustBackend}/v1/ads/serve${query ? `?${query}` : ''}`,
+        { cache: 'no-store' }
+      );
+      const payload = await upstream.json().catch(() => ({ success: true, ad: null }));
+      return NextResponse.json(payload, { status: upstream.status });
+    } catch (error) {
+      logger.warn('Rust ad serving unavailable', { error: String(error) });
+      return NextResponse.json({ success: true, ad: null });
+    }
+  }
+
+  return serveFromSupabase(req);
+}
+
+async function serveFromSupabase(req: NextRequest) {
   try {
     const placement = String(req.nextUrl.searchParams.get('placement') || 'HOME').toUpperCase();
     if (!PLACEMENTS.has(placement)) {
