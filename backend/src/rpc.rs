@@ -254,6 +254,16 @@ async fn admin_auth(s: &AppState, token: &str, name: &str) -> Result<(), StatusC
         Err(StatusCode::FORBIDDEN)
     }
 }
+pub async fn require_admin(state: &AppState, headers: &HeaderMap) -> Result<String, StatusCode> {
+    let token = headers.get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .filter(|v| !v.is_empty())
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+    admin_auth(state, token, "admin_payout_begin").await?;
+    Ok(token.to_owned())
+}
+
 pub async fn user_rpc(
     State(s): State<AppState>,
     Path(name): Path<String>,

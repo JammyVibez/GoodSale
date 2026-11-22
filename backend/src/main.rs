@@ -2,6 +2,7 @@ mod account;
 mod ads;
 mod config;
 mod payments;
+mod payouts;
 mod rate_limit;
 mod rpc;
 mod security;
@@ -362,6 +363,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             get(account::get_settings)
                 .patch(account::patch_settings)
                 .layer(DefaultBodyLimit::max(32 * 1024)),
+        )
+        .route(
+            "/v1/admin/withdrawals/review",
+            post(payouts::review).layer(DefaultBodyLimit::max(32 * 1024)),
         )
         .route(
             "/v1/payments/verify",
