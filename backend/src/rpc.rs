@@ -76,11 +76,8 @@ const ADMIN_RPCS: &[&str] = &[
     "admin_payout_fail",
     "admin_payout_processing",
     "admin_record_courier_shipment",
-    "courier_apply_tracking_event",
     "admin_resolve_delivery_failure",
     "admin_review_rider",
-    "admin_review_sponsored_campaign",
-    "admin_review_flash_sale",
     "admin_set_delivery_settings",
     "admin_set_rider_service_areas",
     "admin_set_rider_commission",
@@ -91,13 +88,8 @@ const ADMIN_RPCS: &[&str] = &[
     "admin_referral_analytics",
     "admin_disqualify_referral",
     "admin_mark_referral_reviewed",
-    "issue_premium_credits",
-    "referral_evaluate",
-    "run_premium_jobs",
     "expire_rider_assignments",
     "resolve_dispute",
-    "admin_list_buyer_protection_claims",
-    "admin_review_buyer_protection_claim",
 ];
 const PUBLIC_RPCS: &[&str] = &["seller_public_verification", "shipment_tracking_lookup"];
 const INTERNAL_RPCS: &[&str] = &[
@@ -116,6 +108,13 @@ const INTERNAL_RPCS: &[&str] = &[
     "purchase_sponsored_campaign_v2",
     "record_sponsored_ad_event_v2",
     "premium_credit_balance",
+    "admin_review_buyer_protection_claim",
+    "admin_list_buyer_protection_claims",
+    "run_premium_jobs",
+    "referral_evaluate",
+    "issue_premium_credits",
+    "admin_review_flash_sale",
+    "admin_review_sponsored_campaign",
 ];
 const INTERNAL_JOBS: &[&str] = &[
     "run_delivery_jobs",
@@ -444,6 +443,19 @@ mod tests {
     fn route_allowlists_are_closed() {
         assert!(USER_RPCS.contains(&"rider_apply"));
         assert!(INTERNAL_RPCS.contains(&"mark_refund_completed"));
+        for name in [
+            "courier_apply_tracking_event",
+            "admin_review_sponsored_campaign",
+            "admin_review_flash_sale",
+            "issue_premium_credits",
+            "referral_evaluate",
+            "run_premium_jobs",
+            "admin_list_buyer_protection_claims",
+            "admin_review_buyer_protection_claim",
+        ] {
+            assert!(INTERNAL_RPCS.contains(&name));
+            assert!(!ADMIN_RPCS.contains(&name));
+        }
         assert!(PUBLIC_RPCS.contains(&"shipment_tracking_lookup"));
         assert!(!USER_RPCS.contains(&"delete_everything"));
     }

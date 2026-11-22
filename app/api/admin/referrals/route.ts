@@ -1,4 +1,4 @@
-import { callRustAdminRpc } from '@/lib/server/rust-rpc';
+import { callRustAdminRpc, callRustInternalRpc } from '@/lib/server/rust-rpc';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -416,9 +416,10 @@ export async function POST(req: NextRequest) {
       if (!referralId) {
         return NextResponse.json({ success: false, error: 'Referral is required' }, { status: 400 });
       }
-      const { data, error } = await callRustAdminRpc(supabase, 'referral_evaluate', {
-        p_referral_id: referralId,
-      });
+      const args = { p_referral_id: referralId };
+      const { data, error } = process.env.RUST_BACKEND_URL
+        ? await callRustInternalRpc('referral_evaluate', args)
+        : await admin.rpc('referral_evaluate', args);
       if (error) throw error;
       await admin.from('audit_logs').insert({
         user_id: adminId,

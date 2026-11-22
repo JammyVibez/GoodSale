@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { callRustAdminRpc } from '@/lib/server/rust-rpc';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { callRustInternalRpc } from '@/lib/server/rust-rpc';
 import { logger, publicErrorMessage } from '@/lib/logger';
 import { rateLimitAsync, clientIpFromRequest } from '@/lib/rate-limit';
 
@@ -13,17 +14,18 @@ async function adminContext() {
   if (!profile || !['ADMIN', 'SUPER_ADMIN'].includes(String(profile.role))) {
     return { error: 'Admin only', status: 403 as const };
   }
-  return { supabase, profile };
+  const admin = createAdminClient();
+  if (!admin) return { error: 'Claims service is not configured', status: 503 as const };
+  return { supabase, admin, profile };
 }
 
 export async function GET() {
   try {
     const ctx = await adminContext();
     if ('error' in ctx) return NextResponse.json({ success: false, error: ctx.error }, { status: ctx.status });
-    const { data, error } = await callRustAdminRpc<Record<string, unknown>[]>(
-      ctx.supabase,
-      'admin_list_buyer_protection_claims',
-    );
+    const { data, error } = process.env.RUST_BACKEND_URL
+      ? await callRustInternalRpc<Record<string, unknown>[]>('admin_list_buyer_protection_claims')
+      : await ctx.admin.rpc('admin_list_buyer_protection_claims');
     if (error) return NextResponse.json({ success: false, error: error.message }, { status: Number(error.code) || 503 });
     return NextResponse.json({ success: true, claims: data || [] });
   } catch (error) {
@@ -51,11 +53,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Add a decision note' }, { status: 400 });
     }
 
-    const { data, error } = await callRustAdminRpc<{ success: boolean; claimId: number }>(
-      ctx.supabase,
-      'admin_review_buyer_protection_claim',
-      { p_claim_id: claimId, p_status: status, p_resolution: resolution },
-    );
+    const args = { p_claim_id: claimId, p_status: status, p_resolution: resolution };
+    const { data, error } = process.env.RUST_BACKEND_URL
+      ? await callRustInternalRpc<{ success: boolean; claimId: number }>('admin_review_buyer_protection_claim', args)
+      : await ctx.admin.rpc('admin_review_buyer_protection_claim', args);
     if (error || !data?.success) {
       const message = error?.message || 'Could not update claim';
       return NextResponse.json({ success: false, error: message }, { status: /not found/i.test(message) ? 404 : Number(error?.code) || 400 });

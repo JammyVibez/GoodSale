@@ -1,4 +1,4 @@
-import { callRustAdminRpc } from '@/lib/server/rust-rpc';
+import { callRustInternalRpc } from '@/lib/server/rust-rpc';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -53,12 +53,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Choose approve or reject' }, { status: 400 });
     }
 
-    const { data, error } = await callRustAdminRpc(ctx.supabase, 'admin_review_sponsored_campaign', {
+    const args = {
       p_ad_id: campaignId,
       p_admin_id: ctx.profile.id,
       p_action: action,
       p_reason: reason,
-    });
+    };
+    const { data, error } = process.env.RUST_BACKEND_URL
+      ? await callRustInternalRpc('admin_review_sponsored_campaign', args)
+      : await ctx.admin.rpc('admin_review_sponsored_campaign', args);
 
     if (error) {
       logger.warn('Sponsored campaign moderation failed', { campaignId, error: error.message });
