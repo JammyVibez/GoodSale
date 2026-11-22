@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
       .update(`${type}:${type === 'CONVERSION' ? orderId : ip}:${adId}:${bucket}`)
       .digest('hex');
 
-    const { data, error } = await admin.rpc('record_sponsored_ad_event_v2', {
+    const { data, error } = await callRustRpc(supabase, 'record_sponsored_ad_event_v2', {
       p_ad_id: adId,
       p_event_type: type,
       p_dedup_key: dedupKey,

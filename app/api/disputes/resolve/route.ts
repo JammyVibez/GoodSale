@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
               reason: notes || 'Dispute refund',
             });
             if ((paystackRefund as { success?: boolean })?.success) {
-              await admin.rpc('mark_refund_completed', {
+              await callRustAdminRpc(supabase, 'mark_refund_completed', {
                 p_refund_id: refundId,
                 p_provider_reference:
                   (paystackRefund as { data?: { transaction_reference?: string } })?.data

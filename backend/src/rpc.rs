@@ -63,6 +63,9 @@ const USER_RPCS: &[&str] = &[
     "remove_my_business_staff",
     "get_my_business_staff_overview",
     "bulk_update_my_inventory",
+    "seller_attach_verification_document",
+    "seller_withdraw_verification",
+    "seller_save_verification",
 ];
 const ADMIN_RPCS: &[&str] = &[
     "admin_auto_assign_delivery",
@@ -113,6 +116,7 @@ const INTERNAL_RPCS: &[&str] = &[
     "wallet_funding_event",
     "premium_activation_event",
     "order_payment_event",
+    "run_verification_expiry",
 ];
 const INTERNAL_JOBS: &[&str] = &[
     "run_delivery_jobs",

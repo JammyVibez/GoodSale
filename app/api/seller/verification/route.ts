@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { callRustRpc, callRustInternalRpc } from '@/lib/server/rust-rpc';
 import { logger, publicErrorMessage } from '@/lib/logger';
 import { rateLimit, clientIpFromRequest } from '@/lib/rate-limit';
 import {
@@ -103,7 +104,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Expire anything past its review window before showing the status.
-    await supabase.rpc('run_verification_expiry').then(
+    await (process.env.RUST_BACKEND_URL ? callRustInternalRpc('run_verification_expiry') : supabase.rpc('run_verification_expiry')).then(
       () => undefined,
       () => undefined
     );
@@ -286,7 +287,7 @@ export async function POST(req: NextRequest) {
       if (!Number.isFinite(applicationId)) {
         return NextResponse.json({ success: false, error: 'Application is required.' }, { status: 400 });
       }
-      const { error } = await supabase.rpc('seller_withdraw_verification', {
+      const { error } = await callRustRpc(supabase, 'seller_withdraw_verification', {
         p_application_id: applicationId,
       });
       if (error) {
@@ -341,7 +342,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const { data, error } = await supabase.rpc('seller_save_verification', {
+    const { data, error } = await callRustRpc(supabase, 'seller_save_verification', {
       p_payload: payload,
       p_submit: action === 'SUBMIT',
     });

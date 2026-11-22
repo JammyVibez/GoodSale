@@ -21,7 +21,7 @@ export async function GET() {
     if (!profileId) return NextResponse.json({ success: false, error: 'Profile not found' }, { status: 404 });
 
     const [balanceResult, lotsResult, ledgerResult] = await Promise.all([
-      admin.rpc('premium_credit_balance', { p_user_id: profileId }),
+      callRustRpc(supabase, 'premium_credit_balance', { p_user_id: profileId }),
       admin
         .from('premium_credit_lots')
         .select('id,amount,remaining,source,reference,expires_at,created_at')

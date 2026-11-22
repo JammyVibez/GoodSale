@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Choose valid campaign dates' }, { status: 400 });
     }
 
-    const { data, error } = await admin.rpc('purchase_sponsored_campaign_v2', {
+    const { data, error } = await callRustRpc(supabase, 'purchase_sponsored_campaign_v2', {
       p_user_id: profileId,
       p_ad_type: type,
       p_target_id: Number.isInteger(targetId) && targetId > 0 ? targetId : 0,

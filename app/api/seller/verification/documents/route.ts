@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { callRustRpc } from '@/lib/server/rust-rpc';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { logger, publicErrorMessage } from '@/lib/logger';
 import { rateLimit, clientIpFromRequest } from '@/lib/rate-limit';
@@ -128,7 +129,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { error: attachError } = await supabase.rpc('seller_attach_verification_document', {
+    const { error: attachError } = await callRustRpc(supabase, 'seller_attach_verification_document', {
       p_application_id: applicationId,
       p_slot: slot,
       p_storage_path: path,
