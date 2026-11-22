@@ -108,18 +108,14 @@ fn empty() -> Response {
     (StatusCode::OK, Json(json!({ "success": true, "ad": null }))).into_response()
 }
 
-pub async fn serve(
-    State(state): State<AppState>,
-    Query(query): Query<ServeQuery>,
-) -> Response {
+pub async fn serve(State(state): State<AppState>, Query(query): Query<ServeQuery>) -> Response {
     let placement = query
         .placement
         .as_deref()
         .unwrap_or("HOME")
         .trim()
         .to_ascii_uppercase();
-    if !["HOME", "CATEGORY", "DETAIL", "CHAT", "DASHBOARD", "SEARCH"]
-        .contains(&placement.as_str())
+    if !["HOME", "CATEGORY", "DETAIL", "CHAT", "DASHBOARD", "SEARCH"].contains(&placement.as_str())
     {
         return empty();
     }
@@ -172,12 +168,7 @@ pub async fn serve(
         .unwrap_or_default();
         spend_rows
             .iter()
-            .filter_map(|row| {
-                Some((
-                    row.get("ad_id")?.as_i64()?,
-                    number(row.get("spend")),
-                ))
-            })
+            .filter_map(|row| Some((row.get("ad_id")?.as_i64()?, number(row.get("spend")))))
             .collect::<HashMap<_, _>>()
     };
 
@@ -246,7 +237,6 @@ pub async fn serve(
     });
     (StatusCode::OK, Json(payload)).into_response()
 }
-
 
 #[cfg(test)]
 mod tests {
