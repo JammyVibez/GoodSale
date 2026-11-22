@@ -536,10 +536,10 @@ export default function LandingView({
         <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
           <div className="grid gap-2.5">
             {/* rotating banner */}
-            <div className="relative flex min-h-[218px] items-center overflow-hidden rounded-[1.75rem] px-5 py-6 text-white shadow-[0_24px_56px_-36px_rgba(6,37,31,0.72)] gs-hero-panel sm:min-h-[250px] sm:px-7 sm:py-7">
+            <div className="relative flex min-h-[236px] items-center overflow-hidden rounded-[2rem] border border-white/10 px-5 py-6 text-white shadow-[0_30px_72px_-40px_rgba(6,37,31,0.82)] gs-hero-panel sm:min-h-[270px] sm:px-8 sm:py-8">
               <div aria-hidden className="pointer-events-none absolute -left-10 -top-16 h-48 w-48 rounded-full bg-jade-500/25 blur-3xl" />
               <div aria-hidden className="pointer-events-none absolute -bottom-24 right-0 h-56 w-56 rounded-full bg-gold-400/10 blur-3xl" />
-              <div className="relative z-10 max-w-[64%] sm:max-w-md">
+              <div className="relative z-10 max-w-[60%] sm:max-w-md">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-gold-300 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-ink-950">
                   <Flame className="h-3 w-3" aria-hidden="true" />
                   {slide.eyebrow}
@@ -593,7 +593,7 @@ export default function LandingView({
                       key={product.id}
                       type="button"
                       onClick={() => onSelectProduct(product.id)}
-                      className="relative h-24 w-16 overflow-hidden rounded-xl border border-white/15 bg-white/5 shadow-lg transition-transform hover:-translate-y-0.5 focus-ring sm:h-36 sm:w-32 sm:rounded-2xl"
+                      className="gs-hero-product relative h-32 w-[5.25rem] overflow-hidden rounded-2xl border border-white/20 bg-white/5 shadow-2xl transition-transform hover:-translate-y-1 focus-ring sm:h-40 sm:w-32 sm:rounded-[1.4rem]"
                       aria-label={`View ${product.title}`}
                     >
                       <SmartImage
@@ -658,7 +658,7 @@ export default function LandingView({
                     setSelectedCategory(selected ? null : category.name);
                     scrollToId('catalog-section');
                   }}
-                  className={`group flex min-h-[76px] flex-col items-center justify-center gap-1.5 rounded-2xl border px-1.5 py-2 text-center transition-all active:scale-[0.97] focus-ring ${selected
+                  className={`gs-category-tile group flex min-h-[80px] flex-col items-center justify-center gap-1.5 rounded-[1.2rem] border px-1.5 py-2 text-center transition-all active:scale-[0.97] focus-ring ${selected
                     ? 'border-jade-600 bg-jade-600 text-white shadow-md shadow-jade-900/10'
                     : 'border-ink-150 bg-white text-ink-700 hover:border-jade-400 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-200'}`}
                 >
@@ -671,7 +671,7 @@ export default function LandingView({
             })}
             <Link
               href="/categories"
-              className="flex min-h-[76px] flex-col items-center justify-center gap-1.5 rounded-2xl border border-dashed border-ink-200 bg-ink-50 text-ink-600 transition-colors hover:border-jade-400 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-300"
+              className="gs-category-tile flex min-h-[80px] flex-col items-center justify-center gap-1.5 rounded-[1.2rem] border border-dashed border-ink-200 bg-ink-50 text-ink-600 transition-colors hover:border-jade-400 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-300"
             >
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-gold-300/20 text-gold-600 dark:text-gold-300">
                 <LayoutGrid className="h-5 w-5" aria-hidden="true" />
@@ -721,9 +721,9 @@ export default function LandingView({
               variant="jade"
               headerExtra={
                 flashEndsAt ? (
-                  <span className="hidden items-center gap-1.5 text-[10px] font-semibold text-jade-100/70 sm:inline-flex">
+                  <span className="inline-flex shrink-0 items-center gap-1.5 text-[10px] font-semibold text-jade-100/75">
                     <Clock className="h-3 w-3" aria-hidden="true" />
-                    Ends {new Date(flashEndsAt).toLocaleString('en-NG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    <Countdown hours={countdown.hours} minutes={countdown.minutes} seconds={countdown.seconds} tone="dark" />
                   </span>
                 ) : null
               }
