@@ -474,7 +474,7 @@ pub async fn receive(
         );
     }
 
-    let event: Value = match serde_json::from_slice(&raw_body) {
+    let event: Value = match serde_json::from_slice::<Value>(&raw_body) {
         Ok(event) if event.is_object() => event,
         _ => {
             return reply(
