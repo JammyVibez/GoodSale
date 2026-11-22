@@ -63,7 +63,7 @@
 7. **Optional**
    - `GEMINI_API_KEY` — AI listing / search tips
    - `RESEND_API_KEY` + `EMAIL_FROM` — dispute / payout and delivery emails
-   - `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` — distributed rate limits
+   - Rate limits need no extra service: they run on the Supabase `check_rate_limit` RPC (migration 042)
    - `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` — error capture when SDK wired
 
 See **`.env.example`** for the complete variable list.
@@ -120,31 +120,48 @@ npm run build && npm start
 Smoke test: sign up → list with photos → buy with Paystack → ship → buyer PIN release → seller withdraw → admin approve Transfer.
 
 
-## Rust API, distributed limits and safe input handling
+## Rate limits and safe input handling
 
-The Rust service is built from `backend/` and runs alongside Next.js. Docker Compose starts the Rust API and a private Redis 7 service; Redis persistence uses the Compose volume `redis-data`.
+Supabase is the only backend. Shared API rate limiting runs on the Postgres
+`check_rate_limit` RPC from `supabase/migrations/042_supabase_rate_limits.sql`:
+an atomic fixed-window counter in the `rate_limits` table (RLS on, no public
+policies, `security definer` function granted to anon/authenticated). Every
+server instance therefore shares counters without Redis, Upstash or a Rust
+service. No extra environment variables are required — it uses
+`NEXT_PUBLIC_SUPABASE_URL` plus the anon (or service-role) key.
+
+If the RPC cannot be reached the middleware logs a warning and serves the
+request instead of failing closed with 503, so a brief Supabase hiccup cannot
+take the whole API offline.
 
 **Required deployment settings**
-- `REDIS_URL`: private Redis connection string for the Rust service.
-- `RATE_LIMIT_REQUIRE_REDIS=true`: production must not silently fall back to per-process memory.
-- `RATE_LIMIT_SHARED_SECRET`: long random secret shared only by the Next.js server and Rust service. It authenticates Next.js calls to the Rust-backed distributed rate-limit endpoint.
-- `RUST_BACKEND_URL`: internal URL from Next.js to Rust, for example `http://backend:8080` in Compose.
 - Supabase URL, anon key and service-role key, plus `PAYSTACK_SECRET_KEY` for order verification.
 - Cloudinary credentials are optional. Government-ID files always stay in the private Supabase bucket.
 
-If deploying outside Compose, expose the Rust service only to the Next.js server/private network. Do not publish port 8080 or expose the service-role key, Paystack secret, Cloudinary secret or shared rate-limit secret to the browser.
+Do not expose the service-role key, Paystack secret or Cloudinary secret to the browser.
 
-The Next.js API middleware uses Rust/Redis when both `RUST_BACKEND_URL` and `RATE_LIMIT_SHARED_SECRET` are configured. Upstash REST can be used instead by setting both `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`. In production, API requests fail closed with 503 if neither distributed limiter is configured or the configured limiter is unavailable. Do not launch with these settings missing.
+### Rust API integration (fork branch)
 
-### What is routed through Rust now
+The fork runs the Rust service in `backend/` alongside Next.js. With
+`RUST_BACKEND_URL` configured, the browser-facing routes preserve their URLs
+while forwarding the relevant server work to Rust:
 
-- `POST /api/upload` → Rust `POST /v1/uploads`: authenticated session verification, account/IP limits, bucket-specific MIME policies, file-signature checks, size limits, generated object names, private identity-document storage and server-side Cloudinary signing.
-- `POST /api/payments/verify` → Rust `POST /v1/payments/verify`: server-to-server Paystack verification, NGN/reference/amount checks, partial-payment reconciliation and the existing idempotent `mark_order_paid_by_reference` RPC.
-- `POST /api/payments/webhook` → Rust `POST /v1/payments/webhook`: Next.js forwards the raw bytes unchanged; Rust verifies the Paystack HMAC-SHA512 signature, then handles successful charges, wallet/premium events, transfer settlement and refund status notifications.
-- All Next.js `/api/*` paths receive a distributed middleware rate-limit check and request-size guard.
-- `POST /api/security/inspect-text` and `POST /api/security/validate-url` expose Rust validation for untrusted plain text and links.
+- `POST /api/upload` → `POST /v1/uploads`: authentication, bucket policy, content-signature checks, size limits, generated object names and signed media storage.
+- `POST /api/payments/verify` → `POST /v1/payments/verify`: Paystack verification, amount/currency/reference checks, buyer ownership and idempotent order reconciliation.
+- `POST /api/payments/webhook` → `POST /v1/payments/webhook`: Next.js forwards raw bytes unchanged; Rust verifies Paystack HMAC-SHA512 and processes charge, wallet, premium, transfer and refund events.
 
-**Not yet migrated:** the remaining account/auth, listing, wallet, premium subscription, withdrawal initiation, refund initiation, escrow, dispute, delivery, courier, chat, notification, referral and admin route handlers still run in Next.js. The signed Paystack webhook receiver is already Rust-backed. Keep them there until Rust replacements pass contract, authorization, replay/idempotency and financial-flow tests. Do not treat this incremental rollout as a complete Rust backend migration.
+The Rust container requires Supabase URL, anon and service-role credentials,
+`PAYSTACK_SECRET_KEY`, `REDIS_URL`, `RATE_LIMIT_REQUIRE_REDIS=true`,
+`RATE_LIMIT_SHARED_SECRET` and `RUST_INTERNAL_SECRET`. Set
+`PAYSTACK_WEBHOOK_SECRET` to the provider's webhook secret (or allow the Rust
+service to use `PAYSTACK_SECRET_KEY` as fallback). Keep the Rust service private;
+port 8080 and all service credentials must stay off public networks.
+
+**Remaining migration work:** account/auth, listings/catalogue, wallet initiation,
+escrow, disputes, delivery, courier, chat, notification, referral and admin
+business handlers still have Next.js implementations. Do not remove them until
+Rust equivalents preserve Supabase RLS, authorization, idempotency and response
+contracts and pass integration tests.
 
 ### Input and upload safety boundaries
 
@@ -159,4 +176,4 @@ The Rust CI workflow runs formatting, Clippy, unit tests and a release build. A 
 The Next.js middleware also checks the `Origin` header on browser-originated API writes against `NEXT_PUBLIC_APP_URL` and `APP_ALLOWED_ORIGINS`. Provider webhook paths are exempt from browser-origin checks and must rely on their provider signature verification instead. Keep the allowlist exact and include every legitimate production frontend origin.
 
 
-Set a long random `RUST_INTERNAL_SECRET` for trusted Next.js-to-Rust server calls. It protects internal RPC/job calls, courier tracking-event application and server-side referral attribution. Paystack webhooks use their own HMAC-SHA512 signature verification in Rust. It must be set on both the Next.js and Rust containers and must never use a `NEXT_PUBLIC_` prefix. The Rust API exposes only allowlisted database functions; user RPCs retain the caller's Supabase token and admin RPCs are role-checked again inside Rust.
+Set a long random `RUST_INTERNAL_SECRET` for private Next.js-to-Rust RPC/job calls, courier tracking-event application and server-side referral attribution. Paystack webhooks use HMAC-SHA512 verification in the Rust webhook endpoint. It must be set on both the Next.js and Rust containers and must never use a `NEXT_PUBLIC_` prefix. The Rust API exposes only allowlisted database functions; user RPCs retain the caller's Supabase token and admin RPCs are role-checked again inside Rust.

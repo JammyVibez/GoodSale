@@ -1,14 +1,16 @@
 // components/BuyerProfileView.tsx
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Shield, Award, MapPin, CheckCircle, Package, Clock, AlertTriangle, 
   ChevronRight, Calendar, Star, ArrowLeft, Key, CreditCard, Lock,
   Download, Check, Compass, Sliders, Truck, Store, Camera, Loader2, ShieldCheck, Gift,
   Heart, Pencil, Wallet, Sparkles, LayoutGrid, Mail, Phone, ReceiptText, Inbox, Filter,
+  RotateCcw, Video,
 } from 'lucide-react';
 import { useDBState, dbOperations, OrderStatus, Order, UserRole } from '../lib/store';
+import { canBuyerReviewProof } from '@/lib/escrow/proofAndSplit';
 import LiveSafeMeetMap from './LiveSafeMeetMap';
 import OrderTrackingCard, { hasLiveTracking } from './OrderTrackingCard';
 import { SmartAvatar, SmartImage } from './ui/SmartImage';
@@ -22,16 +24,24 @@ import { isVerifiedSeller } from '@/lib/verification';
 import { resolveEntitlements, membershipLabel } from '@/lib/entitlements';
 import { useWishlist } from '@/lib/hooks/useWishlist';
 import VerifiedBadge from '@/components/verification/VerifiedBadge';
+import { PWAInstallButton } from '@/components/pwa/PWAInstallButton';
 
 interface BuyerProfileViewProps {
   onBack?: () => void;
   onNavigate?: (view: string, payload?: any) => void;
   onOpenAuth?: () => void;
+  /** Panel to open on mount — the bottom-nav Orders tab deep-links here. */
+  initialSection?: YouSection;
 }
 
 type YouSection = 'you-overview' | 'you-saved' | 'you-listings' | 'you-orders' | 'you-reviews';
 
-export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: BuyerProfileViewProps) {
+export default function BuyerProfileView({
+  onBack,
+  onNavigate,
+  onOpenAuth,
+  initialSection,
+}: BuyerProfileViewProps) {
   const db = useDBState();
   const wishlist = useWishlist();
   const currentUser = db.currentUser;
@@ -124,8 +134,13 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
 
   // Which account surface is open. Tabs beat one long scroll here: every panel
   // starts at the top of the viewport, so nothing hides under the sticky bar.
-  const [section, setSection] = useState<YouSection>('you-overview');
+  const [section, setSection] = useState<YouSection>(initialSection ?? 'you-overview');
   const [orderFilter, setOrderFilter] = useState<'all' | 'active' | 'completed' | 'closed'>('all');
+
+  // A later deep link (bottom-nav Orders) can retarget an already-mounted hub.
+  useEffect(() => {
+    if (initialSection) setSection(initialSection);
+  }, [initialSection]);
 
   // Switching panels while scrolled deep into a long order list would leave the
   // new panel half-read, so bring the hub back to the top of the view.
@@ -180,6 +195,14 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
   const [reviewingOrderId, setReviewingOrderId] = useState<number | null>(null);
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
+
+  // Inline GoodSale Protect claim & Pre-Dispatch proof review state
+  const [claimOrderId, setClaimOrderId] = useState<number | null>(null);
+  const [claimReason, setClaimReason] = useState('');
+  const [claimSubmitting, setClaimSubmitting] = useState(false);
+  const [proofChangeOrderId, setProofChangeOrderId] = useState<number | null>(null);
+  const [proofChangeNote, setProofChangeNote] = useState('');
+  const [proofBusyOrderId, setProofBusyOrderId] = useState<number | null>(null);
 
   const handleReviewSubmit = (orderId: number) => {
     if (!reviewComment.trim()) {
@@ -850,7 +873,28 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
               </p>
             </div>
           </button>
+
+          {/* Trust & safety */}
+          <button
+            type="button"
+            onClick={() => onNavigate?.('trust-safety')}
+            className="flex items-center gap-3 p-3.5 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 hover:border-jade-500 dark:hover:border-jade-500 rounded-2xl shadow-xs text-left cursor-pointer transition-all group"
+          >
+            <div className="p-2.5 rounded-xl bg-jade-500/10 text-jade-600 dark:text-jade-400 group-hover:bg-jade-500 group-hover:text-white transition-all">
+              <Shield className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-ink-900 dark:text-white group-hover:text-jade-500 transition-colors">
+                Trust &amp; Safety
+              </h4>
+              <p className="text-xs text-ink-400 mt-0.5 leading-snug">
+                Escrow rules, verification &amp; buyer protection.
+              </p>
+            </div>
+          </button>
         </div>
+
+        <PWAInstallButton variant="row" showDesktopFallback />
       </Card>
       </div>
 
@@ -1196,6 +1240,124 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                         </div>
                       </div>
 
+                      {/* Pre-Dispatch Condition Proof + Split-Pay Balance */}
+                      {(order.dispatchProof || (Number(order.balanceRemaining || 0) > 0 && !order.isBalanceSettled)) && (
+                        <div className="space-y-3 border-t border-ink-100 px-4 py-3 dark:border-ink-800">
+                          {order.dispatchProof && (
+                            <div className="rounded-2xl border border-jade-500/20 bg-jade-50/40 p-3 dark:bg-jade-950/25">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-ink-900 dark:text-white">
+                                  <Video className="h-3.5 w-3.5 text-jade-600" />
+                                  Pre-dispatch live condition proof
+                                </span>
+                                <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-jade-700 dark:bg-ink-900 dark:text-jade-300">
+                                  {order.dispatchProof.status === 'APPROVED'
+                                    ? 'Approved'
+                                    : order.dispatchProof.status === 'CHANGES_REQUESTED'
+                                      ? 'Fresh clip requested'
+                                      : 'Awaiting your approval'}
+                                </span>
+                              </div>
+                              <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
+                                <div className="h-20 w-28 shrink-0 overflow-hidden rounded-xl bg-ink-950">
+                                  {order.dispatchProof.mediaType === 'video' ? (
+                                    <video src={order.dispatchProof.mediaUrl} controls className="h-full w-full object-cover" />
+                                  ) : (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={order.dispatchProof.mediaUrl} alt="Pre-dispatch condition" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+                                  )}
+                                </div>
+                                <div className="min-w-0 flex-1 space-y-2">
+                                  <p className="text-xs text-ink-600 dark:text-ink-300">{order.dispatchProof.note}</p>
+                                  {canBuyerReviewProof(order) && (
+                                    <div className="flex flex-wrap gap-2">
+                                      <button
+                                        type="button"
+                                        disabled={proofBusyOrderId === order.id}
+                                        onClick={async () => {
+                                          setProofBusyOrderId(order.id);
+                                          const res = await dbOperations.reviewDispatchProof(order.id, 'APPROVED');
+                                          setProofBusyOrderId(null);
+                                          if (res && 'error' in res && res.error) toast.error(res.error);
+                                          else toast.success('Condition approved — seller can dispatch now.');
+                                        }}
+                                        className="rounded-xl bg-jade-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-jade-700 disabled:opacity-50 cursor-pointer"
+                                      >
+                                        Approve for dispatch
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setProofChangeOrderId(proofChangeOrderId === order.id ? null : order.id);
+                                          setProofChangeNote('');
+                                        }}
+                                        className="rounded-xl border border-ink-200 bg-white px-3 py-1.5 text-[11px] font-bold text-ink-700 hover:border-jade-400 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 cursor-pointer"
+                                      >
+                                        Request fresh clip
+                                      </button>
+                                    </div>
+                                  )}
+                                  {proofChangeOrderId === order.id && (
+                                    <div className="flex gap-2">
+                                      <input
+                                        type="text"
+                                        value={proofChangeNote}
+                                        onChange={(e) => setProofChangeNote(e.target.value)}
+                                        placeholder="Describe what to check closely (e.g. serial number, screen)"
+                                        className="min-w-0 flex-1 rounded-xl border border-ink-200 bg-white px-2.5 py-1.5 text-xs text-ink-900 dark:border-ink-700 dark:bg-ink-950 dark:text-white"
+                                      />
+                                      <button
+                                        type="button"
+                                        disabled={proofBusyOrderId === order.id || !proofChangeNote.trim()}
+                                        onClick={async () => {
+                                          setProofBusyOrderId(order.id);
+                                          const res = await dbOperations.reviewDispatchProof(order.id, 'CHANGES_REQUESTED', proofChangeNote);
+                                          setProofBusyOrderId(null);
+                                          if (res && 'error' in res && res.error) {
+                                            toast.error(res.error);
+                                            return;
+                                          }
+                                          setProofChangeOrderId(null);
+                                          setProofChangeNote('');
+                                          toast.info('Requested a fresh condition clip from seller.');
+                                        }}
+                                        className="rounded-xl bg-ink-900 px-3 py-1.5 text-[11px] font-bold text-white dark:bg-gold-300 dark:text-ink-950 cursor-pointer"
+                                      >
+                                        Send
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {Number(order.balanceRemaining || 0) > 0 && !order.isBalanceSettled && (
+                            <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-gold-400/40 bg-gold-300/15 px-3.5 py-2.5 text-xs">
+                              <div>
+                                <p className="font-bold text-ink-900 dark:text-white">
+                                  Split-Pay balance due: ₦{Number(order.balanceRemaining).toLocaleString()}
+                                </p>
+                                <p className="text-[11px] text-ink-600 dark:text-ink-300">
+                                  Settle the remaining balance into escrow before releasing your delivery PIN.
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const res = await dbOperations.settleSplitPayBalance(order.id);
+                                  if (res && 'error' in res && res.error) toast.error(res.error);
+                                  else toast.success('Remaining split-pay balance locked in escrow.');
+                                }}
+                                className="rounded-xl bg-jade-600 px-3.5 py-2 text-[11px] font-bold text-white hover:bg-jade-700 cursor-pointer"
+                              >
+                                Settle Balance
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       {/* Escrow actions panel */}
                       <div className="flex flex-col gap-3 border-t border-ink-100 bg-ink-50/60 px-4 py-3 dark:border-ink-800 dark:bg-ink-950/30 sm:flex-row sm:items-center sm:justify-between">
                         <div className="max-w-[420px] text-xs leading-relaxed text-ink-500">
@@ -1229,28 +1391,13 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                             <button
                               type="button"
                               onClick={() => {
-                                const reason = window.prompt(
-                                  'Describe the problem for your GoodSale Protect claim (15+ characters). Escrow stays protected while it is reviewed.'
-                                );
-                                if (!reason?.trim()) return;
-                                void (async () => {
-                                  const res = await fetch('/api/buyer-protection/claims', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ orderId: order.id, reason }),
-                                  });
-                                  const payload = await res.json().catch(() => ({}));
-                                  if (!res.ok || !payload.success) {
-                                    toast.error(payload.error || 'Could not file the protection claim');
-                                    return;
-                                  }
-                                  toast.success(`Protection claim ${payload.claim?.reference || ''} is under priority review.`);
-                                })();
+                                setClaimOrderId(claimOrderId === order.id ? null : order.id);
+                                setClaimReason('');
                               }}
-                              className="flex items-center gap-1.5 rounded-xl border border-jade-500/30 bg-jade-500/10 px-3.5 py-1.5 text-xs font-bold text-jade-700 transition-colors hover:bg-jade-500/15 dark:text-jade-300"
+                              className="flex items-center gap-1.5 rounded-xl border border-jade-500/30 bg-jade-500/10 px-3.5 py-1.5 text-xs font-bold text-jade-700 transition-colors hover:bg-jade-500/15 dark:text-jade-300 cursor-pointer"
                             >
                               <ShieldCheck className="h-3.5 w-3.5" />
-                              GoodSale Protect claim
+                              {claimOrderId === order.id ? 'Close claim form' : 'GoodSale Protect claim'}
                             </button>
                           )}
 
@@ -1304,9 +1451,18 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                           </div>
                         )}
 
-                        {/* DELIVERED ACTIONS: Download Receipt & Leave Review */}
+                        {/* DELIVERED ACTIONS: Buy Again, Download Receipt & Leave Review */}
                         {order.status === OrderStatus.DELIVERED_SUCCESS && (
                           <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => onNavigate?.('product', { id: order.productId })}
+                              className="px-3 py-1.5 bg-gold-300 hover:bg-gold-200 text-ink-950 font-display font-bold text-xs tracking-tight rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              Buy Again
+                            </button>
+
                             <button
                               onClick={() => handleDownloadReceipt(order)}
                               className="px-3 py-1.5 bg-ink-100 hover:bg-ink-200 dark:bg-ink-800 dark:hover:bg-ink-700 text-ink-700 dark:text-white font-sans font-bold text-xs tracking-tight rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
@@ -1337,6 +1493,58 @@ export default function BuyerProfileView({ onBack, onNavigate, onOpenAuth }: Buy
                           </div>
                         )}
                       </div>
+
+                      {/* Inline GoodSale Protect Claim Form (replaces window.prompt) */}
+                      {claimOrderId === order.id && (
+                        <div className="border-t border-jade-500/20 bg-jade-500/[0.02] p-4 space-y-2.5">
+                          <p className="text-xs font-bold text-ink-900 dark:text-white">
+                            File a GoodSale Protect™ claim for #{order.orderNumber}
+                          </p>
+                          <p className="text-[11px] text-ink-500 dark:text-ink-400">
+                            Describe the issue (15+ characters). Escrow stays protected while it is reviewed.
+                          </p>
+                          <textarea
+                            rows={2}
+                            value={claimReason}
+                            onChange={(e) => setClaimReason(e.target.value)}
+                            placeholder="Explain condition mismatch, damage, or non-delivery..."
+                            className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-xs text-ink-900 focus:outline-none focus:ring-1 focus:ring-jade-500 dark:border-ink-700 dark:bg-ink-950 dark:text-white"
+                          />
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setClaimOrderId(null)}
+                              className="rounded-xl px-3 py-1.5 text-xs font-bold text-ink-500 hover:text-ink-800 cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              disabled={claimSubmitting || claimReason.trim().length < 15}
+                              onClick={async () => {
+                                setClaimSubmitting(true);
+                                const res = await fetch('/api/buyer-protection/claims', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ orderId: order.id, reason: claimReason.trim() }),
+                                });
+                                const payload = await res.json().catch(() => ({}));
+                                setClaimSubmitting(false);
+                                if (!res.ok || !payload.success) {
+                                  toast.error(payload.error || 'Could not file the protection claim');
+                                  return;
+                                }
+                                setClaimOrderId(null);
+                                setClaimReason('');
+                                toast.success(`Protection claim ${payload.claim?.reference || ''} is under priority review.`);
+                              }}
+                              className="rounded-xl bg-jade-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-jade-700 disabled:opacity-50 cursor-pointer"
+                            >
+                              {claimSubmitting ? 'Submitting…' : 'Submit Claim'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Interactive inline Review submission drawer */}
                       {reviewingOrderId === order.id && (

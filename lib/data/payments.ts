@@ -8,6 +8,7 @@ import {
   isAlreadyPaidStatus,
   isTerminalOrderStatus,
 } from '@/lib/payments/helpers';
+import { notifyOrderPushParticipants } from '@/lib/push/server';
 
 /**
  * Reconcile a verified Paystack payment against an order (service role).
@@ -117,6 +118,23 @@ export async function reconcilePaystackPayment(opts: {
   }
 
   const anyOk = results.some((r) => r.ok);
+  for (const result of results) {
+    if (!result.ok) continue;
+    void notifyOrderPushParticipants({
+      orderId: result.orderId,
+      buildSpec: ({ orderNumber, totalAmount, buyerId, sellerId }) => [
+        {
+          profileId: sellerId,
+          spec: { kind: 'ESCROW_LOCKED', orderNumber, amountNaira: totalAmount, recipientRole: 'seller' },
+        },
+        {
+          profileId: buyerId,
+          spec: { kind: 'ESCROW_LOCKED', orderNumber, amountNaira: totalAmount, recipientRole: 'buyer' },
+        },
+      ],
+    }).catch(() => {});
+  }
+
   return {
     reconciled: anyOk,
     orderId: orderIdList[0],

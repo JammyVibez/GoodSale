@@ -7,6 +7,7 @@ import {
   BadgeCheck,
   Bell,
   BellOff,
+  BellRing,
   CheckCheck,
   ChevronRight,
   Gavel,
@@ -24,6 +25,8 @@ import {
   UserRound,
 } from 'lucide-react';
 import { dbOperations, useDBState } from '@/lib/store';
+import { useWebPush } from '@/lib/hooks/useWebPush';
+import { toast } from '@/lib/feedback';
 import type { Notification } from '@/lib/types';
 import { UserRole } from '@/lib/types';
 
@@ -99,6 +102,7 @@ export default function NotificationMenu({ onNavigate, onOpenAuth }: Notificatio
   const [filter, setFilter] = useState<Filter>('all');
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [panelPosition, setPanelPosition] = useState({ top: 0, right: 16, maxHeight: 'calc(100dvh - 1rem)' });
+  const push = useWebPush(Boolean(user) && open);
 
   const updatePanelPosition = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
@@ -312,6 +316,54 @@ export default function NotificationMenu({ onNavigate, onOpenAuth }: Notificatio
                       </span>
                     </button>
                   ))}
+                </div>
+              )}
+
+              {user && !push.loading && (
+                <div className="mt-2.5 flex items-center justify-between gap-2 rounded-xl border border-ink-150 bg-ink-50/70 px-3 py-2 text-[11px] dark:border-ink-800 dark:bg-ink-950/60">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <BellRing
+                      className={`h-3.5 w-3.5 shrink-0 ${
+                        push.isSubscribed
+                          ? 'text-jade-600 dark:text-jade-300'
+                          : 'text-ink-400 dark:text-ink-500'
+                      }`}
+                    />
+                    <span className="truncate font-semibold text-ink-700 dark:text-ink-200">
+                      {push.isSubscribed
+                        ? 'Real-time device alerts active'
+                        : push.requiresIOSHomeScreen
+                          ? 'Add to Home Screen for iOS push'
+                          : !push.isConfigured
+                            ? 'Device push setup pending'
+                            : 'Enable escrow & chat alerts'}
+                    </span>
+                  </div>
+                  {push.isSubscribed || !push.isConfigured || push.requiresIOSHomeScreen ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpen(false);
+                        onNavigate('settings');
+                      }}
+                      className="shrink-0 font-bold text-jade-700 hover:underline dark:text-jade-300"
+                    >
+                      {push.isSubscribed ? 'Topics' : 'Setup'}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={push.busy}
+                      onClick={async () => {
+                        const res = await push.subscribe();
+                        if (res.ok) toast.success('Real-time Web Push alerts enabled.');
+                        else if (res.error) toast.error(res.error);
+                      }}
+                      className="shrink-0 rounded-lg bg-jade-600 px-2.5 py-1 text-[10px] font-bold text-white transition-colors hover:bg-jade-700 disabled:opacity-60"
+                    >
+                      {push.busy ? 'Enabling…' : 'Enable'}
+                    </button>
+                  )}
                 </div>
               )}
             </div>

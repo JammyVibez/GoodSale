@@ -8,12 +8,14 @@ import {
   Trash2, QrCode, AlertCircle, TrendingUp,
   RefreshCw, Landmark, Truck, Check, HelpCircle, Shield, Edit, Store, Clock,
   ChevronRight, ChevronLeft, Image as ImageIcon, Video, Crop, RotateCw, Layers, Sliders, ShieldCheck, Loader2,
-  CheckCircle2, Wallet
+  CheckCircle2, Wallet, Camera, Upload,
 } from 'lucide-react';
 import { isVerifiedSeller, toStage } from '@/lib/verification';
 import { 
   Product, ProductCondition, getDBState, saveDBState, dbOperations, UserRole, OrderStatus, Order, Escrow
 } from '../lib/store';
+import { canSellerSubmitProof, computeInstantPayoutSummary } from '@/lib/escrow/proofAndSplit';
+import { uploadMedia } from '@/lib/upload';
 import { SmartImage } from './ui/SmartImage';
 import Logo from './LogoIcon';
 import LiveSafeMeetMap from './LiveSafeMeetMap';
@@ -107,6 +109,14 @@ export default function DashboardView({
   const [selectedOrderForShipment, setSelectedOrderForShipment] = useState<Order | null>(null);
   const [shippingCourier, setShippingCourier] = useState('GIG Logistics');
   const [shippingTracking, setShippingTracking] = useState('');
+
+  // Pre-Dispatch Live Proof Modal State
+  const [proofOrder, setProofOrder] = useState<Order | null>(null);
+  const [proofMediaUrl, setProofMediaUrl] = useState('');
+  const [proofMediaType, setProofMediaType] = useState<'image' | 'video'>('image');
+  const [proofNote, setProofNote] = useState('');
+  const [proofUploading, setProofUploading] = useState(false);
+  const [proofSaving, setProofSaving] = useState(false);
 
   // PIN Verification / Handshake State
   const [selectedOrderForPin, setSelectedOrderForPin] = useState<Order | null>(null);
@@ -1160,6 +1170,41 @@ export default function DashboardView({
                             {ord.status.replace(/_/g, ' ').toLowerCase().replace(/^./, (letter) => letter.toUpperCase())}
                           </span>
 
+                          {/* Pre-dispatch Condition Proof trigger */}
+                          {canSellerSubmitProof(ord.status) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setProofOrder(ord);
+                                setProofMediaUrl(ord.dispatchProof?.mediaUrl || '');
+                                setProofMediaType(ord.dispatchProof?.mediaType || 'image');
+                                setProofNote(ord.dispatchProof?.note || '');
+                              }}
+                              className="inline-flex items-center gap-1.5 rounded-xl border border-jade-500/35 bg-white px-3.5 py-2 text-xs font-bold text-jade-700 transition-colors hover:bg-jade-50 dark:bg-ink-900 dark:text-jade-300 dark:hover:bg-jade-950/40 cursor-pointer"
+                            >
+                              <Camera className="w-3.5 h-3.5" />
+                              {ord.dispatchProof ? 'Update Condition Proof' : 'Upload Live Proof'}
+                            </button>
+                          )}
+
+                          {ord.dispatchProof && (
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-xl px-2.5 py-1 text-[11px] font-bold ${
+                                ord.dispatchProof.status === 'APPROVED'
+                                  ? 'bg-jade-500/15 text-jade-700 dark:text-jade-300'
+                                  : ord.dispatchProof.status === 'CHANGES_REQUESTED'
+                                    ? 'bg-gold-300/25 text-ink-800 dark:text-gold-200'
+                                    : 'bg-ink-200/70 text-ink-700 dark:bg-ink-800 dark:text-ink-200'
+                              }`}
+                            >
+                              {ord.dispatchProof.status === 'APPROVED'
+                                ? 'Buyer approved proof'
+                                : ord.dispatchProof.status === 'CHANGES_REQUESTED'
+                                  ? 'Fresh proof requested'
+                                  : 'Proof awaiting buyer review'}
+                            </span>
+                          )}
+
                           {/* 1. If Awaiting Shipment */}
                           {ord.status === OrderStatus.PAID_ESCROW && (
                             <button
@@ -1251,13 +1296,22 @@ export default function DashboardView({
                               );
                             })()}
 
-                          {/* 4. Complete Status info */}
-                          {ord.status === OrderStatus.DELIVERED_SUCCESS && (
-                            <div className="flex items-center gap-1 text-xs font-mono text-jade-500 font-bold bg-jade-500/5 px-2.5 py-1 rounded-lg">
-                              <Check className="w-4 h-4 shrink-0" />
-                              FUNDS RELEASED
-                            </div>
-                          )}
+                          {/* 4. Complete Status info + Instant Payout */}
+                          {ord.status === OrderStatus.DELIVERED_SUCCESS && (() => {
+                            const payoutSummary = computeInstantPayoutSummary(ord);
+                            return (
+                              <div className="flex flex-wrap items-center gap-2">
+                                <div className="flex items-center gap-1 text-xs font-mono text-jade-600 dark:text-jade-400 font-bold bg-jade-500/10 px-2.5 py-1 rounded-lg">
+                                  <Check className="w-4 h-4 shrink-0" />
+                                  FUNDS RELEASED
+                                </div>
+                                <span className="inline-flex items-center gap-1 rounded-lg border border-jade-500/20 bg-white px-2.5 py-1 text-[11px] font-bold text-ink-700 dark:bg-ink-900 dark:text-ink-200">
+                                  <Wallet className="h-3 w-3 text-jade-600" />
+                                  Instant credit: ₦{(ord.payoutAmount ?? payoutSummary.netSellerPayout).toLocaleString()}
+                                </span>
+                              </div>
+                            );
+                          })()}
 
                           {/* SafeMeet Trigger */}
                           {(ord.status === OrderStatus.PAID_ESCROW || ord.status === OrderStatus.SHIPPED || ord.status === OrderStatus.OUT_FOR_DELIVERY) && (
@@ -1504,6 +1558,125 @@ export default function DashboardView({
                       className="flex-1 py-3 bg-jade-600 hover:bg-jade-700 text-white font-display font-semibold text-xs tracking-wider rounded-xl shadow-md"
                     >
                       Confirm Dispatch
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* PRE-DISPATCH CONDITION PROOF MODAL */}
+            {proofOrder && (
+              <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center sm:p-4">
+                <div className="relative max-h-[calc(100dvh-1rem)] w-full max-w-md space-y-4 overflow-y-auto rounded-t-3xl border border-ink-200 bg-white p-5 pb-safe-bottom shadow-2xl dark:border-ink-800 dark:bg-ink-900 sm:rounded-[32px] sm:p-6">
+                  <div>
+                    <h3 className="font-display text-base font-bold text-ink-900 dark:text-white flex items-center gap-2">
+                      <Camera className="h-4 w-4 text-jade-600" />
+                      Live Pre-Dispatch Condition Proof
+                    </h3>
+                    <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">
+                      Attach a clear photo or video clip of order {proofOrder.orderNumber} before handing to the courier. The buyer receives an instant alert to inspect &amp; approve.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3 text-xs">
+                    <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-jade-500/40 bg-jade-50/50 p-4 text-center hover:bg-jade-50 dark:bg-jade-950/20">
+                      <Upload className="h-5 w-5 text-jade-600" />
+                      <span className="font-bold text-ink-800 dark:text-ink-100">
+                        {proofUploading ? 'Uploading media…' : 'Choose photo or video clip'}
+                      </span>
+                      <span className="text-[11px] text-ink-500">JPEG, PNG, WebP, MP4 or WebM</span>
+                      <input
+                        type="file"
+                        accept="image/*,video/*"
+                        className="sr-only"
+                        disabled={proofUploading}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = '';
+                          if (!file) return;
+                          const isVid = file.type.startsWith('video/');
+                          setProofMediaType(isVid ? 'video' : 'image');
+                          setProofUploading(true);
+                          try {
+                            const url = await uploadMedia(file, 'chat-media');
+                            setProofMediaUrl(url);
+                            toast.success('Condition media uploaded.');
+                          } catch {
+                            const reader = new FileReader();
+                            reader.onload = () => setProofMediaUrl(String(reader.result || ''));
+                            reader.readAsDataURL(file);
+                          } finally {
+                            setProofUploading(false);
+                          }
+                        }}
+                      />
+                    </label>
+
+                    <div>
+                      <label className="mb-1 block font-bold text-ink-500">Or paste media URL</label>
+                      <input
+                        type="url"
+                        value={proofMediaUrl}
+                        onChange={(e) => setProofMediaUrl(e.target.value)}
+                        placeholder="https://..."
+                        className="w-full rounded-xl border border-ink-200 bg-ink-50 px-3 py-2 text-xs text-ink-900 focus:outline-none focus:ring-1 focus:ring-jade-500 dark:border-ink-700 dark:bg-ink-800 dark:text-white"
+                      />
+                    </div>
+
+                    {proofMediaUrl && (
+                      <div className="overflow-hidden rounded-2xl border border-ink-200 bg-ink-950 dark:border-ink-700">
+                        {proofMediaType === 'video' ? (
+                          <video src={proofMediaUrl} controls className="max-h-44 w-full object-contain" />
+                        ) : (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={proofMediaUrl} alt="Condition proof preview" referrerPolicy="no-referrer" className="max-h-44 w-full object-cover" />
+                        )}
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="mb-1 block font-bold text-ink-500">Inspection note</label>
+                      <textarea
+                        rows={2}
+                        value={proofNote}
+                        onChange={(e) => setProofNote(e.target.value)}
+                        placeholder="e.g. Serial verified, sealed box ready for GIG pickup"
+                        className="w-full rounded-xl border border-ink-200 bg-ink-50 px-3 py-2 text-xs text-ink-900 focus:outline-none focus:ring-1 focus:ring-jade-500 dark:border-ink-700 dark:bg-ink-800 dark:text-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setProofOrder(null)}
+                      className="flex-1 rounded-xl bg-ink-100 py-3 text-xs font-bold text-ink-700 hover:bg-ink-200 dark:bg-ink-800 dark:text-ink-300"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={proofSaving || proofUploading || !proofMediaUrl.trim()}
+                      onClick={async () => {
+                        setProofSaving(true);
+                        const res = await dbOperations.submitDispatchProof(
+                          proofOrder.id,
+                          proofMediaUrl,
+                          proofMediaType,
+                          proofNote
+                        );
+                        setProofSaving(false);
+                        if (res && 'error' in res && res.error) {
+                          toast.error(res.error);
+                          return;
+                        }
+                        toast.success('Live condition proof sent to buyer for inspection.');
+                        setProofOrder(null);
+                        setDb(getDBState());
+                      }}
+                      className="flex-1 rounded-xl bg-jade-600 py-3 text-xs font-bold text-white shadow-md hover:bg-jade-700 disabled:opacity-50"
+                    >
+                      {proofSaving ? 'Sending…' : 'Send Proof to Buyer'}
                     </button>
                   </div>
                 </div>

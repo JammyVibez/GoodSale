@@ -17,15 +17,19 @@ import Link from 'next/link';
 import {
   Heart, ShoppingCart, Zap, ShieldCheck, Truck, Headphones,
   BadgeCheck, ArrowRight, ChevronRight, Sparkles, Store, Flame, Gavel,
-  Shirt, Cpu, Smartphone, Laptop, Armchair, Apple, Car, BookOpen, LayoutGrid,
-  Package, SlidersHorizontal, TrendingUp, Tag, Clock, Plus,
+  LayoutGrid, SlidersHorizontal, TrendingUp, Tag, Clock, Plus, Play, RotateCcw,
 } from 'lucide-react';
 import { Product, useDBState } from '../lib/store';
-import type { Profile, User } from '@/lib/types';
+import { ProductCondition, type Profile, type User } from '@/lib/types';
 import { isVerifiedSeller } from '@/lib/verification';
 import VerifiedBadge from './verification/VerifiedBadge';
 import { activeFlashSale } from '@/lib/productPricing';
-import { discoveryScore } from '@/lib/ranking';
+import {
+  getRepeatBuyerPicks,
+  matchesDiscoveryFilters,
+  sortProductsByMode,
+  type DiscoverySortMode,
+} from '@/lib/marketplace/discovery';
 import { useWishlist } from '@/lib/hooks/useWishlist';
 import { SmartImage } from './ui/SmartImage';
 import EmptyState from './ui/EmptyState';
@@ -33,39 +37,27 @@ import AdSlot from './AdSlot';
 import ProductTile from './marketplace/ProductTile';
 import ProductRail, { type RailProduct } from './marketplace/ProductRail';
 import { COLLECTIONS } from '@/lib/marketplace/collections';
+import { categoryMeta } from '@/lib/marketplace/categoryMeta';
 
 interface LandingViewProps {
   onSelectProduct: (productId: number) => void;
   searchQuery: string;
   onNavigate: (view: string, payload?: any) => void;
   onAddToCart: (productId: number) => void;
+  onQuickBuy?: (productId: number) => void;
   onOpenAuth?: (mode?: 'login' | 'register') => void;
   /** Delivery-location filter, driven by the marketplace header. */
   selectedState: string;
   onSelectState: (state: string) => void;
   wishlistOnly: boolean;
   onWishlistOnlyChange: (value: boolean) => void;
+  /** Category preselected by the Categories screen; applied on mount. */
+  initialCategory?: string | null;
 }
 
-type SortMode = 'smart' | 'rating' | 'price_asc' | 'price_desc' | 'newest';
+type SortMode = DiscoverySortMode;
 
 const PAGE_SIZE = 24;
-
-const CATEGORY_META: Record<string, { label: string; Icon: React.ComponentType<{ className?: string }> }> = {
-  phones: { label: 'Phones & Tablets', Icon: Smartphone },
-  laptops: { label: 'Laptops', Icon: Laptop },
-  electronics: { label: 'Electronics', Icon: Cpu },
-  fashion: { label: 'Fashion', Icon: Shirt },
-  furniture: { label: 'Home & Living', Icon: Armchair },
-  groceries: { label: 'Groceries', Icon: Apple },
-  beauty: { label: 'Beauty', Icon: Sparkles },
-  vehicles: { label: 'Vehicles', Icon: Car },
-  books: { label: 'Books', Icon: BookOpen },
-};
-
-function categoryMeta(category: string) {
-  return CATEGORY_META[category.trim().toLowerCase()] || { label: category, Icon: Package };
-}
 
 function naira(value: number): string {
   return `₦${Math.round(Number(value) || 0).toLocaleString('en-NG')}`;
@@ -134,19 +126,26 @@ export default function LandingView({
   searchQuery,
   onNavigate,
   onAddToCart,
+  onQuickBuy,
   onOpenAuth,
   selectedState,
   onSelectState,
   wishlistOnly,
   onWishlistOnlyChange,
+  initialCategory = null,
 }: LandingViewProps) {
   const db = useDBState();
   const { favorites, toggle: toggleFavorite } = useWishlist();
 
   const [activeSlide, setActiveSlide] = useState(0);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(initialCategory);
   const [onlyVerified, setOnlyVerified] = useState(false);
   const [dealsOnly, setDealsOnly] = useState(false);
+  const [sameDayOnly, setSameDayOnly] = useState(false);
+  const [safeMeetOnly, setSafeMeetOnly] = useState(false);
+  const [splitPayOnly, setSplitPayOnly] = useState(false);
+  const [videoOnly, setVideoOnly] = useState(false);
+  const [conditionFilter, setConditionFilter] = useState<'ALL' | ProductCondition>('ALL');
   const [sortMode, setSortMode] = useState<SortMode>('smart');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
@@ -241,64 +240,78 @@ export default function LandingView({
     [db.verifiedPlusSubscriptions]
   );
 
+  const buyerState = db.profiles.find((profile) => profile.userId === db.currentUser?.id)?.state || '';
+
+  const sellerStatesMap = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const p of db.profiles) {
+      if (p.state) map.set(p.userId, p.state);
+    }
+    return map;
+  }, [db.profiles]);
+
+  const verifiedSellerIdsSet = useMemo(() => {
+    const set = new Set<number>();
+    for (const p of db.profiles) {
+      if (isVerifiedSeller({ verificationStatus: p.verificationStatus, verificationExpiresAt: p.verificationExpiresAt })) {
+        set.add(p.userId);
+      }
+    }
+    return set;
+  }, [db.profiles]);
+
   /* ---- filtering ---- */
   const filteredProducts = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    let list = db.products.filter((product) => {
-      if (query) {
-        const haystack = `${product.title} ${product.description} ${product.category} ${product.brand}`.toLowerCase();
-        if (!haystack.includes(query)) return false;
-      }
-      if (selectedCategory && product.category.toLowerCase() !== selectedCategory.toLowerCase()) return false;
-      if (selectedState && stateOf(product.sellerId) !== selectedState) return false;
-      if (onlyVerified) {
-        const sellerProfile = profilesByUserId.get(product.sellerId);
-        const verified = isVerifiedSeller({
-          verificationStatus: sellerProfile?.verificationStatus,
-          verificationExpiresAt: sellerProfile?.verificationExpiresAt,
-        });
-        if (!verified) return false;
-      }
-      if (wishlistOnly && !favorites.includes(product.id)) return false;
-      if (dealsOnly && discountPercent(product) === null && !activeFlashSale(product)) return false;
-      return true;
-    });
+    const ratings = new Map<number, number>();
+    reviewStats.forEach((value, key) => ratings.set(key, value.average));
 
-    list = [...list].sort((a, b) => {
-      switch (sortMode) {
-        case 'price_asc':
-          return a.price - b.price;
-        case 'price_desc':
-          return b.price - a.price;
-        case 'newest':
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-        case 'rating':
-          return (ratingOf(b.id) || 0) - (ratingOf(a.id) || 0);
-        default: {
-          const ratings = new Map<number, number>();
-          reviewStats.forEach((value, key) => ratings.set(key, value.average));
-          const context = {
-            ratings,
-            featuredProductIds: activeFeaturedIds,
-            verifiedPlusSellerIds: activeVerifiedPlusSellers,
-            featuredBoost: db.revenueSettings.featuredRankingBoost,
-            verifiedPlusBoost: db.revenueSettings.verifiedPlusRankingBoost,
-          };
-          return discoveryScore(b, context) - discoveryScore(a, context);
-        }
-      }
-    });
-    return list;
+    const ctx = {
+      buyerState: selectedState || buyerState,
+      favorites,
+      sellerStates: sellerStatesMap,
+      verifiedSellerIds: verifiedSellerIdsSet,
+      ratings,
+      featuredProductIds: activeFeaturedIds,
+      verifiedPlusSellerIds: activeVerifiedPlusSellers,
+      featuredBoost: db.revenueSettings.featuredRankingBoost,
+      verifiedPlusBoost: db.revenueSettings.verifiedPlusRankingBoost,
+    };
+
+    const list = db.products.filter((product) =>
+      matchesDiscoveryFilters(
+        product,
+        {
+          query: searchQuery,
+          category: selectedCategory,
+          state: selectedState,
+          onlyVerified,
+          dealsOnly,
+          wishlistOnly,
+          sameDayOnly,
+          safeMeetOnly,
+          splitPayOnly,
+          videoOnly,
+          condition: conditionFilter,
+        },
+        ctx
+      )
+    );
+
+    return sortProductsByMode(list, sortMode, ctx);
   }, [
-    db.products, db.revenueSettings, searchQuery, selectedCategory, selectedState, onlyVerified,
-    wishlistOnly, dealsOnly, favorites, profilesByUserId, stateOf, sortMode, ratingOf, reviewStats,
+    db.products, db.revenueSettings, searchQuery, selectedCategory, selectedState, buyerState,
+    onlyVerified, dealsOnly, wishlistOnly, sameDayOnly, safeMeetOnly, splitPayOnly, videoOnly,
+    conditionFilter, favorites, sellerStatesMap, verifiedSellerIdsSet, sortMode, reviewStats,
     activeFeaturedIds, activeVerifiedPlusSellers,
   ]);
 
   // A new filter or search always restarts the catalogue at page one.
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
-  }, [searchQuery, selectedCategory, selectedState, onlyVerified, dealsOnly, wishlistOnly, sortMode]);
+  }, [
+    searchQuery, selectedCategory, selectedState, onlyVerified, dealsOnly, wishlistOnly,
+    sameDayOnly, safeMeetOnly, splitPayOnly, videoOnly, conditionFilter, sortMode,
+  ]);
 
   /* ---- Flash Deals come only from approved, currently running sales. ---- */
   const flashDeals = useMemo(
@@ -438,11 +451,27 @@ export default function LandingView({
     [ratingOf, reviewCountOf, stateOf, sellerProps]
   );
 
+  const repeatBuyerPicks = useMemo(() => {
+    if (!db.currentUser) return [] as Product[];
+    const buyerOrders = db.orders.filter((o) => o.buyerId === db.currentUser?.id);
+    return getRepeatBuyerPicks({ buyerOrders, products: db.products, maxItems: 10 });
+  }, [db.currentUser, db.orders, db.products]);
+
+  const videoDemoProducts = useMemo(
+    () =>
+      db.products
+        .filter((p) => Boolean(p.videoUrl && p.videoUrl.trim()) && inStock(p))
+        .slice(0, 12),
+    [db.products]
+  );
+
   const railCommon = {
     favorites,
+    buyerState: selectedState || buyerState,
     onToggleFavorite: toggleFavorite,
     onSelectProduct: onSelectProduct,
     onAddToCart,
+    onQuickBuy,
   };
 
   /* ---- hero ---- */
@@ -451,9 +480,9 @@ export default function LandingView({
       {
         eyebrow: 'Escrow marketplace',
         title: 'Shop smarter.',
-        highlight: 'Live better.',
-        body: 'Great deals. Trusted sellers. Protected checkout on every order.',
-        cta: 'Shop now',
+        highlight: 'Pay when it arrives.',
+        body: 'Great prices from verified Nigerian sellers, with your money held safely until delivery is confirmed.',
+        cta: 'Shop the marketplace',
         href: null,
         action: () => {
           setSelectedCategory(null);
@@ -515,7 +544,6 @@ export default function LandingView({
   }, [db.products, activeSlide, ratingOf]);
 
   const slide = heroSlides[activeSlide] ?? heroSlides[0];
-  const buyerState = db.profiles.find((profile) => profile.userId === db.currentUser?.id)?.state || '';
   const visibleProducts = filteredProducts.slice(0, visibleCount);
   const hasMore = filteredProducts.length > visibleProducts.length;
 
@@ -534,17 +562,17 @@ export default function LandingView({
       {/* ───────────────────────── Promo band ───────────────────────── */}
       <section className="border-b border-ink-150 bg-ink-50/60 dark:border-ink-800 dark:bg-ink-950">
         <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
-          <div className="grid gap-2.5">
+          <div className="grid gap-2.5 lg:grid-cols-[1.7fr_1fr]">
             {/* rotating banner */}
             <div className="relative flex min-h-[236px] items-center overflow-hidden rounded-[2rem] border border-white/10 px-5 py-6 text-white shadow-[0_30px_72px_-40px_rgba(6,37,31,0.82)] gs-hero-panel sm:min-h-[270px] sm:px-8 sm:py-8">
               <div aria-hidden className="pointer-events-none absolute -left-10 -top-16 h-48 w-48 rounded-full bg-jade-500/25 blur-3xl" />
               <div aria-hidden className="pointer-events-none absolute -bottom-24 right-0 h-56 w-56 rounded-full bg-gold-400/10 blur-3xl" />
-              <div className="relative z-10 max-w-[60%] sm:max-w-md">
+              <div className="relative z-10 max-w-[54%] sm:max-w-md">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-gold-300 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-ink-950">
                   <Flame className="h-3 w-3" aria-hidden="true" />
                   {slide.eyebrow}
                 </span>
-                <h1 className="mt-3 font-display text-3xl font-extrabold leading-[1.04] tracking-[-0.04em] sm:text-4xl lg:text-[2.8rem]">
+                <h1 className="mt-3 font-display text-3xl font-extrabold leading-[1.04] tracking-[-0.04em] [text-wrap:balance] sm:text-4xl lg:text-[2.8rem]">
                   {slide.title}
                   <br />
                   <span className="text-gold-300">{slide.highlight}</span>
@@ -587,13 +615,13 @@ export default function LandingView({
               </div>
 
               {heroImages.length > 0 && (
-                <div className="absolute bottom-4 right-3 z-0 flex items-center gap-1.5 sm:relative sm:bottom-auto sm:right-auto sm:ml-auto sm:gap-2">
+                <div className="relative ml-auto flex items-center gap-1.5 sm:gap-2">
                   {heroImages.map((product) => (
                     <button
                       key={product.id}
                       type="button"
                       onClick={() => onSelectProduct(product.id)}
-                      className="gs-hero-product relative h-32 w-[5.25rem] overflow-hidden rounded-2xl border border-white/20 bg-white/5 shadow-2xl transition-transform hover:-translate-y-1 focus-ring sm:h-40 sm:w-32 sm:rounded-[1.4rem]"
+                      className="gs-hero-product relative h-24 w-[4.5rem] overflow-hidden rounded-xl border border-white/20 bg-white/5 shadow-2xl transition-transform hover:-translate-y-1 focus-ring sm:h-36 sm:w-32 sm:rounded-2xl lg:h-32 lg:w-28"
                       aria-label={`View ${product.title}`}
                     >
                       <SmartImage
@@ -613,6 +641,48 @@ export default function LandingView({
               )}
             </div>
 
+            {/* side tiles */}
+            <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-1">
+              <Link
+                href={COLLECTIONS['flash-deals'].href}
+                className="group flex flex-col justify-between rounded-2xl border border-ink-200 bg-white p-3 transition-colors hover:border-jade-400 dark:border-ink-800 dark:bg-ink-900"
+              >
+                <span className="flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-jade-700 dark:text-jade-300">
+                    <Zap className="h-3.5 w-3.5 fill-gold-400 text-gold-500" aria-hidden="true" />
+                    Flash deals
+                  </span>
+                  {flashDeals.length > 0 && !countdown.ended && (
+                    <Countdown hours={countdown.hours} minutes={countdown.minutes} seconds={countdown.seconds} />
+                  )}
+                </span>
+                <span className="mt-2 block text-lg font-black leading-tight tracking-tight text-ink-900 dark:text-white">
+                  {flashDeals.length > 0
+                    ? `Up to ${Math.max(...flashDeals.map((p) => activeFlashSale(p)?.discountPercent || 0))}% off`
+                    : 'No live deals yet'}
+                </span>
+                <span className="mt-0.5 flex items-center justify-between gap-2 text-[11px] leading-relaxed text-ink-500 dark:text-ink-400">
+                  <span className="min-w-0">{flashDeals.length > 0 ? `${flashDeals.length} deals ending soon` : 'Check back later today'}</span>
+                  <ArrowRight className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                </span>
+              </Link>
+
+              <div className="flex flex-col justify-between rounded-2xl border border-ink-150 bg-white p-3 dark:border-ink-800 dark:bg-ink-900">
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-jade-700 dark:text-jade-300">
+                  <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                  GoodSale escrow
+                </span>
+                <span className="mt-2 block text-lg font-black leading-tight tracking-tight text-ink-900 dark:text-white">
+                  Your money waits
+                </span>
+                <span className="mt-0.5 flex items-center justify-between gap-2 text-[11px] leading-relaxed text-ink-500 dark:text-ink-400">
+                  <span className="min-w-0">Released only after you confirm delivery</span>
+                  <Link href="/trust-safety" className="shrink-0 font-bold text-jade-700 hover:underline dark:text-jade-300">
+                    How it works
+                  </Link>
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* live status line */}
@@ -643,10 +713,25 @@ export default function LandingView({
           className="mt-3"
         />
 
-        {/* ───────────────────── Quick category navigation ───────────────────── */}
+        {/* ───────────────────── Category nav ───────────────────── */}
         {categories.length > 0 && (
-          <nav aria-label="Browse categories" className="mt-3 grid grid-cols-6 gap-1.5 sm:gap-2">
-            {categories.slice(0, 5).map((category) => {
+          <nav aria-label="Browse categories" className="mt-3 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedCategory(null);
+                scrollToId('catalog-section');
+              }}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-bold transition-colors ${
+                selectedCategory === null
+                  ? 'border-jade-600 bg-jade-600 text-white'
+                  : 'border-ink-200 bg-white text-ink-600 hover:border-jade-300 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300'
+              }`}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" aria-hidden="true" />
+              All
+            </button>
+            {categories.slice(0, 14).map((category) => {
               const { Icon, label } = categoryMeta(category.name);
               const selected = selectedCategory?.toLowerCase() === category.name.toLowerCase();
               return (
@@ -658,25 +743,24 @@ export default function LandingView({
                     setSelectedCategory(selected ? null : category.name);
                     scrollToId('catalog-section');
                   }}
-                  className={`gs-category-tile group flex min-h-[80px] flex-col items-center justify-center gap-1.5 rounded-[1.2rem] border px-1.5 py-2 text-center transition-all active:scale-[0.97] focus-ring ${selected
-                    ? 'border-jade-600 bg-jade-600 text-white shadow-md shadow-jade-900/10'
-                    : 'border-ink-150 bg-white text-ink-700 hover:border-jade-400 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-200'}`}
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-bold transition-colors ${
+                    selected
+                      ? 'border-jade-600 bg-jade-600 text-white'
+                      : 'border-ink-200 bg-white text-ink-600 hover:border-jade-300 hover:text-jade-700 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300'
+                  }`}
                 >
-                  <span className={`grid h-9 w-9 place-items-center rounded-xl ${selected ? 'bg-white/15' : 'bg-jade-500/10 text-jade-700 dark:bg-gold-300/10 dark:text-gold-300'}`}>
-                    <Icon className="h-5 w-5" aria-hidden="true" />
-                  </span>
-                  <span className="text-[10px] font-bold leading-tight sm:text-[11px]">{label}</span>
+                  <Icon className="h-3.5 w-3.5" />
+                  {label}
+                  <span className={selected ? 'text-white/70' : 'text-ink-400'}>{category.count}</span>
                 </button>
               );
             })}
             <Link
               href="/categories"
-              className="gs-category-tile flex min-h-[80px] flex-col items-center justify-center gap-1.5 rounded-[1.2rem] border border-dashed border-ink-200 bg-ink-50 text-ink-600 transition-colors hover:border-jade-400 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-300"
+              className="inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-bold text-jade-700 hover:bg-jade-500/10 dark:text-jade-300"
             >
-              <span className="grid h-9 w-9 place-items-center rounded-xl bg-gold-300/20 text-gold-600 dark:text-gold-300">
-                <LayoutGrid className="h-5 w-5" aria-hidden="true" />
-              </span>
-              <span className="text-[10px] font-bold sm:text-[11px]">More</span>
+              All categories
+              <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
             </Link>
           </nav>
         )}
@@ -711,7 +795,7 @@ export default function LandingView({
 
         {/* ───────────────────── Flash deals ───────────────────── */}
         {flashDeals.length >= 3 && !countdown.ended && (
-          <div className="mt-4">
+          <div className="mt-6">
             <ProductRail
               label="Flash deals"
               title={COLLECTIONS['flash-deals'].title}
@@ -733,60 +817,34 @@ export default function LandingView({
           </div>
         )}
 
-        {/* ───────────────────── Shop by category ───────────────────── */}
-        {categories.length > 0 && (
-          <section className="mt-6" aria-labelledby="shop-by-category">
-            <div className="mb-2.5 flex items-end justify-between gap-2">
-              <div>
-                <h2 id="shop-by-category" className="font-display text-base font-extrabold tracking-tight text-ink-900 dark:text-white sm:text-lg">
-                  Shop by category
-                </h2>
-                <p className="text-[11px] text-ink-500 dark:text-ink-400">Every category below has live listings.</p>
-              </div>
-              <Link href="/categories" className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold text-jade-700 hover:underline dark:text-jade-300">
-                All categories
-                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-              </Link>
-            </div>
+        {/* ───────────────────── Repeat Buyer Loop ───────────────────── */}
+        {repeatBuyerPicks.length >= 2 && (
+          <div className="mt-6">
+            <ProductRail
+              label="Buy again and trusted picks"
+              title="Buy again & trusted restocks"
+              subtitle="Fresh stock from merchants and categories you already trust"
+              href="/recommended"
+              icon={<RotateCcw className="h-4 w-4" />}
+              products={repeatBuyerPicks.map((product) => asRail(product))}
+              {...railCommon}
+            />
+          </div>
+        )}
 
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
-              {categories.slice(0, 8).map((category) => {
-                const { label, Icon } = categoryMeta(category.name);
-                return (
-                  <button
-                    key={category.name}
-                    type="button"
-                    onClick={() => {
-                      setSelectedCategory(category.name);
-                      scrollToId('catalog-section');
-                    }}
-                    className="group relative flex h-20 flex-col justify-end overflow-hidden rounded-xl border border-ink-150 bg-ink-50 p-2 text-left transition-colors hover:border-jade-500/40 sm:h-24 dark:border-ink-800 dark:bg-ink-900 focus-ring"
-                  >
-                    {category.image ? (
-                      <span className="absolute inset-0 block overflow-hidden">
-                        <SmartImage
-                          src={category.image}
-                          alt=""
-                          seed={`cat-${category.name}`}
-                          className="h-full w-full opacity-90 transition-transform duration-300 group-hover:scale-105 motion-reduce:transition-none"
-                        />
-                      </span>
-                    ) : (
-                      <span className="absolute inset-0 grid place-items-center text-jade-600 dark:text-jade-300">
-                        <Icon className="h-7 w-7" />
-                      </span>
-                    )}
-                    <span aria-hidden className="absolute inset-0 bg-gradient-to-t from-ink-950/80 via-ink-950/10 to-transparent" />
-                    <span className="relative flex items-center gap-1 text-[11px] font-bold leading-tight text-white">
-                      <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
-                      <span className="line-clamp-2">{label}</span>
-                    </span>
-                    <span className="relative text-[10px] text-white/70">{category.count} listings</span>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
+        {/* ───────────────────── Video-First Demos ───────────────────── */}
+        {videoDemoProducts.length >= 2 && (
+          <div className="mt-6">
+            <ProductRail
+              label="Video-first product demos"
+              title="Video-verified listings"
+              subtitle="Inspect live seller videos before adding to your escrow cart"
+              href="/featured"
+              icon={<Play className="h-4 w-4" />}
+              products={videoDemoProducts.map((product) => asRail(product))}
+              {...railCommon}
+            />
+          </div>
         )}
 
         {/* ───────────────────── Recommended ───────────────────── */}
@@ -852,6 +910,49 @@ export default function LandingView({
               {...railCommon}
             />
           </div>
+        )}
+
+        {/* ───────────────────── Shop by category ───────────────────── */}
+        {categories.length > 0 && (
+          <section className="mt-6" aria-labelledby="shop-by-category">
+            <div className="mb-2 flex items-end justify-between gap-2">
+              <div>
+                <h2 id="shop-by-category" className="font-display text-base font-extrabold tracking-tight text-ink-900 dark:text-white sm:text-lg">
+                  Shop by category
+                </h2>
+                <p className="text-[11px] text-ink-500 dark:text-ink-400">Every category below has live listings.</p>
+              </div>
+              <Link href="/categories" className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold text-jade-700 hover:underline dark:text-jade-300">
+                All categories
+                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-6 gap-1.5 sm:gap-2 xl:grid-cols-8">
+              {categories.slice(0, 8).map((category) => {
+                const { label, Icon } = categoryMeta(category.name);
+                return (
+                  <button
+                    key={category.name}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategory(category.name);
+                      scrollToId('catalog-section');
+                    }}
+                    className="gs-category-tile group relative flex min-h-[80px] flex-col items-center justify-center gap-1 overflow-hidden rounded-[1.2rem] border border-ink-150 bg-white p-1.5 text-center transition-all hover:border-jade-500/45 hover:bg-jade-50/40 dark:border-ink-800 dark:bg-ink-900 dark:hover:bg-ink-800/70 focus-ring"
+                  >
+                    <span className="grid h-8 w-8 place-items-center rounded-xl bg-jade-500/10 text-jade-700 dark:bg-jade-400/10 dark:text-jade-300">
+                      <Icon className="h-4 w-4" aria-hidden="true" />
+                    </span>
+                    <span className="line-clamp-2 text-[10px] font-bold leading-tight text-ink-800 dark:text-ink-100">
+                      {label}
+                    </span>
+                    <span className="text-[9px] text-ink-400 dark:text-ink-500">{category.count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
         )}
 
         {/* ───────────────────── Seller band ───────────────────── */}
@@ -949,20 +1050,80 @@ export default function LandingView({
 
         {/* ───────────────────── Catalogue ───────────────────── */}
         <section id="catalog-section" className="mt-6 scroll-mt-28">
-          <div className="mb-2.5 flex flex-wrap items-end justify-between gap-2">
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
             <div className="min-w-0">
-              <h2 className="font-display text-base font-extrabold tracking-tight text-ink-900 dark:text-white sm:text-lg">
+              <h2 className="font-display text-base font-extrabold tracking-tight [text-wrap:balance] text-ink-900 dark:text-white sm:text-lg">
                 {catalogHeading}
               </h2>
               <p className="text-[11px] text-ink-500 dark:text-ink-400">
                 {filteredProducts.length} item{filteredProducts.length === 1 ? '' : 's'}
                 {selectedState ? ` · ${selectedState}` : ' · across Nigeria'}
+                {sameDayOnly ? ' · same-day delivery' : ''}
+                {safeMeetOnly ? ' · SafeMeet pickup' : ''}
+                {splitPayOnly ? ' · split-pay deposit' : ''}
+                {videoOnly ? ' · video demo' : ''}
                 {onlyVerified ? ' · verified sellers only' : ''}
                 {dealsOnly ? ' · discounted only' : ''}
               </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setSameDayOnly((v) => !v)}
+                aria-pressed={sameDayOnly}
+                className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition-colors ${
+                  sameDayOnly
+                    ? 'border-jade-600 bg-jade-600 text-white'
+                    : 'border-ink-200 bg-white text-ink-600 hover:border-jade-300 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300'
+                }`}
+              >
+                <Truck className="h-3.5 w-3.5" aria-hidden="true" />
+                Same-Day
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSafeMeetOnly((v) => !v)}
+                aria-pressed={safeMeetOnly}
+                className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition-colors ${
+                  safeMeetOnly
+                    ? 'border-jade-600 bg-jade-600 text-white'
+                    : 'border-ink-200 bg-white text-ink-600 hover:border-jade-300 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300'
+                }`}
+              >
+                <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                SafeMeet
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSplitPayOnly((v) => !v)}
+                aria-pressed={splitPayOnly}
+                className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition-colors ${
+                  splitPayOnly
+                    ? 'border-jade-600 bg-jade-600 text-white'
+                    : 'border-ink-200 bg-white text-ink-600 hover:border-jade-300 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300'
+                }`}
+              >
+                <Zap className="h-3.5 w-3.5" aria-hidden="true" />
+                Split-Pay
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setVideoOnly((v) => !v)}
+                aria-pressed={videoOnly}
+                className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition-colors ${
+                  videoOnly
+                    ? 'border-jade-600 bg-jade-600 text-white'
+                    : 'border-ink-200 bg-white text-ink-600 hover:border-jade-300 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300'
+                }`}
+              >
+                <Play className="h-3.5 w-3.5" aria-hidden="true" />
+                Video Demo
+              </button>
+
               <button
                 type="button"
                 onClick={() => onWishlistOnlyChange(!wishlistOnly)}
@@ -1011,6 +1172,22 @@ export default function LandingView({
               </button>
 
               <label className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-[11px] font-bold text-ink-600 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300">
+                <select
+                  aria-label="Filter by condition"
+                  value={conditionFilter}
+                  onChange={(e) => setConditionFilter(e.target.value as 'ALL' | ProductCondition)}
+                  className="cursor-pointer bg-transparent pr-1 outline-none"
+                >
+                  <option value="ALL">All conditions</option>
+                  <option value={ProductCondition.NEW}>Brand New</option>
+                  <option value={ProductCondition.LIKE_NEW}>Like New</option>
+                  <option value={ProductCondition.EXCELLENT}>Excellent</option>
+                  <option value={ProductCondition.GOOD}>Good</option>
+                  <option value={ProductCondition.FAIR}>Fair</option>
+                </select>
+              </label>
+
+              <label className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-[11px] font-bold text-ink-600 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300">
                 <SlidersHorizontal className="h-3.5 w-3.5 text-ink-400" aria-hidden="true" />
                 <select
                   aria-label="Sort listings"
@@ -1019,6 +1196,7 @@ export default function LandingView({
                   className="cursor-pointer bg-transparent pr-1 outline-none"
                 >
                   <option value="smart">Recommended</option>
+                  <option value="fastest">Fastest ETA</option>
                   <option value="rating">Top rated</option>
                   <option value="price_asc">Price: low to high</option>
                   <option value="price_desc">Price: high to low</option>
@@ -1064,7 +1242,7 @@ export default function LandingView({
             )
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4 xl:grid-cols-5">
+              <div className="grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                 {visibleProducts.map((product) => (
                   <ProductTile
                     key={product.id}
@@ -1073,11 +1251,13 @@ export default function LandingView({
                     reviewCount={reviewCountOf(product.id)}
                     {...sellerProps(product.sellerId)}
                     sellerState={stateOf(product.sellerId)}
+                    buyerState={selectedState || buyerState}
                     badge={activeFeaturedIds.has(product.id) ? 'featured' : null}
                     isFavorite={favorites.includes(product.id)}
                     onToggleFavorite={() => toggleFavorite(product.id)}
                     onSelect={() => onSelectProduct(product.id)}
                     onAdd={() => onAddToCart(product.id)}
+                    onQuickBuy={onQuickBuy ? () => onQuickBuy(product.id) : undefined}
                   />
                 ))}
               </div>
@@ -1121,7 +1301,7 @@ export default function LandingView({
                 Live auctions
               </h2>
             </div>
-            <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4 xl:grid-cols-5">
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {auctions.map((product) => {
                 const auction = db.auctions.find((a) => a.productId === product.id);
                 const bids = db.bids.filter((b) => b.auctionId === auction?.id);

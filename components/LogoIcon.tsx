@@ -146,15 +146,15 @@ export default function Logo({
   variant = 'solid',
 }: LogoProps) {
   return (
-    <div className={`flex items-center gap-2.5 ${className}`}>
-      <LogoIcon size={iconSize} variant={variant} />
+    <div className={`flex shrink-0 items-center gap-2 sm:gap-2.5 ${className}`}>
+      <LogoIcon size={iconSize} variant={variant} className="shrink-0" />
       <div className="flex flex-col justify-center">
         {/* Geometric sans-serif with the single Aurora jade gradient wordmark */}
-        <div className={`font-sans font-bold leading-none tracking-tight ${wordmarkClassName} ${textColorClass}`}>
+        <div className={`whitespace-nowrap font-sans font-bold leading-none tracking-tight ${wordmarkClassName} ${textColorClass}`}>
           Good<span className={`bg-gradient-to-r ${accentClassName} bg-clip-text font-bold text-transparent`}>Sale</span>
         </div>
         {showTagline && (
-          <p className={`mt-1 text-[10px] font-semibold leading-none tracking-wider ${subtitleColorClass}`}>
+          <p className={`mt-1 whitespace-nowrap text-[10px] font-semibold leading-none tracking-wider ${subtitleColorClass}`}>
             Buy. Sell. Trust.
           </p>
         )}

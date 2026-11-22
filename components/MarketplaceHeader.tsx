@@ -9,17 +9,19 @@
  * Two skins, one bar: a clean white bar with ink text in light mode, and the
  * deep-jade bar with gold accents in dark mode.
  */
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Search, ShoppingCart, Heart, MapPin, X, ChevronDown,
-  User as UserIcon,
+  User as UserIcon, Menu, ShieldCheck,
 } from 'lucide-react';
 import { useDBState } from '../lib/store';
+import { UserRole } from '../lib/types';
 import { SmartAvatar } from './ui/SmartImage';
 import Logo from './LogoIcon';
 import NotificationMenu from './NotificationMenu';
 import { isVerifiedSeller } from '@/lib/verification';
 import { VerifiedMark } from './verification/VerifiedBadge';
+import AppMenuDrawer from './AppMenuDrawer';
 
 interface MarketplaceHeaderProps {
   searchQuery: string;
@@ -54,6 +56,8 @@ export default function MarketplaceHeader({
     verificationStatus: profile?.verificationStatus,
     verificationExpiresAt: profile?.verificationExpiresAt,
   });
+  // Role comes from the database, never from a client toggle. Only staff see this.
+  const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
   const states = useMemo(() => {
     const set = new Set<string>();
     const profiles = new Map(db.profiles.map((p) => [p.userId, p]));
@@ -64,8 +68,10 @@ export default function MarketplaceHeader({
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [db.products, db.profiles]);
 
+  const [menuOpen, setMenuOpen] = useState(false);
+
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-ink-200/80 bg-white/95 text-ink-900 shadow-[0_8px_30px_-24px_rgba(23,29,26,0.28)] backdrop-blur-xl transition-colors duration-300 dark:border-ink-800/80 dark:bg-ink-950/95 dark:text-ink-50 dark:shadow-xl dark:shadow-black/20">
+    <header className="sticky top-0 z-50 w-full border-b border-ink-200/80 bg-white/95 pt-safe-top text-ink-900 shadow-[0_8px_30px_-24px_rgba(23,29,26,0.28)] backdrop-blur-xl transition-colors duration-300 dark:border-ink-800/80 dark:bg-ink-950/95 dark:text-ink-50 dark:shadow-xl dark:shadow-black/20">
       {/* aurora glow — dark skin only */}
       <div
         aria-hidden
@@ -77,22 +83,36 @@ export default function MarketplaceHeader({
 
       <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Row 1 — logo + actions */}
-        <div className="flex h-16 items-center justify-between gap-3">
+        <div className="flex h-16 items-center justify-between gap-2 sm:gap-3">
           <button
             type="button"
             onClick={() => onNavigate('marketplace')}
             aria-label="GoodSale marketplace"
-            className="flex items-center"
+            className="flex shrink-0 items-center"
           >
             <Logo
-              iconSize={38}
+              iconSize={34}
+              wordmarkClassName="text-[17px] sm:text-xl"
               textColorClass="text-ink-900 dark:text-white"
               subtitleColorClass="text-ink-400 dark:text-jade-300"
               accentClassName="from-jade-500 to-jade-700 dark:from-jade-300 dark:to-jade-500"
             />
           </button>
 
-          <div className="flex items-center gap-1">
+          <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => onNavigate('admin')}
+                aria-label="Open admin panel"
+                title="Admin panel"
+                className="inline-flex h-9 w-9 items-center justify-center gap-1.5 rounded-full border border-gold-400/50 bg-gold-300/20 text-[11px] font-bold text-gold-700 transition-colors hover:bg-gold-300/35 focus-ring dark:border-gold-300/35 dark:bg-gold-300/10 dark:text-gold-200 dark:hover:bg-gold-300/20 sm:h-10 sm:w-auto sm:px-3"
+              >
+                <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="hidden sm:inline">Admin</span>
+              </button>
+            )}
+
             <NotificationMenu onNavigate={onNavigate} onOpenAuth={onOpenAuth} />
 
             {/* wishlist */}
@@ -100,7 +120,7 @@ export default function MarketplaceHeader({
               type="button"
               aria-label="Wishlist"
               onClick={onOpenWishlist}
-              className="relative grid h-10 w-10 place-items-center rounded-full transition-colors hover:bg-ink-100 dark:hover:bg-white/10"
+              className="relative grid h-9 w-9 sm:h-10 sm:w-10 place-items-center rounded-full transition-colors hover:bg-ink-100 dark:hover:bg-white/10"
             >
               <Heart className="h-5 w-5" />
               {wishlistCount > 0 && (
@@ -140,6 +160,16 @@ export default function MarketplaceHeader({
               )}
               <ChevronDown className="hidden h-4 w-4 text-ink-400 dark:text-white/60 sm:block" />
             </button>
+
+            {/* GoodSale directory drawer (relocated footer + app install) */}
+            <button
+              type="button"
+              onClick={() => setMenuOpen(true)}
+              aria-label="Open GoodSale directory"
+              className="grid h-9 w-9 sm:h-10 sm:w-10 place-items-center rounded-full text-ink-700 transition-colors hover:bg-ink-100 dark:text-ink-200 dark:hover:bg-white/10 cursor-pointer"
+            >
+              <Menu className="h-5 w-5" aria-hidden="true" />
+            </button>
           </div>
         </div>
 
@@ -171,7 +201,7 @@ export default function MarketplaceHeader({
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder="Search for products…"
               aria-label="Search products"
-              className="h-10 w-full rounded-full border border-ink-200 bg-white pl-9 pr-9 text-sm font-medium text-ink-900 shadow-sm placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-jade-500/50 dark:border-white/20 dark:shadow-none dark:focus:ring-gold-300"
+              className="h-10 w-full rounded-full border border-ink-200 bg-white pl-9 pr-9 text-base sm:text-sm font-medium text-ink-900 shadow-sm placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-jade-500/50 dark:border-white/20 dark:shadow-none dark:focus:ring-gold-300"
             />
             {searchQuery && (
               <button
@@ -201,6 +231,11 @@ export default function MarketplaceHeader({
         </div>
 
       </div>
+      <AppMenuDrawer
+        isOpen={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        onNavigate={onNavigate}
+      />
     </header>
   );
 }

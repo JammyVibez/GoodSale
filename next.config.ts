@@ -36,7 +36,7 @@ const connectSrc = [
 const securityHeaders = [
   { key: 'X-DNS-Prefetch-Control', value: 'on' },
   { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
-  { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+  ...(isDev ? [] : [{ key: 'X-Frame-Options', value: 'SAMEORIGIN' }]),
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'X-Permitted-Cross-Domain-Policies', value: 'none' },
   { key: 'Cross-Origin-Resource-Policy', value: 'same-site' },
@@ -62,7 +62,7 @@ const securityHeaders = [
       "object-src 'none'",
       "base-uri 'self'",
       "form-action 'self'",
-      "frame-ancestors 'self'",
+      isDev ? "frame-ancestors *" : "frame-ancestors 'self'",
     ].join('; '),
   },
 ];
@@ -73,7 +73,7 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   // The preview is served through a proxy origin, so dev asset requests arrive
   // cross-origin. Declaring it here keeps HMR and /_next/* loading working.
-  allowedDevOrigins: ['*.e2b.app'],
+  allowedDevOrigins: ['*.e2b.app', '*.run.app'],
   async headers() {
     return [
       {

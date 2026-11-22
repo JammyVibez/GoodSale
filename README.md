@@ -27,7 +27,7 @@ Fill in at minimum:
 | `SUPABASE_SERVICE_ROLE_KEY` | Project Settings → API → `service_role` (server only) |
 | `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` | Paystack Dashboard → Settings → API Keys |
 | `PAYSTACK_SECRET_KEY` | Paystack secret key (server only) |
-| `PAYSTACK_WEBHOOK_SECRET` | Dedicated Paystack webhook HMAC secret; defaults to `PAYSTACK_SECRET_KEY` when omitted |
+| `PAYSTACK_WEBHOOK_SECRET` | Dedicated webhook HMAC secret; falls back to `PAYSTACK_SECRET_KEY` when omitted |
 | `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` locally |
 | `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` + `CLOUDINARY_API_KEY` + `CLOUDINARY_API_SECRET` | Cloudinary dashboard → Settings → API Keys (optional, see below) |
 
@@ -214,6 +214,6 @@ npm run backend:test
 npm run backend:check
 ```
 
-Before running Compose, set a strong random `RATE_LIMIT_SHARED_SECRET` in `.env.local`. The Next.js middleware uses that secret to ask the Rust service for shared Redis-backed rate-limit decisions. Redis is internal to the Compose network and is not published to the host.
+Next.js API rate limiting uses Supabase Postgres (`check_rate_limit`, migration 042). The Rust API remains enabled in this fork for signed Paystack webhooks, payment verification and media uploads; Docker Compose also runs its private Redis limiter for Rust endpoints.
 
-**Migration status:** media uploads, Paystack order verification and signed Paystack webhook processing are routed to Rust when `RUST_BACKEND_URL` is configured. The webhook route forwards the original request bytes unchanged. The remaining Next.js API handlers stay in place while their Supabase, checkout, escrow, payout, delivery and admin contracts are migrated and tested. This is deliberate: financial handlers must retain their idempotency, role checks and exact database RPC semantics.
+**Migration status:** media uploads, Paystack order verification and signed Paystack webhook processing are routed to Rust when `RUST_BACKEND_URL` is configured. The webhook route forwards the original request bytes unchanged. Other account, catalogue, wallet, escrow, dispute, delivery, courier, chat, notification, referral and admin route handlers remain on their existing Next.js/Supabase implementations until their Rust replacements pass contract, authorization, replay and financial-flow tests.

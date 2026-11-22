@@ -69,6 +69,14 @@ import { makeOrderNumber } from '@/lib/ids';
 import { notificationAllowed } from '@/lib/notificationPrefs';
 import { computePlatformFee } from '@/lib/fees';
 import { effectiveProductPrice } from '@/lib/productPricing';
+import {
+  canBuyerReviewProof,
+  canSellerSubmitProof,
+  computeInstantPayoutSummary,
+  createSubmittedDispatchProof,
+  reviewDispatchProofState,
+} from '@/lib/escrow/proofAndSplit';
+import { syncOfflineOrders } from '@/lib/offline/vault';
 import type {
   GoodSaleDBState,
   User,
@@ -161,6 +169,9 @@ export function getDBState(): GoodSaleDBState {
 
 export function saveDBState(state: GoodSaleDBState) {
   dbInstance = state;
+  if (typeof window !== 'undefined' && state.currentUser?.id) {
+    syncOfflineOrders(state.orders, state.currentUser.id);
+  }
   notify();
 }
 
@@ -179,6 +190,9 @@ export async function reloadFromSupabase() {
     next.currentUser = dbInstance.currentUser;
   }
   dbInstance = next;
+  if (typeof window !== 'undefined' && next.currentUser?.id) {
+    syncOfflineOrders(next.orders, next.currentUser.id);
+  }
   notify();
 }
 
@@ -685,6 +699,8 @@ export const dbOperations = {
       phone?: string;
       instructions?: string;
       checkoutGroupId?: string;
+      safeMeetLocationId?: number;
+      safeMeetScheduledAt?: string;
     }
   ) {
     const state = getDBState();
@@ -822,6 +838,8 @@ export const dbOperations = {
       shippingQuoteId: shipping?.quoteId,
       estimatedDeliveryMinDays: shipping?.etaMin ?? shipping?.breakdown?.etaMinDays,
       estimatedDeliveryMaxDays: shipping?.etaMax ?? shipping?.breakdown?.etaMaxDays,
+      safeMeetLocationId: deliveryContact?.safeMeetLocationId,
+      safeMeetScheduledAt: deliveryContact?.safeMeetScheduledAt,
     };
 
     // Infer seller pickup from seller profile when available
@@ -1127,22 +1145,321 @@ export const dbOperations = {
   },
 
   async completeDelivery(orderId: number, enteredPin: string) {
-    try {
-      const res = await fetch('/api/orders/release-escrow', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, pin: enteredPin }),
-      });
-      const payload = await res.json();
-      if (!res.ok || !payload.success) {
-        return { error: payload.error || 'Incorrect Delivery PIN! Escrow funds cannot be released.' };
+    const state = getDBState();
+    const order = state.orders.find((o) => o.id === orderId);
+    if (order) {
+      const payoutCheck = computeInstantPayoutSummary(order);
+      if (!payoutCheck.eligible) {
+        return { error: payoutCheck.reason || 'Order cannot be released yet.' };
       }
-      await reloadFromSupabase();
-      return { success: true };
-    } catch (err) {
-      console.error('Escrow release request failed:', err);
-      return { error: 'Could not reach escrow service. Try again.' };
     }
+
+    if (isSupabaseConfigured()) {
+      try {
+        const res = await fetch('/api/orders/release-escrow', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId, pin: enteredPin }),
+        });
+        const payload = await res.json();
+        if (!res.ok || !payload.success) {
+          return { error: payload.error || 'Incorrect Delivery PIN! Escrow funds cannot be released.' };
+        }
+        await reloadFromSupabase();
+        return { success: true, instantPayoutAmount: order ? computeInstantPayoutSummary(order).netSellerPayout : undefined };
+      } catch (err) {
+        console.error('Escrow release request failed:', err);
+        return { error: 'Could not reach escrow service. Try again.' };
+      }
+    }
+
+    if (!order) return { error: 'Order not found.' };
+    if (String(order.deliveryPin).trim() !== String(enteredPin).trim()) {
+      return { error: 'Incorrect Delivery PIN! Escrow funds cannot be released.' };
+    }
+
+    const now = new Date().toISOString();
+    const summary = computeInstantPayoutSummary(order);
+    order.status = OrderStatus.DELIVERED_SUCCESS;
+    order.updatedAt = now;
+    order.instantPayoutAt = now;
+    order.payoutAmount = summary.netSellerPayout;
+
+    const escrow = state.escrows.find((e) => e.orderId === order.id);
+    if (escrow) {
+      escrow.isReleased = true;
+      escrow.isRefunded = false;
+    }
+
+    // Instant Seller Wallet Payout
+    let sellerWallet = state.wallets.find((w) => w.userId === order.sellerId);
+    if (!sellerWallet) {
+      sellerWallet = {
+        id: Math.max(...state.wallets.map((w) => w.id), 0) + 1,
+        userId: order.sellerId,
+        balance: 0,
+      };
+      state.wallets.push(sellerWallet);
+    }
+    sellerWallet.balance += summary.netSellerPayout;
+    state.walletTransactions.unshift({
+      id: Math.max(...state.walletTransactions.map((t) => t.id), 0) + 1,
+      walletId: sellerWallet.id,
+      reference: `PAYOUT-${order.orderNumber}`,
+      amount: summary.netSellerPayout,
+      type: 'SELLER_EARNINGS',
+      description: `Instant payout on buyer PIN release (${order.orderNumber})`,
+      status: 'COMPLETED',
+      orderId: order.id,
+      balanceAfter: sellerWallet.balance,
+      currency: 'NGN',
+      affectsBalance: true,
+      createdAt: now,
+    });
+
+    // Repeat-buyer GoodPoints reward (+25 GP)
+    const buyer = state.users.find((u) => u.id === order.buyerId);
+    if (buyer) {
+      buyer.goodPoints += 25;
+      if (state.currentUser?.id === buyer.id) {
+        state.currentUser.goodPoints += 25;
+      }
+      state.goodPoints.unshift({
+        id: Math.max(...state.goodPoints.map((g) => g.id), 0) + 1,
+        userId: buyer.id,
+        points: 25,
+        reason: `Completed verified escrow delivery (${order.orderNumber})`,
+        createdAt: now,
+      });
+    }
+
+    state.notifications.unshift(
+      {
+        id: Math.max(...state.notifications.map((n) => n.id), 0) + 1,
+        userId: order.sellerId,
+        title: 'Instant payout credited!',
+        message: `₦${summary.netSellerPayout.toLocaleString()} from ${order.orderNumber} is now in your withdrawable wallet.`,
+        type: 'ESCROW',
+        isRead: false,
+        createdAt: now,
+      },
+      {
+        id: Math.max(...state.notifications.map((n) => n.id), 0) + 2,
+        userId: order.buyerId,
+        title: 'Delivery verified · +25 GoodPoints',
+        message: `Escrow released for ${order.orderNumber}. Enjoy your purchase and earn 25 loyalty GoodPoints.`,
+        type: 'ORDER',
+        isRead: false,
+        createdAt: now,
+      }
+    );
+
+    saveDBState(state);
+    return { success: true, instantPayoutAmount: summary.netSellerPayout };
+  },
+
+  /** Seller uploads pre-dispatch condition photo or video proof before courier handover. */
+  async submitDispatchProof(
+    orderId: number,
+    mediaUrl: string,
+    mediaType: 'image' | 'video',
+    note?: string
+  ) {
+    const state = getDBState();
+    const user = state.currentUser;
+    if (!user) return { error: 'Please sign in.' };
+
+    const order = state.orders.find((o) => o.id === orderId);
+    if (!order) return { error: 'Order not found.' };
+    if (order.sellerId !== user.id) return { error: 'Only the seller can upload condition proof.' };
+    if (!canSellerSubmitProof(order.status)) {
+      return { error: 'Condition proof can only be uploaded for funded pre-dispatch orders.' };
+    }
+
+    let proof;
+    try {
+      proof = createSubmittedDispatchProof({
+        mediaUrl,
+        mediaType,
+        note,
+        sellerId: user.id,
+      });
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : 'Invalid condition proof' };
+    }
+
+    const now = new Date().toISOString();
+    order.dispatchProof = proof;
+    order.updatedAt = now;
+
+    // Notify buyer in-app
+    state.notifications.unshift({
+      id: Math.max(...state.notifications.map((n) => n.id), 0) + 1,
+      userId: order.buyerId,
+      title: `Live condition proof ready (${order.orderNumber})`,
+      message: `Inspect the seller's pre-dispatch ${mediaType} and approve before courier dispatch.`,
+      type: 'ORDER',
+      isRead: false,
+      createdAt: now,
+    });
+
+    // Drop a stamped copy into any matching chat room
+    const room = state.chatRooms.find(
+      (r) => r.buyerId === order.buyerId && r.sellerId === order.sellerId && r.productId === order.productId
+    );
+    if (room) {
+      const msg: Message = {
+        id: -Date.now(),
+        roomId: room.id,
+        senderId: user.id,
+        messageText: `Pre-dispatch condition proof for ${order.orderNumber}: ${proof.note}`,
+        imageUrl: mediaType === 'image' ? proof.mediaUrl : undefined,
+        videoUrl: mediaType === 'video' ? proof.mediaUrl : undefined,
+        createdAt: now,
+      };
+      state.messages.push(msg);
+      room.lastMessage = `Sent condition proof for ${order.orderNumber}`;
+      room.lastMessageTime = now;
+      room.lastMessageSenderId = user.id;
+      room.lastMessageKind = mediaType === 'video' ? 'VIDEO' : 'PHOTO';
+    }
+
+    saveDBState(state);
+
+    if (isSupabaseConfigured()) {
+      try {
+        const res = await fetch('/api/orders/dispatch-proof', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId, action: 'SUBMIT', mediaUrl, mediaType, note }),
+        });
+        const payload = await res.json().catch(() => null);
+        if (!res.ok || !payload?.success) {
+          return { error: payload?.error || 'Could not save condition proof' };
+        }
+        await reloadFromSupabase();
+      } catch {
+        return { error: 'Could not reach server to sync condition proof.' };
+      }
+    }
+
+    return { success: true, dispatchProof: proof };
+  },
+
+  /** Buyer inspects pre-dispatch condition proof and either approves or asks for fresh verification. */
+  async reviewDispatchProof(
+    orderId: number,
+    decision: 'APPROVED' | 'CHANGES_REQUESTED',
+    buyerNote?: string
+  ) {
+    const state = getDBState();
+    const user = state.currentUser;
+    if (!user) return { error: 'Please sign in.' };
+
+    const order = state.orders.find((o) => o.id === orderId);
+    if (!order) return { error: 'Order not found.' };
+    if (order.buyerId !== user.id) return { error: 'Only the buyer can review condition proof.' };
+    if (!canBuyerReviewProof(order)) {
+      return { error: 'No pending condition proof awaiting your approval.' };
+    }
+
+    let nextProof;
+    try {
+      nextProof = reviewDispatchProofState(order.dispatchProof, decision, user.id, buyerNote);
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : 'Unable to review condition proof.' };
+    }
+
+    const now = new Date().toISOString();
+    order.dispatchProof = nextProof;
+    order.updatedAt = now;
+
+    state.notifications.unshift({
+      id: Math.max(...state.notifications.map((n) => n.id), 0) + 1,
+      userId: order.sellerId,
+      title: decision === 'APPROVED' ? `Proof approved (${order.orderNumber})` : `Fresh proof requested (${order.orderNumber})`,
+      message:
+        decision === 'APPROVED'
+          ? 'Buyer inspected and approved condition proof. Ready for immediate dispatch.'
+          : `Buyer requested a clearer clip/photo: ${buyerNote}`,
+      type: 'ORDER',
+      isRead: false,
+      createdAt: now,
+    });
+
+    saveDBState(state);
+
+    if (isSupabaseConfigured()) {
+      try {
+        const res = await fetch('/api/orders/dispatch-proof', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId,
+            action: decision === 'APPROVED' ? 'APPROVE' : 'REQUEST_CHANGES',
+            note: buyerNote,
+          }),
+        });
+        const payload = await res.json().catch(() => null);
+        if (!res.ok || !payload?.success) {
+          return { error: payload?.error || 'Could not record review decision.' };
+        }
+        await reloadFromSupabase();
+      } catch {
+        return { error: 'Could not reach server to record decision.' };
+      }
+    }
+
+    return { success: true, dispatchProof: nextProof };
+  },
+
+  /** Buyer settles remaining split-pay balance into escrow prior to PIN release. */
+  async settleSplitPayBalance(orderId: number) {
+    const state = getDBState();
+    const user = state.currentUser;
+    if (!user) return { error: 'Please sign in.' };
+
+    const order = state.orders.find((o) => o.id === orderId);
+    if (!order) return { error: 'Order not found.' };
+    if (order.buyerId !== user.id) return { error: 'Only the buyer can settle this balance.' };
+
+    const remaining = Math.max(0, Number(order.balanceRemaining || 0));
+    if (remaining <= 0 || order.isBalanceSettled) {
+      return { error: 'Order balance is already fully settled.' };
+    }
+
+    if (isSupabaseConfigured()) {
+      const res = await dbOperations.payOrderWithWallet(orderId);
+      if (!res.success) return { error: res.message || 'Complete balance payment via Paystack.' };
+      return { success: true };
+    }
+
+    const now = new Date().toISOString();
+    order.depositAmountPaid = order.totalAmount;
+    order.balanceRemaining = 0;
+    order.isBalanceSettled = true;
+    if (order.status === OrderStatus.PARTIAL_DEPOSIT_PAID) {
+      order.status = OrderStatus.PAID_ESCROW;
+    }
+    order.updatedAt = now;
+
+    const escrow = state.escrows.find((e) => e.orderId === order.id);
+    if (escrow) {
+      escrow.heldAmount = order.totalAmount;
+    }
+
+    state.notifications.unshift({
+      id: Math.max(...state.notifications.map((n) => n.id), 0) + 1,
+      userId: order.sellerId,
+      title: `Split-pay balance settled (${order.orderNumber})`,
+      message: `Buyer completed the remaining ₦${remaining.toLocaleString()} escrow payment.`,
+      type: 'ESCROW',
+      isRead: false,
+      createdAt: now,
+    });
+
+    saveDBState(state);
+    return { success: true };
   },
 
 
@@ -1821,12 +2138,47 @@ export const dbOperations = {
   },
 
   // Chat/Messages flow
-  async sendMessage(roomId: number, text?: string, imgUrl?: string, videoUrl?: string, receiptDetails?: any, productDetails?: any, replyToId?: number) {
+  async sendMessage(
+    roomId: number,
+    text?: string,
+    imgUrl?: string,
+    videoUrl?: string,
+    receiptDetails?: any,
+    productDetails?: any,
+    replyToId?: number,
+    voiceNoteUrl?: string,
+    voiceDurationSeconds?: number
+  ) {
     const state = getDBState();
     if (!state.currentUser) return;
 
     const room = state.chatRooms.find((r) => r.id === roomId);
     if (!room) return;
+
+    const preview = productDetails
+      ? 'Shared a listing'
+      : receiptDetails
+        ? 'Shared an escrow receipt'
+        : voiceNoteUrl
+          ? 'Sent a voice note'
+          : imgUrl
+            ? 'Sent a photo'
+            : videoUrl
+              ? 'Sent a video'
+              : text || 'New message';
+
+    const messageKind: Message['receiptDetails'] extends never ? never : NonNullable<typeof room.lastMessageKind> =
+      productDetails
+        ? 'PRODUCT'
+        : receiptDetails
+          ? 'RECEIPT'
+          : voiceNoteUrl
+            ? 'VOICE'
+            : imgUrl
+              ? 'PHOTO'
+              : videoUrl
+                ? 'VIDEO'
+                : 'TEXT';
 
     const client = createClient();
     if (client) {
@@ -1837,35 +2189,27 @@ export const dbOperations = {
           messageText: text,
           imageUrl: imgUrl,
           videoUrl,
+          voiceNoteUrl,
+          voiceDurationSeconds,
           receiptDetails,
           productDetails,
           replyToId,
         });
         state.messages.push(saved);
-        const preview = productDetails
-          ? 'Shared a listing'
-          : receiptDetails
-            ? 'Shared an escrow receipt'
-            : imgUrl
-              ? 'Sent a photo'
-              : videoUrl
-                ? 'Sent a video'
-                : text || 'New message';
         room.lastMessage = preview;
         room.lastMessageTime = saved.createdAt;
         room.lastMessageSenderId = state.currentUser.id;
-        room.lastMessageKind = productDetails
-          ? 'PRODUCT'
-          : receiptDetails
-            ? 'RECEIPT'
-            : imgUrl
-              ? 'PHOTO'
-              : videoUrl
-                ? 'VIDEO'
-                : 'TEXT';
+        room.lastMessageKind = messageKind;
         // The database trigger writes the authoritative preview and notifies the
         // recipient once per burst, so every client sees the same inbox state.
         saveDBState(state);
+        if (typeof window !== 'undefined' && roomId > 0) {
+          void fetch('/api/push/notify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ kind: 'CHAT_MESSAGE', roomId, preview }),
+          }).catch(() => {});
+        }
         return saved;
       } catch (err) {
         console.error('Failed to send message:', err);
@@ -1879,16 +2223,20 @@ export const dbOperations = {
       messageText: text,
       imageUrl: imgUrl,
       videoUrl,
+      voiceNoteUrl,
+      voiceDurationSeconds,
       receiptDetails,
       productDetails,
       replyToId,
       createdAt: new Date().toISOString(),
     };
     state.messages.push(newMsg);
-    room.lastMessage = text || 'Sent an attachment';
+    room.lastMessage = preview;
     room.lastMessageTime = newMsg.createdAt;
     room.lastMessageSenderId = state.currentUser.id;
+    room.lastMessageKind = messageKind;
     saveDBState(state);
+    return newMsg;
   },
 
   async getOrCreateChatRoom(productId: number) {

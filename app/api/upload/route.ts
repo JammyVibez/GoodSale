@@ -11,7 +11,7 @@ const VIDEO_MAX_BYTES = 25 * 1024 * 1024;
 
 const ALLOWED_MIME_TYPES: Record<string, Set<string>> = {
   'product-images': new Set(['image/jpeg','image/png','image/webp','image/avif','image/gif','video/mp4','video/webm','video/quicktime']),
-  'chat-media': new Set(['image/jpeg','image/png','image/webp','image/gif','video/mp4','video/webm','video/quicktime']),
+  'chat-media': new Set(['image/jpeg','image/png','image/webp','image/gif','video/mp4','video/webm','video/quicktime','audio/webm','audio/mp4','audio/mpeg','audio/ogg','audio/wav']),
   'government-ids': new Set(['image/jpeg','image/png','image/webp','application/pdf']),
   avatars: new Set(['image/jpeg','image/png','image/webp']),
   'ad-media': new Set(['image/jpeg','image/png','image/webp','image/gif','video/mp4','video/webm','video/quicktime']),
@@ -19,6 +19,7 @@ const ALLOWED_MIME_TYPES: Record<string, Set<string>> = {
 const MIME_EXTENSIONS: Record<string,string> = {
   'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/avif':'avif','image/gif':'gif',
   'application/pdf':'pdf','video/mp4':'mp4','video/webm':'webm','video/quicktime':'mov',
+  'audio/webm':'webm','audio/mp4':'m4a','audio/mpeg':'mp3','audio/ogg':'ogg','audio/wav':'wav',
 };
 function hasValidFileSignature(buffer: Buffer,mimeType: string): boolean {
   switch(mimeType) {
@@ -28,9 +29,14 @@ function hasValidFileSignature(buffer: Buffer,mimeType: string): boolean {
     case 'image/gif': return buffer.toString('ascii',0,6)==='GIF87a'||buffer.toString('ascii',0,6)==='GIF89a';
     case 'image/avif': return buffer.length>12&&buffer.toString('ascii',4,8)==='ftyp'&&/^(avif|avis)$/.test(buffer.toString('ascii',8,12));
     case 'application/pdf': return buffer.toString('ascii',0,5)==='%PDF-';
-    case 'video/mp4': return buffer.length>12&&buffer.toString('ascii',4,8)==='ftyp';
+    case 'video/mp4':
+    case 'audio/mp4': return buffer.length>12&&buffer.toString('ascii',4,8)==='ftyp';
     case 'video/quicktime': return buffer.length>12&&buffer.toString('ascii',4,8)==='ftyp'&&buffer.toString('ascii',8,12)==='qt  ';
-    case 'video/webm': return buffer.length>4&&buffer.subarray(0,4).equals(Buffer.from([0x1a,0x45,0xdf,0xa3]));
+    case 'video/webm':
+    case 'audio/webm': return buffer.length>4&&buffer.subarray(0,4).equals(Buffer.from([0x1a,0x45,0xdf,0xa3]));
+    case 'audio/ogg': return buffer.length>4&&buffer.toString('ascii',0,4)==='OggS';
+    case 'audio/wav': return buffer.length>12&&buffer.toString('ascii',0,4)==='RIFF'&&buffer.toString('ascii',8,12)==='WAVE';
+    case 'audio/mpeg': return (buffer.length>3&&buffer.toString('ascii',0,3)==='ID3')||(buffer.length>2&&buffer[0]===0xff&&(buffer[1]&0xe0)===0xe0);
     default: return false;
   }
 }

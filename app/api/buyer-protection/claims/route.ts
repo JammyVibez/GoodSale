@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
   try {
     const ip = clientIpFromRequest(req);
     const limited = await rateLimitAsync(`buyer:protect:${ip}`, 6, 60_000);
-    if (!limited.allowed) return NextResponse.json({ success: false, error: 'Too many claim attempts' }, { status: limited.unavailable ? 503 : 429 });
+    if (!limited.allowed) return NextResponse.json({ success: false, error: 'Too many claim attempts' }, { status: 429 });
 
     const supabase = await createServerSupabaseClient();
     if (!supabase) return NextResponse.json({ success: false, error: 'Supabase not configured' }, { status: 503 });

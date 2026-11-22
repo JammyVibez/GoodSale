@@ -4,6 +4,22 @@
 
 export type LatLng = { lat: number; lng: number };
 
+/**
+ * All 36 states plus the FCT, in the same shape used by `NG_STATES` in
+ * lib/serviceAreas.ts (that module pulls in the store, so search/geo helpers
+ * keep their own copy to stay dependency-free).
+ */
+export const NIGERIAN_STATES: string[] = [
+  'Abia State', 'Adamawa State', 'Akwa Ibom State', 'Anambra State', 'Bauchi State',
+  'Bayelsa State', 'Benue State', 'Borno State', 'Cross River State', 'Delta State',
+  'Ebonyi State', 'Edo State', 'Ekiti State', 'Enugu State', 'FCT Abuja',
+  'Gombe State', 'Imo State', 'Jigawa State', 'Kaduna State', 'Kano State',
+  'Katsina State', 'Kebbi State', 'Kogi State', 'Kwara State', 'Lagos State',
+  'Nasarawa State', 'Niger State', 'Ogun State', 'Ondo State', 'Osun State',
+  'Oyo State', 'Plateau State', 'Rivers State', 'Sokoto State', 'Taraba State',
+  'Yobe State', 'Zamfara State',
+];
+
 /** Lagos / Abuja centroids and common delivery presets */
 export const CITY_COORDS: Record<string, LatLng> = {
   lagos: { lat: 6.5244, lng: 3.3792 },

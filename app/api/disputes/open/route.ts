@@ -5,6 +5,8 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { logger, publicErrorMessage } from '@/lib/logger';
 import { rateLimit, clientIpFromRequest } from '@/lib/rate-limit';
 import { sendTransactionalEmail, disputeOpenedEmailHtml } from '@/lib/email';
+import { buildPushPayload } from '@/lib/push/payload';
+import { sendPushToProfileIds } from '@/lib/push/server';
 
 /** POST { orderId, reason } — open escrow dispute */
 export async function POST(req: NextRequest) {
@@ -70,6 +72,16 @@ export async function POST(req: NextRequest) {
             });
           }
         }
+        const pushPayload = buildPushPayload({
+          kind: 'DISPUTE_OPENED',
+          orderNumber: String(order.order_number || `#${orderId}`),
+          reason,
+        });
+        void sendPushToProfileIds({
+          profileIds: [order.buyer_id, order.seller_id],
+          payload: pushPayload,
+          category: 'disputes',
+        }).catch(() => {});
       }
     }
 

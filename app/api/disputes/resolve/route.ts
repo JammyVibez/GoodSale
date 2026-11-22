@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { logger, publicErrorMessage } from '@/lib/logger';
 import { rateLimit, clientIpFromRequest } from '@/lib/rate-limit';
 import { initiatePaystackRefund } from '@/lib/data/payments';
+import { notifyOrderPushParticipants } from '@/lib/push/server';
 
 /** POST { disputeId, resolution: REFUND_BUYER|RELEASE_SELLER, notes? } — admin only */
 export async function POST(req: NextRequest) {
@@ -90,6 +91,43 @@ export async function POST(req: NextRequest) {
           }
         }
       }
+    }
+
+    const adminForPush = createAdminClient();
+    if (adminForPush) {
+      void (async () => {
+        const { data: disputeRow } = await adminForPush
+          .from('disputes')
+          .select('order_id')
+          .eq('id', disputeId)
+          .maybeSingle();
+        if (disputeRow?.order_id) {
+          const typedResolution = resolution as 'REFUND_BUYER' | 'RELEASE_SELLER';
+          await notifyOrderPushParticipants({
+            orderId: Number(disputeRow.order_id),
+            buildSpec: ({ orderNumber, buyerId, sellerId }) => [
+              {
+                profileId: buyerId,
+                spec: {
+                  kind: 'DISPUTE_RESOLVED',
+                  orderNumber,
+                  resolution: typedResolution,
+                  recipientRole: 'buyer',
+                },
+              },
+              {
+                profileId: sellerId,
+                spec: {
+                  kind: 'DISPUTE_RESOLVED',
+                  orderNumber,
+                  resolution: typedResolution,
+                  recipientRole: 'seller',
+                },
+              },
+            ],
+          });
+        }
+      })().catch(() => {});
     }
 
     return NextResponse.json({ success: true, data, paystackRefund });

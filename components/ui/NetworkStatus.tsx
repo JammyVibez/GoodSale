@@ -34,7 +34,7 @@ export default function NetworkStatus() {
     <div
       role="status"
       aria-live="polite"
-      className={`fixed inset-x-0 top-0 z-[160] flex justify-center px-3 pt-3 pointer-events-none motion-safe:animate-slide-in`}
+      className={`fixed inset-x-0 top-0 z-[160] flex justify-center px-3 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] pointer-events-none motion-safe:animate-slide-in`}
     >
       <div className={`pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-semibold shadow-xl backdrop-blur-xl ${
         offline

@@ -360,6 +360,24 @@ export interface Order {
   isBalanceSettled?: boolean;
   bankTransferReceipt?: string;
   invoiceTerms?: string;
+  /** Pre-dispatch live photo/video proof of condition verified by buyer before dispatch. */
+  dispatchProof?: DispatchProof;
+  safeMeetLocationId?: number;
+  safeMeetScheduledAt?: string;
+  instantPayoutAt?: string;
+  payoutAmount?: number;
+}
+
+export interface DispatchProof {
+  status: 'AWAITING_PROOF' | 'SUBMITTED' | 'APPROVED' | 'CHANGES_REQUESTED';
+  mediaUrl: string;
+  mediaType: 'image' | 'video';
+  note?: string;
+  submittedAt: string;
+  submittedBy: number;
+  reviewedAt?: string;
+  reviewedBy?: number;
+  buyerNote?: string;
 }
 
 export interface SavedAddress {
@@ -431,6 +449,7 @@ export interface Message {
   imageUrl?: string;
   videoUrl?: string;
   voiceNoteUrl?: string;
+  voiceDurationSeconds?: number;
   receiptDetails?: {
     orderNumber: string;
     productTitle: string;

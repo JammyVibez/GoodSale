@@ -392,6 +392,8 @@ export async function insertMessage(
     messageText?: string;
     imageUrl?: string;
     videoUrl?: string;
+    voiceNoteUrl?: string;
+    voiceDurationSeconds?: number;
     offerDetails?: unknown;
     productDetails?: unknown;
     receiptDetails?: unknown;
@@ -406,6 +408,8 @@ export async function insertMessage(
       message_text: message.messageText ?? null,
       image_url: message.imageUrl ?? null,
       video_url: message.videoUrl ?? null,
+      voice_note_url: message.voiceNoteUrl ?? null,
+      voice_duration_seconds: message.voiceDurationSeconds ?? null,
       offer_details: message.offerDetails ?? null,
       product_details: message.productDetails ?? null,
       receipt_details: message.receiptDetails ?? null,

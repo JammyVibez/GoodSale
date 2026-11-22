@@ -45,6 +45,8 @@ import {
 import { toast } from '@/lib/feedback';
 import { isVerifiedSeller } from '@/lib/verification';
 import { VerifiedMark } from '@/components/verification/VerifiedBadge';
+import { VoiceNoteRecorder, VoiceNotePlayer } from '@/components/chat/VoiceNoteRecorder';
+import { validateCounterOfferAmount } from '@/lib/chat/voice';
 
 /** Emoji set offered in the message reaction picker. */
 const REACTION_EMOJI = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
@@ -102,6 +104,9 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
   // Reply + reactions
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [reactionOpenFor, setReactionOpenFor] = useState<number | null>(null);
+  const [counteringMsgId, setCounteringMsgId] = useState<number | null>(null);
+  const [counterAmountInput, setCounterAmountInput] = useState('');
+  const [counterError, setCounterError] = useState<string | null>(null);
 
   // Swipe-to-reply: drag a message toward the leading edge to quote it.
   const [swipe, setSwipe] = useState<{ id: number; dx: number } | null>(null);
@@ -1301,6 +1306,18 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
                           </div>
                         )}
 
+                        {/* Voice note negotiation clip */}
+                        {msg.voiceNoteUrl && (
+                          <div className="mt-2">
+                            <VoiceNotePlayer
+                              url={msg.voiceNoteUrl}
+                              durationSeconds={msg.voiceDurationSeconds}
+                              seed={msg.id}
+                              mine={isMine}
+                            />
+                          </div>
+                        )}
+
                         {/* Escrow receipt */}
                         {msg.receiptDetails && (
                           <div className="mt-2.5 max-w-xs rounded-2xl border-2 border-jade-500/30 bg-white p-4 text-left text-ink-800 dark:bg-ink-950 dark:text-ink-100">
@@ -1448,19 +1465,57 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
                                         size="sm"
                                         variant="secondary"
                                         onClick={() => {
-                                          const counterStr = prompt('Enter your counter offer amount (₦):');
-                                          if (counterStr) {
-                                            const amt = parseInt(counterStr.replace(/[^0-9]/g, ''), 10);
-                                            if (amt > 0) {
-                                              dbOperations.updateOfferStatus(msg.id, 'COUNTERED', amt, user.id);
-                                              refresh();
-                                            }
-                                          }
+                                          setCounteringMsgId(counteringMsgId === msg.id ? null : msg.id);
+                                          setCounterAmountInput(String(msg.offerDetails?.amount || ''));
+                                          setCounterError(null);
                                         }}
                                       >
-                                        Counter
+                                        {counteringMsgId === msg.id ? 'Close' : 'Counter'}
                                       </Button>
                                     </div>
+                                    {counteringMsgId === msg.id && (
+                                      <div className="space-y-2 rounded-xl border border-ink-200 bg-ink-50 p-2.5 dark:border-ink-700 dark:bg-ink-900">
+                                        <div className="flex gap-1.5">
+                                          <input
+                                            type="number"
+                                            inputMode="numeric"
+                                            value={counterAmountInput}
+                                            onChange={(e) => {
+                                              setCounterAmountInput(e.target.value);
+                                              if (counterError) setCounterError(null);
+                                            }}
+                                            placeholder="Counter amount (₦)"
+                                            aria-label="Counter offer amount in Naira"
+                                            className="min-w-0 flex-1 rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 font-mono text-xs font-bold text-ink-900 focus:outline-none focus:ring-1 focus:ring-jade-500 dark:border-ink-700 dark:bg-ink-950 dark:text-white"
+                                          />
+                                          <Button
+                                            size="sm"
+                                            onClick={() => {
+                                              const check = validateCounterOfferAmount(
+                                                counterAmountInput,
+                                                msg.offerDetails?.amount || 0
+                                              );
+                                              if (!check.valid) {
+                                                setCounterError(check.error);
+                                                return;
+                                              }
+                                              dbOperations.updateOfferStatus(msg.id, 'COUNTERED', check.amount, user.id);
+                                              setCounteringMsgId(null);
+                                              setCounterAmountInput('');
+                                              setCounterError(null);
+                                              refresh();
+                                            }}
+                                          >
+                                            Send
+                                          </Button>
+                                        </div>
+                                        {counterError && (
+                                          <p className="text-[11px] font-semibold text-red-600 dark:text-red-400">
+                                            {counterError}
+                                          </p>
+                                        )}
+                                      </div>
+                                    )}
                                     <Button
                                       size="sm"
                                       variant="ghost"
@@ -1705,6 +1760,25 @@ export default function ChatView({ initialRoomId = null, onNavigate, onOpenAuth 
                       )}
                     </div>
                   </div>
+                  <VoiceNoteRecorder
+                    disabled={uploadingMedia}
+                    onSendVoiceNote={async (url, durationSeconds) => {
+                      if (!activeRoomId) return;
+                      await dbOperations.sendMessage(
+                        activeRoomId,
+                        undefined,
+                        undefined,
+                        undefined,
+                        undefined,
+                        undefined,
+                        replyTo?.id,
+                        url,
+                        durationSeconds
+                      );
+                      setReplyTo(null);
+                      refresh();
+                    }}
+                  />
                   <Button
                     type="submit"
                     disabled={!typedMessage.trim() || uploadingMedia}

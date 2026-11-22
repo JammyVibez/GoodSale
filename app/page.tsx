@@ -2,32 +2,33 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
-import {
-  ShieldCheck, Facebook, Instagram, Twitter, Linkedin, Mail,
-} from 'lucide-react';
+import dynamic from 'next/dynamic';
 import MarketplaceHeader from '../components/MarketplaceHeader';
-import Logo from '../components/LogoIcon';
 import { useWishlist } from '@/lib/hooks/useWishlist';
 import LandingView from '../components/LandingView';
-import WalletView from '../components/WalletView';
-import ProductDetailView from '../components/ProductDetailView';
-import DashboardView from '../components/DashboardView';
-import AdminDashboard from '../components/AdminDashboard';
-import DispatchDashboardView from '../components/DispatchDashboardView';
-import RevenueCenterView from '../components/RevenueCenterView';
-import ChatView from '../components/ChatView';
-import CartCheckoutView from '../components/CartCheckoutView';
-import SellerVerificationCenter from '../components/seller/SellerVerificationCenter';
-import LoyaltyHubView from '../components/LoyaltyHubView';
-import ReferralCenter from '../components/referral/ReferralCenter';
-import BrandCenterView from '../components/BrandCenterView';
-import SellerProfileView from '../components/SellerProfileView';
-import SettingsView from '../components/SettingsView';
-import BuyerProfileView from '../components/BuyerProfileView';
-import TrustSafetyView from '../components/TrustSafetyView';
-import SupportCenterView from '../components/SupportCenterView';
 import AuthModal from '../components/AuthModal';
+
+// Every screen except Home is code-split: the marketplace shell boots without
+// the dashboard, admin, checkout and messaging bundles, and each view is
+// fetched the first time it is opened.
+const WalletView = dynamic(() => import('../components/WalletView'));
+const ProductDetailView = dynamic(() => import('../components/ProductDetailView'));
+const DashboardView = dynamic(() => import('../components/DashboardView'));
+const AdminDashboard = dynamic(() => import('../components/AdminDashboard'));
+const DispatchDashboardView = dynamic(() => import('../components/DispatchDashboardView'));
+const RevenueCenterView = dynamic(() => import('../components/RevenueCenterView'));
+const ChatView = dynamic(() => import('../components/ChatView'));
+const CartCheckoutView = dynamic(() => import('../components/CartCheckoutView'));
+const SellerVerificationCenter = dynamic(() => import('../components/seller/SellerVerificationCenter'));
+const LoyaltyHubView = dynamic(() => import('../components/LoyaltyHubView'));
+const ReferralCenter = dynamic(() => import('../components/referral/ReferralCenter'));
+const BrandCenterView = dynamic(() => import('../components/BrandCenterView'));
+const SellerProfileView = dynamic(() => import('../components/SellerProfileView'));
+const SettingsView = dynamic(() => import('../components/SettingsView'));
+const CategoriesView = dynamic(() => import('../components/CategoriesView'));
+const BuyerProfileView = dynamic(() => import('../components/BuyerProfileView'));
+const TrustSafetyView = dynamic(() => import('../components/TrustSafetyView'));
+const SupportCenterView = dynamic(() => import('../components/SupportCenterView'));
 import BottomNavigation from '../components/BottomNavigation';
 import SetupBanner from '../components/SetupBanner';
 import FeedbackHost from '../components/ui/FeedbackHost';
@@ -37,6 +38,8 @@ import BrandLoader from '../components/ui/BrandLoader';
 import { getDBState, useDBState } from '../lib/store';
 import { trackProductMetric } from '../lib/productMetrics';
 import { toast } from '../lib/feedback';
+import QuickBuySheet from '../components/marketplace/QuickBuySheet';
+import { enqueueOfflineAction, syncOfflineProducts } from '@/lib/offline/vault';
 
 function BootSplash() {
   return (
@@ -91,7 +94,13 @@ export default function Home() {
     // /?view=dashboard lets onboarding land a seller on their hub. It waits for
     // the session to load so a guest still sees the marketplace.
     const viewParam = params.get('view');
-    if (viewParam) setPendingView(viewParam);
+    const roomIdParam = Number(params.get('roomId'));
+    if (viewParam) {
+      setPendingView(viewParam);
+      if (viewParam === 'chats' && Number.isInteger(roomIdParam) && roomIdParam > 0) {
+        setActiveChatRoomId(roomIdParam);
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -99,20 +108,46 @@ export default function Home() {
     const known = [
       'marketplace', 'dashboard', 'wallet', 'chats', 'settings', 'buyer-profile', 'cart',
       'loyalty', 'referrals', 'dispatch', 'revenue', 'verification', 'brand-center', 'admin',
+      'support', 'trust-safety',
     ];
     if (!known.includes(pendingView)) {
       setPendingView(null);
       return;
     }
-    if (!db.currentUser) return; // signed-in views wait for the session
+    const guestAccessibleViews = ['marketplace', 'trust-safety', 'brand-center', 'referrals'];
+    if (!db.currentUser && !guestAccessibleViews.includes(pendingView)) return; // signed-in views wait for the session
     setCurrentView(pendingView);
     setPendingView(null);
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
       url.searchParams.delete('view');
+      url.searchParams.delete('roomId');
       window.history.replaceState({}, '', `${url.pathname}${url.search}`);
     }
   }, [pendingView, db.currentUser]);
+
+  // Receive deep-link navigation requests from the Service Worker when the user
+  // taps a Web Push notification while the app is already open.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type !== 'GOODSALE_NAVIGATE' || typeof event.data?.url !== 'string') return;
+      try {
+        const parsed = new URL(event.data.url, window.location.origin);
+        const viewParam = parsed.searchParams.get('view');
+        const roomIdParam = Number(parsed.searchParams.get('roomId'));
+        if (!viewParam) return;
+        if (viewParam === 'chats' && Number.isInteger(roomIdParam) && roomIdParam > 0) {
+          setActiveChatRoomId(roomIdParam);
+        }
+        setCurrentView(viewParam);
+      } catch {
+        /* ignore malformed url */
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+  }, []);
 
   const [isAuthModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
@@ -154,10 +189,22 @@ export default function Home() {
 
   // Dynamic payloads
   const [checkoutProductId, setCheckoutProductId] = useState<number | null>(null);
+  const [quickBuyProductId, setQuickBuyProductId] = useState<number | null>(null);
   const [activeChatRoomId, setActiveChatRoomId] = useState<number | null>(null);
 
   const [selectedSellerId, setSelectedSellerId] = useState<number | null>(null);
+  // Which panel the Account screen opens on — the Orders tab in the bottom nav
+  // deep-links straight to the buyer's orders.
+  const [profileSection, setProfileSection] = useState<string>('you-overview');
+  // Category the catalogue opens on — set by the Categories screen, cleared
+  // whenever the shopper lands on Home or starts a new search.
+  const [marketplaceCategory, setMarketplaceCategory] = useState<string | null>(null);
   const [history, setHistory] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!cartReady || db.products.length === 0) return;
+    syncOfflineProducts(db.products, [...cart, ...wishlist.favorites]);
+  }, [cartReady, db.products, cart, wishlist.favorites]);
 
   const triggerToast = (msg: string, kind: 'success' | 'info' | 'error' = 'success') => {
     if (kind === 'error') toast.error(msg);
@@ -171,6 +218,9 @@ export default function Home() {
       setAuthModalOpen(true);
       triggerToast('Create an account to add items to your cart.', 'info');
       return;
+    }
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      enqueueOfflineAction({ kind: 'CART_ADD', productId });
     }
     setCart(prev => {
       if (prev.includes(productId)) {
@@ -246,6 +296,9 @@ export default function Home() {
         setActiveChatRoomId(payload.roomId);
       }
       setCurrentView('chats');
+    } else if (view === 'buyer-profile') {
+      if (typeof payload?.section === 'string') setProfileSection(payload.section);
+      setCurrentView('buyer-profile');
     } else if (view === 'seller-profile') {
       if (payload?.sellerId) {
         setSelectedSellerId(payload.sellerId);
@@ -256,6 +309,9 @@ export default function Home() {
         setSelectedProductId(payload.id);
       }
       setCurrentView('product');
+    } else if (view === 'marketplace') {
+      setMarketplaceCategory(typeof payload?.category === 'string' ? payload.category : null);
+      setCurrentView('marketplace');
     } else {
       setCurrentView(view);
     }
@@ -285,6 +341,7 @@ export default function Home() {
         searchQuery={searchQuery}
         onSearchChange={(query) => {
           setSearchQuery(query);
+          if (query) setMarketplaceCategory(null);
           if (query && currentView !== 'marketplace') setCurrentView('marketplace');
         }}
         cartCount={cart.length}
@@ -312,7 +369,7 @@ export default function Home() {
       <AnnouncementModal />
 
       {/* Core Dynamic Content Container */}
-      <main className="min-h-[calc(100vh-4rem)] pb-[calc(72px+env(safe-area-inset-bottom,0px))] md:pb-0">
+      <main className="min-h-[calc(100vh-4rem)] pb-[calc(92px+env(safe-area-inset-bottom,0px))] md:pb-12">
         {/* Screen-push transition: each view enters from the trailing edge */}
         <div key={currentView} className="animate-screen-push">
         {currentView === 'marketplace' && (
@@ -321,15 +378,21 @@ export default function Home() {
             searchQuery={searchQuery}
             onNavigate={handleNavigate}
             onAddToCart={handleAddToCart}
+            onQuickBuy={(id: number) => setQuickBuyProductId(id)}
             selectedState={marketState}
             onSelectState={setMarketState}
             wishlistOnly={wishlistOnly}
             onWishlistOnlyChange={setWishlistOnly}
+            initialCategory={marketplaceCategory}
             onOpenAuth={(mode?: 'login' | 'register') => {
               setAuthModalMode(mode || 'login');
               setAuthModalOpen(true);
             }}
           />
+        )}
+
+        {currentView === 'categories' && (
+          <CategoriesView onNavigate={handleNavigate} />
         )}
 
         {currentView === 'wallet' && (
@@ -345,6 +408,7 @@ export default function Home() {
             onBack={handleGoBack}
             onNavigate={handleNavigate}
             onAddToCart={handleAddToCart}
+            onQuickBuy={(id: number) => setQuickBuyProductId(id)}
             onOpenAuth={() => setAuthModalOpen(true)}
           />
         )}
@@ -416,7 +480,12 @@ export default function Home() {
         )}
 
         {currentView === 'buyer-profile' && (
-          <BuyerProfileView onBack={handleGoBack} onNavigate={handleNavigate} onOpenAuth={() => setAuthModalOpen(true)} />
+          <BuyerProfileView
+            onBack={handleGoBack}
+            onNavigate={handleNavigate}
+            onOpenAuth={() => setAuthModalOpen(true)}
+            initialSection={profileSection as 'you-overview' | 'you-saved' | 'you-listings' | 'you-orders' | 'you-reviews'}
+          />
         )}
 
         {currentView === 'trust-safety' && (
@@ -431,117 +500,21 @@ export default function Home() {
           />
         )}
         </div>
-
-        {/* Professional footer — suppressed inside the chat workspace, where a
-            full-height conversation pane is the whole screen. */}
-        {currentView !== 'chats' && (
-        <footer className="mt-auto border-t border-ink-200 bg-white dark:border-ink-800 dark:bg-ink-950">
-          <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-            <div className="grid grid-cols-2 gap-8 sm:grid-cols-3 lg:grid-cols-6">
-              {/* Brand */}
-              <div className="col-span-2 lg:col-span-2">
-                <Logo
-                  iconSize={36}
-                  textColorClass="text-ink-900 dark:text-white"
-                  subtitleColorClass="text-ink-400 dark:text-ink-500"
-                />
-                <p className="mt-3 max-w-xs text-sm leading-relaxed text-ink-500 dark:text-ink-400">
-                  Nigeria&apos;s escrow-backed marketplace. Buy and sell with verified sellers,
-                  tracked delivery and money that moves only when goods do.
-                </p>
-                <div className="mt-5 flex items-center gap-2">
-                  {[
-                    { href: 'https://x.com/goodsale', label: 'GoodSale on X', Icon: Twitter },
-                    { href: 'https://instagram.com/goodsale', label: 'GoodSale on Instagram', Icon: Instagram },
-                    { href: 'https://facebook.com/goodsale', label: 'GoodSale on Facebook', Icon: Facebook },
-                    { href: 'https://linkedin.com/company/goodsale', label: 'GoodSale on LinkedIn', Icon: Linkedin },
-                  ].map(({ href, label, Icon }) => (
-                    <a
-                      key={label}
-                      href={href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label={label}
-                      className="grid h-9 w-9 place-items-center rounded-xl border border-ink-200 text-ink-500 transition-colors hover:border-jade-500/40 hover:text-jade-600 dark:border-ink-800 dark:text-ink-400 dark:hover:text-jade-400"
-                    >
-                      <Icon className="h-4 w-4" />
-                    </a>
-                  ))}
-                </div>
-                <div className="mt-5 inline-flex items-center gap-2 rounded-xl bg-jade-500/5 px-3 py-2 text-xs font-medium text-jade-700 dark:bg-jade-500/10 dark:text-jade-300">
-                  <ShieldCheck className="h-3.5 w-3.5" /> Escrow protected on every order
-                </div>
-              </div>
-
-              {/* Marketplace */}
-              <div>
-                <p className="text-sm font-semibold text-ink-900 dark:text-white">Marketplace</p>
-                <ul className="mt-4 space-y-3 text-sm">
-                  <li><button onClick={() => handleNavigate('marketplace')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Browse listings</button></li>
-                  <li><Link href="/categories" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Categories</Link></li>
-                  <li><Link href="/sellers" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Verified sellers</Link></li>
-                  <li><Link href="/flash-deals" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Flash deals</Link></li>
-                  <li><Link href="/best-deals" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Best deals</Link></li>
-                  <li><Link href="/new-arrivals" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">New arrivals</Link></li>
-                  <li><Link href="/promotions" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Promoted listings</Link></li>
-                  <li><button onClick={() => handleNavigate('cart')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Your cart</button></li>
-                  <li><button onClick={() => handleNavigate('referrals')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Refer &amp; earn Coins</button></li>
-                </ul>
-              </div>
-
-              {/* Selling */}
-              <div>
-                <p className="text-sm font-semibold text-ink-900 dark:text-white">Selling</p>
-                <ul className="mt-4 space-y-3 text-sm">
-                  <li><button onClick={() => handleNavigate('dashboard')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Start selling</button></li>
-                  <li><button onClick={() => handleNavigate('dashboard')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Seller hub</button></li>
-                  <li><button onClick={() => handleNavigate('settings')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Account type</button></li>
-                  <li><button onClick={() => handleNavigate('wallet')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Payouts &amp; wallet</button></li>
-                </ul>
-              </div>
-
-              {/* Support */}
-              <div>
-                <p className="text-sm font-semibold text-ink-900 dark:text-white">Support</p>
-                <ul className="mt-4 space-y-3 text-sm">
-                  <li><Link href="/trust-safety" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Trust &amp; Safety Centre</Link></li>
-                  <li><button onClick={() => handleNavigate('support')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Help centre</button></li>
-                  <li><Link href="/track" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Track a shipment</Link></li>
-                  <li><button onClick={() => handleNavigate('chats')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Chat with a seller</button></li>
-                  <li><button onClick={() => handleNavigate('settings')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Delivery &amp; tracking</button></li>
-                  <li>
-                    <a href="mailto:support@goodsale.ng" className="inline-flex items-center gap-1.5 text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">
-                      <Mail className="h-3.5 w-3.5" /> support@goodsale.ng
-                    </a>
-                  </li>
-                </ul>
-              </div>
-
-              {/* Legal */}
-              <div>
-                <p className="text-sm font-semibold text-ink-900 dark:text-white">Legal</p>
-                <ul className="mt-4 space-y-3 text-sm">
-                  <li><Link href="/terms" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Terms of Service</Link></li>
-                  <li><Link href="/privacy" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Privacy Policy</Link></li>
-                  <li><button onClick={() => handleNavigate('settings')} className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400 cursor-pointer">Escrow agreement</button></li>
-                  <li><Link href="/trust-safety" className="text-ink-500 transition-colors hover:text-jade-600 dark:text-ink-400 dark:hover:text-jade-400">Trust &amp; dispute policy</Link></li>
-                </ul>
-              </div>
-            </div>
-
-            <div className="mt-10 flex flex-col gap-3 border-t border-ink-200 pt-6 sm:flex-row sm:items-center sm:justify-between dark:border-ink-800">
-              <p className="text-sm text-ink-400">
-                © {new Date().getFullYear()} GoodSale. Escrow-secured commerce for Nigeria.
-              </p>
-              <p className="text-sm text-ink-400">Built in Nigeria · Payments by Paystack</p>
-            </div>
-          </div>
-        </footer>
-        )}
       </main>
 
       {/* App-wide real-time call overlay */}
       <CallHost />
+
+      {/* Bottom-Sheet Quick Buy Express Escrow */}
+      <QuickBuySheet
+        productId={quickBuyProductId}
+        onClose={() => setQuickBuyProductId(null)}
+        onOpenAuth={(mode) => {
+          setAuthModalMode(mode || 'register');
+          setAuthModalOpen(true);
+        }}
+        onNavigate={handleNavigate}
+      />
 
       {/* Persistent Secure Auth Modal Portal */}
       <AuthModal isOpen={isAuthModalOpen} initialMode={authModalMode} onClose={() => setAuthModalOpen(false)} />
