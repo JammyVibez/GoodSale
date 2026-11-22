@@ -403,6 +403,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             post(uploads::upload).layer(DefaultBodyLimit::max(27 * 1024 * 1024)),
         )
         .with_state(state.clone())
+        // Bound JSON and RPC payloads by default; uploads keep their explicit 27 MiB route limit.
+        .layer(DefaultBodyLimit::max(1024 * 1024))
         .layer(cors)
         .layer(middleware::from_fn_with_state(state, request_guard));
 
