@@ -6,6 +6,7 @@ mod rpc;
 mod security;
 mod uploads;
 mod wallet_premium;
+mod webhook;
 
 use axum::{
     body::Body,
@@ -87,6 +88,8 @@ async fn request_guard(
             (30, "upload")
         } else if path == "/v1/payments/verify" {
             (20, "payment-verify")
+        } else if path == "/v1/payments/webhook" {
+            (90, "paystack-webhook")
         } else if path.starts_with("/v1/security/") {
             (45, "security")
         } else {
@@ -361,6 +364,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route(
             "/v1/payments/verify",
             post(payments::verify).layer(DefaultBodyLimit::max(32 * 1024)),
+        )
+        .route(
+            "/v1/payments/webhook",
+            post(webhook::receive).layer(DefaultBodyLimit::max(256 * 1024)),
         )
         .route(
             "/v1/rpc/:name",
