@@ -539,7 +539,7 @@ export default function LandingView({
             <div className="relative flex min-h-[218px] items-center overflow-hidden rounded-[1.75rem] px-5 py-6 text-white shadow-[0_24px_56px_-36px_rgba(6,37,31,0.72)] gs-hero-panel sm:min-h-[250px] sm:px-7 sm:py-7">
               <div aria-hidden className="pointer-events-none absolute -left-10 -top-16 h-48 w-48 rounded-full bg-jade-500/25 blur-3xl" />
               <div aria-hidden className="pointer-events-none absolute -bottom-24 right-0 h-56 w-56 rounded-full bg-gold-400/10 blur-3xl" />
-              <div className="relative z-10 max-w-md">
+              <div className="relative z-10 max-w-[64%] sm:max-w-md">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-gold-300 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-ink-950">
                   <Flame className="h-3 w-3" aria-hidden="true" />
                   {slide.eyebrow}
@@ -587,13 +587,13 @@ export default function LandingView({
               </div>
 
               {heroImages.length > 0 && (
-                <div className="relative ml-auto hidden items-center gap-2 sm:flex">
+                <div className="absolute bottom-4 right-3 z-0 flex items-center gap-1.5 sm:relative sm:bottom-auto sm:right-auto sm:ml-auto sm:gap-2">
                   {heroImages.map((product) => (
                     <button
                       key={product.id}
                       type="button"
                       onClick={() => onSelectProduct(product.id)}
-                      className="relative h-32 w-28 overflow-hidden rounded-2xl shadow-xl sm:h-36 sm:w-32 border border-white/15 bg-white/5 shadow-lg transition-transform hover:-translate-y-0.5 focus-ring lg:h-32 lg:w-28"
+                      className="relative h-24 w-16 overflow-hidden rounded-xl border border-white/15 bg-white/5 shadow-lg transition-transform hover:-translate-y-0.5 focus-ring sm:h-36 sm:w-32 sm:rounded-2xl"
                       aria-label={`View ${product.title}`}
                     >
                       <SmartImage
