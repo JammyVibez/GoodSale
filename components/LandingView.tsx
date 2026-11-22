@@ -451,9 +451,9 @@ export default function LandingView({
       {
         eyebrow: 'Escrow marketplace',
         title: 'Shop smarter.',
-        highlight: 'Pay when it arrives.',
-        body: 'Great prices from verified Nigerian sellers, with your money held safely until delivery is confirmed.',
-        cta: 'Shop the marketplace',
+        highlight: 'Live better.',
+        body: 'Great deals. Trusted sellers. Protected checkout on every order.',
+        cta: 'Shop now',
         href: null,
         action: () => {
           setSelectedCategory(null);
@@ -534,7 +534,7 @@ export default function LandingView({
       {/* ───────────────────────── Promo band ───────────────────────── */}
       <section className="border-b border-ink-150 bg-ink-50/60 dark:border-ink-800 dark:bg-ink-950">
         <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
-          <div className="grid gap-2.5 lg:grid-cols-[1.7fr_1fr]">
+          <div className="grid gap-2.5">
             {/* rotating banner */}
             <div className="relative flex min-h-[218px] items-center overflow-hidden rounded-[1.75rem] px-5 py-6 text-white shadow-[0_24px_56px_-36px_rgba(6,37,31,0.72)] gs-hero-panel sm:min-h-[250px] sm:px-7 sm:py-7">
               <div aria-hidden className="pointer-events-none absolute -left-10 -top-16 h-48 w-48 rounded-full bg-jade-500/25 blur-3xl" />
@@ -613,48 +613,6 @@ export default function LandingView({
               )}
             </div>
 
-            {/* side tiles */}
-            <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-1">
-              <Link
-                href={COLLECTIONS['flash-deals'].href}
-                className="group flex flex-col justify-between rounded-2xl border border-ink-200 bg-white p-3 transition-colors hover:border-jade-400 dark:border-ink-800 dark:bg-ink-900"
-              >
-                <span className="flex items-center justify-between gap-2">
-                  <span className="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-jade-700 dark:text-jade-300">
-                    <Zap className="h-3.5 w-3.5 fill-gold-400 text-gold-500" aria-hidden="true" />
-                    Flash deals
-                  </span>
-                  {flashDeals.length > 0 && !countdown.ended && (
-                    <Countdown hours={countdown.hours} minutes={countdown.minutes} seconds={countdown.seconds} />
-                  )}
-                </span>
-                <span className="mt-2 block text-lg font-black leading-tight tracking-tight text-ink-900 dark:text-white">
-                  {flashDeals.length > 0
-                    ? `Up to ${Math.max(...flashDeals.map((p) => activeFlashSale(p)?.discountPercent || 0))}% off`
-                    : 'No live deals yet'}
-                </span>
-                <span className="mt-0.5 flex items-center justify-between gap-2 text-[11px] leading-relaxed text-ink-500 dark:text-ink-400">
-                  <span className="min-w-0">{flashDeals.length > 0 ? `${flashDeals.length} deals ending soon` : 'Check back later today'}</span>
-                  <ArrowRight className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
-                </span>
-              </Link>
-
-              <div className="flex flex-col justify-between rounded-2xl border border-ink-150 bg-white p-3 dark:border-ink-800 dark:bg-ink-900">
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-jade-700 dark:text-jade-300">
-                  <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
-                  GoodSale escrow
-                </span>
-                <span className="mt-2 block text-lg font-black leading-tight tracking-tight text-ink-900 dark:text-white">
-                  Your money waits
-                </span>
-                <span className="mt-0.5 flex items-center justify-between gap-2 text-[11px] leading-relaxed text-ink-500 dark:text-ink-400">
-                  <span className="min-w-0">Released only after you confirm delivery</span>
-                  <Link href="/trust-safety" className="shrink-0 font-bold text-jade-700 hover:underline dark:text-jade-300">
-                    How it works
-                  </Link>
-                </span>
-              </div>
-            </div>
           </div>
 
           {/* live status line */}
@@ -685,25 +643,10 @@ export default function LandingView({
           className="mt-3"
         />
 
-        {/* ───────────────────── Category nav ───────────────────── */}
+        {/* ───────────────────── Quick category navigation ───────────────────── */}
         {categories.length > 0 && (
-          <nav aria-label="Browse categories" className="mt-3 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedCategory(null);
-                scrollToId('catalog-section');
-              }}
-              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-bold transition-colors ${
-                selectedCategory === null
-                  ? 'border-jade-600 bg-jade-600 text-white'
-                  : 'border-ink-200 bg-white text-ink-600 hover:border-jade-300 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300'
-              }`}
-            >
-              <LayoutGrid className="h-3.5 w-3.5" aria-hidden="true" />
-              All
-            </button>
-            {categories.slice(0, 14).map((category) => {
+          <nav aria-label="Browse categories" className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
+            {categories.slice(0, 5).map((category) => {
               const { Icon, label } = categoryMeta(category.name);
               const selected = selectedCategory?.toLowerCase() === category.name.toLowerCase();
               return (
@@ -715,50 +658,27 @@ export default function LandingView({
                     setSelectedCategory(selected ? null : category.name);
                     scrollToId('catalog-section');
                   }}
-                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-bold transition-colors ${
-                    selected
-                      ? 'border-jade-600 bg-jade-600 text-white'
-                      : 'border-ink-200 bg-white text-ink-600 hover:border-jade-300 hover:text-jade-700 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300'
-                  }`}
+                  className={`group flex min-h-[82px] flex-col items-center justify-center gap-2 rounded-2xl border px-2 py-3 text-center transition-all active:scale-[0.97] focus-ring ${selected
+                    ? 'border-jade-600 bg-jade-600 text-white shadow-md shadow-jade-900/10'
+                    : 'border-ink-150 bg-white text-ink-700 hover:border-jade-400 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-200'}`}
                 >
-                  <Icon className="h-3.5 w-3.5" />
-                  {label}
-                  <span className={selected ? 'text-white/70' : 'text-ink-400'}>{category.count}</span>
+                  <span className={`grid h-9 w-9 place-items-center rounded-xl ${selected ? 'bg-white/15' : 'bg-jade-500/10 text-jade-700 dark:bg-gold-300/10 dark:text-gold-300'}`}>
+                    <Icon className="h-5 w-5" aria-hidden="true" />
+                  </span>
+                  <span className="text-[10px] font-bold leading-tight sm:text-[11px]">{label}</span>
                 </button>
               );
             })}
             <Link
               href="/categories"
-              className="inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-bold text-jade-700 hover:bg-jade-500/10 dark:text-jade-300"
+              className="flex min-h-[82px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-ink-200 bg-ink-50 text-ink-600 transition-colors hover:border-jade-400 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-300"
             >
-              All categories
-              <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-gold-300/20 text-gold-600 dark:text-gold-300">
+                <LayoutGrid className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <span className="text-[10px] font-bold sm:text-[11px]">More</span>
             </Link>
           </nav>
-        )}
-
-        {/* ───────────────────── Flash deals ───────────────────── */}
-        {flashDeals.length >= 3 && !countdown.ended && (
-          <div className="mt-4">
-            <ProductRail
-              label="Flash deals"
-              title={COLLECTIONS['flash-deals'].title}
-              subtitle={`${COLLECTIONS['flash-deals'].ordering} · prices return to normal when the timer ends`}
-              href={COLLECTIONS['flash-deals'].href}
-              icon={<Zap className="h-4 w-4 fill-gold-400" />}
-              variant="jade"
-              headerExtra={
-                flashEndsAt ? (
-                  <span className="hidden items-center gap-1.5 text-[10px] font-semibold text-jade-100/70 sm:inline-flex">
-                    <Clock className="h-3 w-3" aria-hidden="true" />
-                    Ends {new Date(flashEndsAt).toLocaleString('en-NG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                ) : null
-              }
-              products={flashDeals.map((product) => asRail(product, 'flash'))}
-              {...railCommon}
-            />
-          </div>
         )}
 
         {/* ───────────────────── Featured ───────────────────── */}
@@ -784,6 +704,30 @@ export default function LandingView({
               products={railSections.featured.map((product) =>
                 asRail(product, activeFeaturedIds.has(product.id) ? 'featured' : null)
               )}
+              {...railCommon}
+            />
+          </div>
+        )}
+
+        {/* ───────────────────── Flash deals ───────────────────── */}
+        {flashDeals.length >= 3 && !countdown.ended && (
+          <div className="mt-4">
+            <ProductRail
+              label="Flash deals"
+              title={COLLECTIONS['flash-deals'].title}
+              subtitle={`${COLLECTIONS['flash-deals'].ordering} · prices return to normal when the timer ends`}
+              href={COLLECTIONS['flash-deals'].href}
+              icon={<Zap className="h-4 w-4 fill-gold-400" />}
+              variant="jade"
+              headerExtra={
+                flashEndsAt ? (
+                  <span className="hidden items-center gap-1.5 text-[10px] font-semibold text-jade-100/70 sm:inline-flex">
+                    <Clock className="h-3 w-3" aria-hidden="true" />
+                    Ends {new Date(flashEndsAt).toLocaleString('en-NG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                ) : null
+              }
+              products={flashDeals.map((product) => asRail(product, 'flash'))}
               {...railCommon}
             />
           </div>
