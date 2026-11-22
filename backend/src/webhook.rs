@@ -69,11 +69,7 @@ async fn table_rows(
         .map_err(|_| StatusCode::BAD_GATEWAY)
 }
 
-async fn service_rpc(
-    state: &AppState,
-    name: &str,
-    args: Value,
-) -> Result<Value, StatusCode> {
+async fn service_rpc(state: &AppState, name: &str, args: Value) -> Result<Value, StatusCode> {
     let base = state
         .settings
         .supabase_url
@@ -129,7 +125,10 @@ async fn find_withdrawal(
             "withdrawal_requests",
             &[
                 ("select".to_owned(), "id,status".to_owned()),
-                ("paystack_reference".to_owned(), format!("eq.{provider_reference}")),
+                (
+                    "paystack_reference".to_owned(),
+                    format!("eq.{provider_reference}"),
+                ),
                 ("limit".to_owned(), "1".to_owned()),
             ],
         )
@@ -145,7 +144,10 @@ async fn find_withdrawal(
             "withdrawal_requests",
             &[
                 ("select".to_owned(), "id,status".to_owned()),
-                ("paystack_transfer_code".to_owned(), format!("eq.{transfer_code}")),
+                (
+                    "paystack_transfer_code".to_owned(),
+                    format!("eq.{transfer_code}"),
+                ),
                 ("limit".to_owned(), "1".to_owned()),
             ],
         )
@@ -179,7 +181,10 @@ async fn update_refund_status(
         .header("apikey", key)
         .bearer_auth(key)
         .header("Prefer", "return=representation")
-        .query(&[("id", id_filter.as_str()), ("status", status_filter.as_str())])
+        .query(&[
+            ("id", id_filter.as_str()),
+            ("status", status_filter.as_str()),
+        ])
         .json(&json!({ "status": status }))
         .send()
         .await
@@ -215,7 +220,10 @@ async fn insert_refund_notification(state: &AppState, buyer_id: i64, completed: 
     };
     let result = state
         .http
-        .post(format!("{}/rest/v1/notifications", base.trim_end_matches('/')))
+        .post(format!(
+            "{}/rest/v1/notifications",
+            base.trim_end_matches('/')
+        ))
         .header("apikey", key)
         .bearer_auth(key)
         .header("Prefer", "return=minimal")
@@ -233,7 +241,10 @@ async fn insert_refund_notification(state: &AppState, buyer_id: i64, completed: 
         Ok(response) => {
             tracing::warn!(buyer_id, status = %response.status(), "Could not create refund notification");
         }
-        Err(_) => tracing::warn!(buyer_id, "Could not reach Supabase to create refund notification"),
+        Err(_) => tracing::warn!(
+            buyer_id,
+            "Could not reach Supabase to create refund notification"
+        ),
     }
 }
 
@@ -286,8 +297,7 @@ async fn dispatch_event(state: &AppState, event: &Value) -> Result<Value, Status
     ) {
         let provider_reference = first_string(data, &["reference"]);
         let transfer_code = first_string(data, &["transfer_code"]);
-        let Some(withdrawal) =
-            find_withdrawal(state, provider_reference, transfer_code).await?
+        let Some(withdrawal) = find_withdrawal(state, provider_reference, transfer_code).await?
         else {
             tracing::warn!(
                 provider_reference,
@@ -348,8 +358,7 @@ async fn dispatch_event(state: &AppState, event: &Value) -> Result<Value, Status
     }
 
     if matches!(event_name, "refund.processed" | "refund.failed") {
-        let transaction_reference =
-            first_string(data, &["transaction_reference", "reference"]);
+        let transaction_reference = first_string(data, &["transaction_reference", "reference"]);
         let provider_reference = first_string(data, &["refund_reference", "reference"]);
 
         let mut refund = None;
@@ -358,8 +367,14 @@ async fn dispatch_event(state: &AppState, event: &Value) -> Result<Value, Status
                 state,
                 "refunds",
                 &[
-                    ("select".to_owned(), "id,order_id,status,provider_reference".to_owned()),
-                    ("transaction_id".to_owned(), format!("eq.{transaction_reference}")),
+                    (
+                        "select".to_owned(),
+                        "id,order_id,status,provider_reference".to_owned(),
+                    ),
+                    (
+                        "transaction_id".to_owned(),
+                        format!("eq.{transaction_reference}"),
+                    ),
                     ("limit".to_owned(), "1".to_owned()),
                 ],
             )
@@ -371,8 +386,14 @@ async fn dispatch_event(state: &AppState, event: &Value) -> Result<Value, Status
                 state,
                 "refunds",
                 &[
-                    ("select".to_owned(), "id,order_id,status,provider_reference".to_owned()),
-                    ("provider_reference".to_owned(), format!("eq.{provider_reference}")),
+                    (
+                        "select".to_owned(),
+                        "id,order_id,status,provider_reference".to_owned(),
+                    ),
+                    (
+                        "provider_reference".to_owned(),
+                        format!("eq.{provider_reference}"),
+                    ),
                     ("limit".to_owned(), "1".to_owned()),
                 ],
             )
