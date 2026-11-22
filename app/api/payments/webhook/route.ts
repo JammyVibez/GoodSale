@@ -1,165 +1,71 @@
-import { callRustInternalRpc, callRustJob } from '@/lib/server/rust-rpc';
 import { NextRequest, NextResponse } from 'next/server';
-import { createHmac, timingSafeEqual } from 'crypto';
-import { logger, publicErrorMessage } from '@/lib/logger';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { logger } from '@/lib/logger';
+
+const MAX_WEBHOOK_BYTES = 256 * 1024;
 
 /**
- * Paystack webhook receiver.
- * Configure: https://your-domain/api/payments/webhook
+ * Paystack's signature is calculated over the exact raw request body.
+ * Keep this route as a byte-preserving proxy; Rust owns verification and event
+ * processing so payout, refund, wallet and premium state changes share one API.
  */
 export async function POST(req: NextRequest) {
+  const rustBackend = process.env.RUST_BACKEND_URL?.trim().replace(/\/+$/, '');
+  if (!rustBackend) {
+    return NextResponse.json(
+      { success: false, error: 'Webhook processing is not configured.' },
+      { status: 503 }
+    );
+  }
+
+  const declaredLength = Number(req.headers.get('content-length') || 0);
+  if (declaredLength > MAX_WEBHOOK_BYTES) {
+    return NextResponse.json(
+      { success: false, error: 'Webhook payload is too large.' },
+      { status: 413 }
+    );
+  }
+
   try {
-    const rawBody = await req.text();
-    const signature = req.headers.get('x-paystack-signature') || '';
-    const secret = process.env.PAYSTACK_WEBHOOK_SECRET || process.env.PAYSTACK_SECRET_KEY;
-
-    if (!secret) {
-      logger.error('Paystack webhook received but no secret configured');
-      return NextResponse.json({ success: false, error: 'Webhook not configured' }, { status: 503 });
+    const rawBody = await req.arrayBuffer();
+    if (rawBody.byteLength > MAX_WEBHOOK_BYTES) {
+      return NextResponse.json(
+        { success: false, error: 'Webhook payload is too large.' },
+        { status: 413 }
+      );
     }
 
-    const hash = createHmac('sha512', secret).update(rawBody).digest('hex');
-    const hashBuf = Buffer.from(hash);
-    const sigBuf = Buffer.from(signature);
+    const signature = req.headers.get('x-paystack-signature');
+    const headers = new Headers({
+      'Content-Type': req.headers.get('content-type') || 'application/json',
+      Accept: 'application/json',
+    });
+    if (signature) headers.set('x-paystack-signature', signature);
 
-    if (hashBuf.length !== sigBuf.length || !timingSafeEqual(hashBuf, sigBuf)) {
-      logger.warn('Invalid Paystack webhook signature');
-      return NextResponse.json({ success: false, error: 'Invalid signature' }, { status: 401 });
-    }
-
-    const event = JSON.parse(rawBody);
-    logger.info('Paystack webhook event', {
-      event: event?.event,
-      reference: event?.data?.reference,
+    const upstream = await fetch(`${rustBackend}/v1/payments/webhook`, {
+      method: 'POST',
+      headers,
+      body: rawBody,
+      cache: 'no-store',
     });
 
-    if (event?.event === 'charge.success' && event?.data?.status === 'success') {
-      const reference = String(event.data?.reference || '').trim();
-      const walletFundingId = Number(event.data?.metadata?.wallet_funding_id || 0) || null;
+    const responseBody = await upstream.arrayBuffer();
+    const responseHeaders = new Headers();
+    const contentType = upstream.headers.get('content-type');
+    const retryAfter = upstream.headers.get('retry-after');
+    const requestId = upstream.headers.get('x-request-id');
+    if (contentType) responseHeaders.set('Content-Type', contentType);
+    if (retryAfter) responseHeaders.set('Retry-After', retryAfter);
+    if (requestId) responseHeaders.set('X-Request-Id', requestId);
 
-      // Premium memberships are activated only from this signed event or a
-      // server-to-server verify call — never from the browser callback.
-      if (reference.startsWith('GSP_')) {
-        const premium = await callRustInternalRpc('premium_activation_event', { reference });
-        return NextResponse.json({ success: !premium.error, received: true, premium: premium.data, ...(premium.error ? { error: premium.error.message } : {}) });
-      }
-
-      // Wallet funding is credited only after the signed event, amount and
-      // intent identity are checked against the funding record.
-      if (walletFundingId || reference.startsWith('GSW_')) {
-        const funding = await callRustInternalRpc('wallet_funding_event', { reference });
-        return NextResponse.json({ success: !funding.error, received: true, funding: funding.data, ...(funding.error ? { error: funding.error.message } : {}) });
-      }
-
-      const reconciliation = await callRustInternalRpc('order_payment_event', { reference });
-      return NextResponse.json({
-        success: !reconciliation.error,
-        received: true,
-        reconciliation: reconciliation.data,
-        ...(reconciliation.error ? { error: reconciliation.error.message } : {}),
-      });
-    }
-
-    // Payout settlement: only the provider can mark a transfer successful.
-    if (event?.event === 'transfer.success' || event?.event === 'transfer.failed' || event?.event === 'transfer.reversed') {
-      const admin = createAdminClient();
-      if (!admin) {
-        return NextResponse.json({ success: false, error: 'Wallet service is not configured' }, { status: 503 });
-      }
-      const providerReference = String(event.data?.reference || '').trim();
-      const transferCode = String(event.data?.transfer_code || '').trim();
-
-      let withdrawal: { id: number; status: string } | null = null;
-      if (providerReference) {
-        const { data } = await admin
-          .from('withdrawal_requests')
-          .select('id,status')
-          .eq('paystack_reference', providerReference)
-          .maybeSingle();
-        withdrawal = data;
-      }
-      if (!withdrawal && transferCode) {
-        const { data } = await admin
-          .from('withdrawal_requests')
-          .select('id,status')
-          .eq('paystack_transfer_code', transferCode)
-          .maybeSingle();
-        withdrawal = data;
-      }
-
-      if (!withdrawal) {
-        logger.warn('Paystack transfer webhook has no matching withdrawal', { providerReference, transferCode });
-        return NextResponse.json({ success: true, received: true, ignored: true });
-      }
-
-      if (event.event === 'transfer.success') {
-        const { error } = await callRustInternalRpc('admin_payout_complete', {
-          p_withdrawal_id: withdrawal.id,
-          p_provider_reference: providerReference || transferCode,
-        });
-        if (error) logger.warn('Payout completion failed', { error: error.message, id: withdrawal.id });
-        return NextResponse.json({ success: !error, received: true });
-      }
-
-      const reason =
-        event.event === 'transfer.reversed'
-          ? 'Paystack reversed the transfer'
-          : String(event.data?.reason || event.data?.gateway_response || 'Paystack transfer failed');
-      const { error } = await callRustInternalRpc('admin_payout_fail', {
-        p_withdrawal_id: withdrawal.id,
-        p_reason: reason,
-      });
-      if (error) logger.warn('Payout failure reversal failed', { error: error.message, id: withdrawal.id });
-      return NextResponse.json({ success: !error, received: true });
-    }
-
-    // Refund-to-original-method status. Wallet refunds are credited by the
-    // admin-only RPC and never by a webhook.
-    if (event?.event === 'refund.processed' || event?.event === 'refund.failed') {
-      const admin = createAdminClient();
-      if (!admin) {
-        return NextResponse.json({ success: false, error: 'Wallet service is not configured' }, { status: 503 });
-      }
-      const refundReference = String(event.data?.transaction_reference || event.data?.reference || '').trim();
-      const providerRef = String(event.data?.refund_reference || event.data?.reference || '').trim();
-      if (refundReference || providerRef) {
-        const { data: refund } = await admin
-          .from('refunds')
-          .select('id,order_id,status,provider_reference')
-          .or(`transaction_id.eq.${refundReference},provider_reference.eq.${providerRef}`)
-          .maybeSingle();
-        if (refund) {
-          const status = event.event === 'refund.processed' ? 'COMPLETED' : 'FAILED';
-          await admin.from('refunds').update({ status }).eq('id', refund.id);
-          const { data: order } = await admin
-            .from('orders')
-            .select('buyer_id')
-            .eq('id', refund.order_id)
-            .maybeSingle();
-          if (order?.buyer_id) {
-            await admin.from('notifications').insert({
-              user_id: order.buyer_id,
-              title: event.event === 'refund.processed' ? 'Refund completed' : 'Refund failed',
-              message:
-                event.event === 'refund.processed'
-                  ? 'Paystack completed your refund to the original payment method.'
-                  : 'Paystack could not complete your refund. Support will review it.',
-              type: 'WALLET',
-              is_read: false,
-            });
-          }
-        }
-      }
-      return NextResponse.json({ success: true, received: true });
-    }
-
-    return NextResponse.json({ success: true, received: true });
+    return new NextResponse(responseBody, {
+      status: upstream.status,
+      headers: responseHeaders,
+    });
   } catch (error) {
-    logger.error('Paystack webhook error', { error: String(error) });
+    logger.error('Rust Paystack webhook proxy failed', { error: String(error) });
     return NextResponse.json(
-      { success: false, error: publicErrorMessage(error, 'Webhook failed') },
-      { status: 500 }
+      { success: false, error: 'Webhook service is temporarily unavailable.' },
+      { status: 502 }
     );
   }
 }
