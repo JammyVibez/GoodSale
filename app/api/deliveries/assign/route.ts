@@ -1,4 +1,4 @@
-import { callRustRpc } from '@/lib/server/rust-rpc';
+import { callRustRpc, callRustAdminRpc } from '@/lib/server/rust-rpc';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { logger, publicErrorMessage } from '@/lib/logger';
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (auto) {
-      const { data, error } = await callRustRpc(supabase, 'admin_auto_assign_delivery', {
+      const { data, error } = await callRustAdminRpc(supabase, 'admin_auto_assign_delivery', {
         p_delivery_id: deliveryId,
       });
       if (error) {

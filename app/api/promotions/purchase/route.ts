@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
 
     let result;
     if (featureType === 'FEATURED') {
-      result = await admin.rpc('purchase_featured_promotion', {
+      result = await callRustRpc(supabase, 'purchase_featured_promotion', {
         p_user_id: profileId,
         p_product_id: productId,
         p_duration_days: Number.isInteger(durationDays) ? durationDays : 7,
@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: 'Flash Sale quantity must be a positive whole number' }, { status: 400 });
       }
 
-      result = await admin.rpc('purchase_flash_sale', {
+      result = await callRustRpc(supabase, 'purchase_flash_sale', {
         p_user_id: profileId,
         p_product_id: productId,
         p_sale_price: Math.round(salePrice),

@@ -67,6 +67,10 @@ const USER_RPCS: &[&str] = &[
 const ADMIN_RPCS: &[&str] = &[
     "admin_auto_assign_delivery",
     "admin_delivery_analytics",
+    "admin_finance_summary",
+    "admin_adjust_wallet",
+    "admin_update_wallet_settings",
+    "admin_refund_to_wallet",
     "admin_force_escrow",
     "admin_manual_courier_update",
     "admin_payout_begin",
@@ -301,7 +305,8 @@ pub async fn admin_rpc(
             "Admin database access is not configured.",
         );
     };
-    match invoke(&s, &name, &args, key, Some(key)).await {
+    // Keep the verified administrator identity in PostgREST so SQL auth.uid()/is_admin() checks remain active.
+    match invoke(&s, &name, &args, key, Some(token)).await {
         Ok(v) => v,
         Err(code) => fail(code, "Admin operation failed."),
     }
