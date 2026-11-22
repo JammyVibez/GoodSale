@@ -443,7 +443,7 @@ mod tests {
     #[test]
     fn route_allowlists_are_closed() {
         assert!(USER_RPCS.contains(&"rider_apply"));
-        assert!(ADMIN_RPCS.contains(&"mark_refund_completed"));
+        assert!(INTERNAL_RPCS.contains(&"mark_refund_completed"));
         assert!(PUBLIC_RPCS.contains(&"shipment_tracking_lookup"));
         assert!(!USER_RPCS.contains(&"delete_everything"));
     }
