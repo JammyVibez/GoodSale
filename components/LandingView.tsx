@@ -564,10 +564,10 @@ export default function LandingView({
         <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
           <div className="grid gap-2.5 lg:grid-cols-[1.7fr_1fr]">
             {/* rotating banner */}
-            <div className="relative flex min-h-[218px] items-center overflow-hidden rounded-[1.75rem] px-5 py-6 text-white shadow-[0_24px_56px_-36px_rgba(6,37,31,0.72)] gs-hero-panel sm:min-h-[250px] sm:px-7 sm:py-7">
+            <div className="relative flex min-h-[236px] items-center overflow-hidden rounded-[2rem] border border-white/10 px-5 py-6 text-white shadow-[0_30px_72px_-40px_rgba(6,37,31,0.82)] gs-hero-panel sm:min-h-[270px] sm:px-8 sm:py-8">
               <div aria-hidden className="pointer-events-none absolute -left-10 -top-16 h-48 w-48 rounded-full bg-jade-500/25 blur-3xl" />
               <div aria-hidden className="pointer-events-none absolute -bottom-24 right-0 h-56 w-56 rounded-full bg-gold-400/10 blur-3xl" />
-              <div className="relative z-10 max-w-md">
+              <div className="relative z-10 max-w-[54%] sm:max-w-md">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-gold-300 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-ink-950">
                   <Flame className="h-3 w-3" aria-hidden="true" />
                   {slide.eyebrow}
@@ -615,13 +615,13 @@ export default function LandingView({
               </div>
 
               {heroImages.length > 0 && (
-                <div className="relative ml-auto hidden items-center gap-2 sm:flex">
+                <div className="relative ml-auto flex items-center gap-1.5 sm:gap-2">
                   {heroImages.map((product) => (
                     <button
                       key={product.id}
                       type="button"
                       onClick={() => onSelectProduct(product.id)}
-                      className="relative h-32 w-28 overflow-hidden rounded-2xl shadow-xl sm:h-36 sm:w-32 border border-white/15 bg-white/5 shadow-lg transition-transform hover:-translate-y-0.5 focus-ring lg:h-32 lg:w-28"
+                      className="gs-hero-product relative h-24 w-[4.5rem] overflow-hidden rounded-xl border border-white/20 bg-white/5 shadow-2xl transition-transform hover:-translate-y-1 focus-ring sm:h-36 sm:w-32 sm:rounded-2xl lg:h-32 lg:w-28"
                       aria-label={`View ${product.title}`}
                     >
                       <SmartImage
@@ -805,9 +805,9 @@ export default function LandingView({
               variant="jade"
               headerExtra={
                 flashEndsAt ? (
-                  <span className="hidden items-center gap-1.5 text-[10px] font-semibold text-jade-100/70 sm:inline-flex">
+                  <span className="inline-flex shrink-0 items-center gap-1.5 text-[10px] font-semibold text-jade-100/75">
                     <Clock className="h-3 w-3" aria-hidden="true" />
-                    Ends {new Date(flashEndsAt).toLocaleString('en-NG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    <Countdown hours={countdown.hours} minutes={countdown.minutes} seconds={countdown.seconds} tone="dark" />
                   </span>
                 ) : null
               }
@@ -928,7 +928,7 @@ export default function LandingView({
               </Link>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 xl:grid-cols-8">
+            <div className="grid grid-cols-6 gap-1.5 sm:gap-2 xl:grid-cols-8">
               {categories.slice(0, 8).map((category) => {
                 const { label, Icon } = categoryMeta(category.name);
                 return (
@@ -939,9 +939,9 @@ export default function LandingView({
                       setSelectedCategory(category.name);
                       scrollToId('catalog-section');
                     }}
-                    className="group relative flex h-[74px] flex-col items-center justify-center gap-1 overflow-hidden rounded-xl border border-ink-150 bg-white p-1.5 text-center transition-colors hover:border-jade-500/45 hover:bg-jade-50/40 dark:border-ink-800 dark:bg-ink-900 dark:hover:bg-ink-800/70 focus-ring"
+                    className="gs-category-tile group relative flex min-h-[80px] flex-col items-center justify-center gap-1 overflow-hidden rounded-[1.2rem] border border-ink-150 bg-white p-1.5 text-center transition-all hover:border-jade-500/45 hover:bg-jade-50/40 dark:border-ink-800 dark:bg-ink-900 dark:hover:bg-ink-800/70 focus-ring"
                   >
-                    <span className="grid h-8 w-8 place-items-center rounded-full bg-jade-500/10 text-jade-700 dark:bg-jade-400/10 dark:text-jade-300">
+                    <span className="grid h-8 w-8 place-items-center rounded-xl bg-jade-500/10 text-jade-700 dark:bg-jade-400/10 dark:text-jade-300">
                       <Icon className="h-4 w-4" aria-hidden="true" />
                     </span>
                     <span className="line-clamp-2 text-[10px] font-bold leading-tight text-ink-800 dark:text-ink-100">

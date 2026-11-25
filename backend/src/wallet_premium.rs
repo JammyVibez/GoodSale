@@ -900,3 +900,275 @@ pub async fn initialize_premium(
     )
         .into_response()
 }
+
+async fn select_rows(
+    state: &AppState,
+    table: &str,
+    query: &[(String, String)],
+) -> Result<Vec<Value>, StatusCode> {
+    let base = state
+        .settings
+        .supabase_url
+        .as_ref()
+        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+    let key = state
+        .settings
+        .supabase_service_role_key
+        .as_ref()
+        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+    let params = query
+        .iter()
+        .map(|(name, value)| (name.as_str(), value.as_str()))
+        .collect::<Vec<_>>();
+    let response = state
+        .http
+        .get(format!("{}/rest/v1/{table}", base.trim_end_matches('/')))
+        .header("apikey", key)
+        .bearer_auth(key)
+        .query(&params)
+        .send()
+        .await
+        .map_err(|_| StatusCode::BAD_GATEWAY)?;
+    if !response.status().is_success() {
+        tracing::warn!(table, status = %response.status(), "Wallet or membership lookup failed");
+        return Err(StatusCode::BAD_GATEWAY);
+    }
+    response
+        .json::<Vec<Value>>()
+        .await
+        .map_err(|_| StatusCode::BAD_GATEWAY)
+}
+
+fn provider_config() -> Value {
+    let secret = std::env::var("PAYSTACK_SECRET_KEY")
+        .ok()
+        .is_some_and(|v| !v.trim().is_empty());
+    let public = std::env::var("NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY")
+        .ok()
+        .is_some_and(|v| !v.trim().is_empty());
+    let webhook = std::env::var("PAYSTACK_WEBHOOK_SECRET")
+        .ok()
+        .is_some_and(|v| !v.trim().is_empty())
+        || secret;
+    json!({
+        "provider": "paystack",
+        "fundingEnabled": secret && public,
+        "payoutsEnabled": secret,
+        "webhookConfigured": webhook
+    })
+}
+
+fn row_number(row: &Value, key: &str, fallback: f64) -> f64 {
+    row.get(key)
+        .and_then(|v| {
+            v.as_f64()
+                .or_else(|| v.as_i64().map(|n| n as f64))
+                .or_else(|| v.as_str().and_then(|s| s.parse::<f64>().ok()))
+        })
+        .unwrap_or(fallback)
+}
+
+fn row_date(row: &Value, primary: &str, fallback: &str) -> Value {
+    row.get(primary)
+        .filter(|v| !v.is_null())
+        .or_else(|| row.get(fallback))
+        .cloned()
+        .unwrap_or(Value::Null)
+}
+
+pub async fn wallet_status(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    let auth_id = match auth_user_id(&state, &headers).await {
+        Ok(id) => id,
+        Err(code) => return fail(code, "Sign in to view your wallet."),
+    };
+    let profile = match profile_id(&state, &auth_id).await {
+        Ok(id) => id,
+        Err(code) => return fail(code, "Your marketplace profile could not be found."),
+    };
+    let settings = select_rows(&state, "wallet_settings", &[
+        ("select".into(), "funding_min,funding_max,withdrawal_min,withdrawal_max,withdrawal_fee,daily_withdrawal_limit".into()),
+        ("id".into(), "eq.1".into()),
+        ("limit".into(), "1".into()),
+    ]).await.unwrap_or_default();
+    let funding = select_rows(
+        &state,
+        "wallet_funding_intents",
+        &[
+            (
+                "select".into(),
+                "id,reference,amount,status,provider_reference,created_at,completed_at".into(),
+            ),
+            ("user_id".into(), format!("eq.{profile}")),
+            ("order".into(), "created_at.desc".into()),
+            ("limit".into(), "20".into()),
+        ],
+    )
+    .await
+    .unwrap_or_default();
+    let limits = settings.first().unwrap_or(&Value::Null);
+    let provider = provider_config();
+    let funding_available = provider
+        .get("fundingEnabled")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let payouts_available = provider
+        .get("payoutsEnabled")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    (
+        StatusCode::OK,
+        Json(json!({
+            "success": true,
+            "currency": "NGN",
+            "provider": provider,
+            "fundingAvailable": funding_available,
+            "payoutsAvailable": payouts_available,
+            "limits": {
+                "funding_min": row_number(limits, "funding_min", 100.0),
+                "funding_max": row_number(limits, "funding_max", 500000.0),
+                "withdrawal_min": row_number(limits, "withdrawal_min", 1000.0),
+                "withdrawal_max": row_number(limits, "withdrawal_max", 1000000.0),
+                "withdrawal_fee": row_number(limits, "withdrawal_fee", 0.0),
+                "daily_withdrawal_limit": row_number(limits, "daily_withdrawal_limit", 1000000.0)
+            },
+            "funding": funding,
+            "source": "server"
+        })),
+    )
+        .into_response()
+}
+
+pub async fn premium_subscriptions(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    let auth_id = match auth_user_id(&state, &headers).await {
+        Ok(id) => id,
+        Err(code) => return fail(code, "Sign in to view your membership."),
+    };
+    let profile = match profile_id(&state, &auth_id).await {
+        Ok(id) => id,
+        Err(code) => return fail(code, "Your marketplace profile could not be found."),
+    };
+    let filter = format!("eq.{profile}");
+    let business = select_rows(
+        &state,
+        "business_subscriptions",
+        &[
+            ("select".into(), "*".into()),
+            ("user_id".into(), filter.clone()),
+            ("order".into(), "expires_at.desc".into()),
+            ("limit".into(), "10".into()),
+        ],
+    )
+    .await;
+    let verified = select_rows(
+        &state,
+        "verified_plus_subscriptions",
+        &[
+            ("select".into(), "*".into()),
+            ("user_id".into(), filter.clone()),
+            ("order".into(), "expires_at.desc".into()),
+            ("limit".into(), "10".into()),
+        ],
+    )
+    .await;
+    let payments = select_rows(&state, "premium_subscription_payments", &[
+        ("select".into(), "reference,product,plan_code,amount,currency,status,starts_at,expires_at,created_at,paid_at".into()),
+        ("user_id".into(), filter), ("order".into(), "created_at.desc".into()),
+        ("limit".into(), "20".into()),
+    ]).await;
+    let schema_ready = business.is_ok() && verified.is_ok() && payments.is_ok();
+    let business_rows = business.unwrap_or_default();
+    let verified_rows = verified.unwrap_or_default();
+    let payment_rows = payments.unwrap_or_default();
+    let business_subscriptions = business_rows
+        .iter()
+        .map(|row| {
+            json!({
+                "id": row.get("id"),
+                "plan": row.get("plan").and_then(Value::as_str).unwrap_or("FREE"),
+                "startsAt": row_date(row, "starts_at", "created_at"),
+                "expiresAt": row.get("expires_at"),
+                "status": row.get("status").and_then(Value::as_str).unwrap_or("ACTIVE"),
+                "autoRenew": row.get("auto_renew").and_then(Value::as_bool).unwrap_or(false),
+                "cancelledAt": row.get("cancelled_at").filter(|v| !v.is_null())
+            })
+        })
+        .collect::<Vec<_>>();
+    let verified_subscriptions = verified_rows
+        .iter()
+        .map(|row| {
+            json!({
+                "id": row.get("id"),
+                "startsAt": row_date(row, "starts_at", "created_at"),
+                "expiresAt": row.get("expires_at"),
+                "status": row.get("status").and_then(Value::as_str).unwrap_or("ACTIVE"),
+                "autoRenew": row.get("auto_renew").and_then(Value::as_bool).unwrap_or(false),
+                "cancelledAt": row.get("cancelled_at").filter(|v| !v.is_null())
+            })
+        })
+        .collect::<Vec<_>>();
+    let history = payment_rows
+        .iter()
+        .map(|row| {
+            json!({
+                "reference": row.get("reference").and_then(Value::as_str).unwrap_or_default(),
+                "product": row.get("product").and_then(Value::as_str).unwrap_or_default(),
+                "planCode": row.get("plan_code").and_then(Value::as_str).unwrap_or_default(),
+                "amount": row_number(row, "amount", 0.0),
+                "currency": row.get("currency").and_then(Value::as_str).unwrap_or("NGN"),
+                "status": row.get("status").and_then(Value::as_str).unwrap_or_default(),
+                "startsAt": row.get("starts_at").filter(|v| !v.is_null()),
+                "expiresAt": row.get("expires_at").filter(|v| !v.is_null()),
+                "createdAt": row.get("created_at"),
+                "paidAt": row.get("paid_at").filter(|v| !v.is_null())
+            })
+        })
+        .collect::<Vec<_>>();
+    (
+        StatusCode::OK,
+        Json(json!({
+            "success": true,
+            "provider": provider_config(),
+            "businessSubscriptions": business_subscriptions,
+            "verifiedPlusSubscriptions": verified_subscriptions,
+            "payments": history,
+            "schemaReady": schema_ready
+        })),
+    )
+        .into_response()
+}
+
+pub async fn premium_benefits(State(state): State<AppState>) -> Response {
+    let rows = select_rows(
+        &state,
+        "membership_plan_benefits",
+        &[
+            (
+                "select".into(),
+                "id,plan_code,label,description,included,sort_order,active".into(),
+            ),
+            ("active".into(), "eq.true".into()),
+            ("order".into(), "plan_code.asc,sort_order.asc".into()),
+        ],
+    )
+    .await
+    .unwrap_or_default();
+    let benefits = rows
+        .iter()
+        .map(|row| {
+            json!({
+                "id": row.get("id"),
+                "planCode": row.get("plan_code"),
+                "label": row.get("label"),
+                "description": row.get("description"),
+                "included": row.get("included").and_then(Value::as_bool).unwrap_or(false),
+                "sortOrder": row.get("sort_order"),
+                "active": row.get("active").and_then(Value::as_bool).unwrap_or(false)
+            })
+        })
+        .collect::<Vec<_>>();
+    (
+        StatusCode::OK,
+        Json(json!({ "success": true, "benefits": benefits })),
+    )
+        .into_response()
+}

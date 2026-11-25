@@ -1,11 +1,14 @@
 mod account;
+mod ads;
 mod config;
 mod payments;
+mod payouts;
 mod rate_limit;
 mod rpc;
 mod security;
 mod uploads;
 mod wallet_premium;
+mod webhook;
 
 use axum::{
     body::Body,
@@ -87,6 +90,8 @@ async fn request_guard(
             (30, "upload")
         } else if path == "/v1/payments/verify" {
             (20, "payment-verify")
+        } else if path == "/v1/payments/webhook" {
+            (90, "paystack-webhook")
         } else if path.starts_with("/v1/security/") {
             (45, "security")
         } else {
@@ -340,6 +345,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let app = Router::new()
         .route("/health/live", get(live))
+        .route("/v1/ads/serve", get(ads::serve))
         .route("/health/ready", get(ready))
         .route(
             "/internal/rate-limit",
@@ -359,12 +365,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .layer(DefaultBodyLimit::max(32 * 1024)),
         )
         .route(
+            "/v1/admin/withdrawals/review",
+            post(payouts::review).layer(DefaultBodyLimit::max(32 * 1024)),
+        )
+        .route(
             "/v1/payments/verify",
             post(payments::verify).layer(DefaultBodyLimit::max(32 * 1024)),
         )
         .route(
+            "/v1/payments/webhook",
+            post(webhook::receive).layer(DefaultBodyLimit::max(256 * 1024)),
+        )
+        .route(
             "/v1/rpc/:name",
             post(rpc::user_rpc).layer(DefaultBodyLimit::max(256 * 1024)),
+        )
+        .route("/v1/wallet/status", get(wallet_premium::wallet_status))
+        .route(
+            "/v1/premium/subscriptions",
+            get(wallet_premium::premium_subscriptions),
+        )
+        .route(
+            "/v1/public/premium-benefits",
+            get(wallet_premium::premium_benefits),
         )
         .route(
             "/v1/wallet/fund/initialize",
@@ -403,6 +426,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             post(uploads::upload).layer(DefaultBodyLimit::max(27 * 1024 * 1024)),
         )
         .with_state(state.clone())
+        // Bound JSON and RPC payloads by default; uploads keep their explicit 27 MiB route limit.
+        .layer(DefaultBodyLimit::max(1024 * 1024))
         .layer(cors)
         .layer(middleware::from_fn_with_state(state, request_guard));
 

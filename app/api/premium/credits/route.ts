@@ -1,4 +1,4 @@
-import { callRustRpc } from '@/lib/server/rust-rpc';
+import { callRustInternalRpc } from '@/lib/server/rust-rpc';
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -21,7 +21,9 @@ export async function GET() {
     if (!profileId) return NextResponse.json({ success: false, error: 'Profile not found' }, { status: 404 });
 
     const [balanceResult, lotsResult, ledgerResult] = await Promise.all([
-      admin.rpc('premium_credit_balance', { p_user_id: profileId }),
+      process.env.RUST_BACKEND_URL
+        ? callRustInternalRpc('premium_credit_balance', { p_user_id: profileId })
+        : admin.rpc('premium_credit_balance', { p_user_id: profileId }),
       admin
         .from('premium_credit_lots')
         .select('id,amount,remaining,source,reference,expires_at,created_at')

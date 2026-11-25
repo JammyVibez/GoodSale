@@ -1,4 +1,4 @@
-import { callRustRpc } from '@/lib/server/rust-rpc';
+import { callRustRpc, callRustAdminRpc } from '@/lib/server/rust-rpc';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { logger, publicErrorMessage } from '@/lib/logger';
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
       if (rescheduleDate && !/^\d{4}-\d{2}-\d{2}$/.test(rescheduleDate)) {
         return NextResponse.json({ success: false, error: 'Reschedule date must use YYYY-MM-DD' }, { status: 400 });
       }
-      const { data, error } = await callRustRpc(supabase, 'admin_resolve_delivery_failure', {
+      const { data, error } = await callRustAdminRpc(supabase, 'admin_resolve_delivery_failure', {
         p_failure_id: failureId,
         p_resolution: resolution,
         p_note: body?.note ? String(body.note).trim().slice(0, 1000) : '',
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
       if (!Number.isFinite(returnId) || !['INITIATED', 'IN_TRANSIT', 'RECEIVED', 'CANCELLED'].includes(status)) {
         return NextResponse.json({ success: false, error: 'A valid return and status are required' }, { status: 400 });
       }
-      const { data, error } = await callRustRpc(supabase, 'admin_update_delivery_return', {
+      const { data, error } = await callRustAdminRpc(supabase, 'admin_update_delivery_return', {
         p_return_id: returnId,
         p_status: status,
         p_note: body?.note ? String(body.note).trim().slice(0, 1000) : '',

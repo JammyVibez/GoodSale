@@ -6,13 +6,16 @@ publish = false
 
 [dependencies]
 axum = { version = "0.7.9", features = ["multipart"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 dotenvy = "0.15.7"
 hex = "0.4.3"
+hmac = "0.12.1"
 redis = { version = "0.27.6", features = ["tokio-comp", "connection-manager"] }
 reqwest = { version = "0.12.12", default-features = false, features = ["json", "multipart", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha1 = "0.10.6"
+sha2 = "0.10.8"
 subtle = "2.6"
 thiserror = "2.0"
 tokio = { version = "1.43", features = ["macros", "rt-multi-thread", "net", "signal"] }

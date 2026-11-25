@@ -1,4 +1,4 @@
-import { callRustAdminRpc } from '@/lib/server/rust-rpc';
+import { callRustAdminRpc, callRustInternalRpc } from '@/lib/server/rust-rpc';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -74,12 +74,19 @@ export async function POST(req: NextRequest) {
               reason: notes || 'Dispute refund',
             });
             if ((paystackRefund as { success?: boolean })?.success) {
-              await admin.rpc('mark_refund_completed', {
+              await (process.env.RUST_BACKEND_URL
+                ? callRustInternalRpc('mark_refund_completed', {
                 p_refund_id: refundId,
                 p_provider_reference:
                   (paystackRefund as { data?: { transaction_reference?: string } })?.data
                     ?.transaction_reference || tx.transaction_id,
-              });
+                })
+                : admin.rpc('mark_refund_completed', {
+                    p_refund_id: refundId,
+                    p_provider_reference:
+                      (paystackRefund as { data?: { transaction_reference?: string } })?.data
+                        ?.transaction_reference || tx.transaction_id,
+                  }));
             }
           } else {
             // No verifiable Paystack transaction on record — leave the refund PENDING

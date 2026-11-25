@@ -23,11 +23,9 @@ const USER_RPCS: &[&str] = &[
     "delivery_tracking_view",
     "delivery_transition",
     "evaluate_my_referral",
-    "generate_referral_code",
     "mark_order_paid_by_reference",
     "open_dispute",
     "pay_order_with_wallet",
-    "premium_credit_balance",
     "rider_accept_delivery",
     "rider_apply",
     "rider_available_deliveries",
@@ -43,10 +41,6 @@ const USER_RPCS: &[&str] = &[
     "seller_public_verification",
     "set_own_role",
     "update_order_status",
-    "purchase_sponsored_campaign_v2",
-    "record_sponsored_ad_event_v2",
-    "purchase_featured_promotion",
-    "purchase_flash_sale",
     "list_my_buyer_addresses",
     "save_my_buyer_address",
     "delete_my_buyer_address",
@@ -63,10 +57,18 @@ const USER_RPCS: &[&str] = &[
     "remove_my_business_staff",
     "get_my_business_staff_overview",
     "bulk_update_my_inventory",
+    "ensure_my_referral_code",
+    "seller_attach_verification_document",
+    "seller_withdraw_verification",
+    "seller_save_verification",
 ];
 const ADMIN_RPCS: &[&str] = &[
     "admin_auto_assign_delivery",
     "admin_delivery_analytics",
+    "admin_finance_summary",
+    "admin_adjust_wallet",
+    "admin_update_wallet_settings",
+    "admin_refund_to_wallet",
     "admin_force_escrow",
     "admin_manual_courier_update",
     "admin_payout_begin",
@@ -74,11 +76,8 @@ const ADMIN_RPCS: &[&str] = &[
     "admin_payout_fail",
     "admin_payout_processing",
     "admin_record_courier_shipment",
-    "courier_apply_tracking_event",
     "admin_resolve_delivery_failure",
     "admin_review_rider",
-    "admin_review_sponsored_campaign",
-    "admin_review_flash_sale",
     "admin_set_delivery_settings",
     "admin_set_rider_service_areas",
     "admin_set_rider_commission",
@@ -89,14 +88,8 @@ const ADMIN_RPCS: &[&str] = &[
     "admin_referral_analytics",
     "admin_disqualify_referral",
     "admin_mark_referral_reviewed",
-    "issue_premium_credits",
-    "mark_refund_completed",
-    "referral_evaluate",
-    "run_premium_jobs",
     "expire_rider_assignments",
     "resolve_dispute",
-    "admin_list_buyer_protection_claims",
-    "admin_review_buyer_protection_claim",
 ];
 const PUBLIC_RPCS: &[&str] = &["seller_public_verification", "shipment_tracking_lookup"];
 const INTERNAL_RPCS: &[&str] = &[
@@ -109,6 +102,19 @@ const INTERNAL_RPCS: &[&str] = &[
     "wallet_funding_event",
     "premium_activation_event",
     "order_payment_event",
+    "run_verification_expiry",
+    "purchase_featured_promotion",
+    "purchase_flash_sale",
+    "purchase_sponsored_campaign_v2",
+    "record_sponsored_ad_event_v2",
+    "premium_credit_balance",
+    "admin_review_buyer_protection_claim",
+    "admin_list_buyer_protection_claims",
+    "run_premium_jobs",
+    "referral_evaluate",
+    "issue_premium_credits",
+    "admin_review_flash_sale",
+    "admin_review_sponsored_campaign",
 ];
 const INTERNAL_JOBS: &[&str] = &[
     "run_delivery_jobs",
@@ -248,6 +254,17 @@ async fn admin_auth(s: &AppState, token: &str, name: &str) -> Result<(), StatusC
         Err(StatusCode::FORBIDDEN)
     }
 }
+pub async fn require_admin(state: &AppState, headers: &HeaderMap) -> Result<String, StatusCode> {
+    let token = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .filter(|v| !v.is_empty())
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+    admin_auth(state, token, "admin_payout_begin").await?;
+    Ok(token.to_owned())
+}
+
 pub async fn user_rpc(
     State(s): State<AppState>,
     Path(name): Path<String>,
@@ -301,7 +318,8 @@ pub async fn admin_rpc(
             "Admin database access is not configured.",
         );
     };
-    match invoke(&s, &name, &args, key, Some(key)).await {
+    // Keep the verified administrator identity in PostgREST so SQL auth.uid()/is_admin() checks remain active.
+    match invoke(&s, &name, &args, key, Some(token)).await {
         Ok(v) => v,
         Err(code) => fail(code, "Admin operation failed."),
     }
@@ -435,7 +453,20 @@ mod tests {
     #[test]
     fn route_allowlists_are_closed() {
         assert!(USER_RPCS.contains(&"rider_apply"));
-        assert!(ADMIN_RPCS.contains(&"mark_refund_completed"));
+        assert!(INTERNAL_RPCS.contains(&"mark_refund_completed"));
+        for name in [
+            "courier_apply_tracking_event",
+            "admin_review_sponsored_campaign",
+            "admin_review_flash_sale",
+            "issue_premium_credits",
+            "referral_evaluate",
+            "run_premium_jobs",
+            "admin_list_buyer_protection_claims",
+            "admin_review_buyer_protection_claim",
+        ] {
+            assert!(INTERNAL_RPCS.contains(&name));
+            assert!(!ADMIN_RPCS.contains(&name));
+        }
         assert!(PUBLIC_RPCS.contains(&"shipment_tracking_lookup"));
         assert!(!USER_RPCS.contains(&"delete_everything"));
     }

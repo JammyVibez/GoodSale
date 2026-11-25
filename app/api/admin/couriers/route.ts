@@ -1,4 +1,4 @@
-import { callRustAdminRpc } from '@/lib/server/rust-rpc';
+import { callRustAdminRpc, callRustInternalRpc } from '@/lib/server/rust-rpc';
 import { createHash } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
@@ -238,7 +238,7 @@ export async function POST(req: NextRequest) {
             ].join('|')
           )
           .digest('hex');
-        const { error } = await callRustAdminRpc(supabase, 'courier_apply_tracking_event', {
+        const args = {
           p_provider: shipmentRow.provider,
           p_event_id: eventId,
           p_tracking_number: shipmentRow.tracking_number,
@@ -249,7 +249,10 @@ export async function POST(req: NextRequest) {
           p_reason_code: 'OTHER',
           p_location: event.location || '',
           p_payload: event as unknown as Record<string, unknown>,
-        });
+        };
+        const { error } = process.env.RUST_BACKEND_URL
+          ? await callRustInternalRpc('courier_apply_tracking_event', args)
+          : await service.rpc('courier_apply_tracking_event', args);
         if (!error) applied += 1;
       }
 

@@ -99,8 +99,8 @@ export default function ProductRail({
     <section
       className={
         jade
-          ? 'relative overflow-hidden rounded-[1.5rem] bg-jade-950 p-4 text-white sm:p-5 dark:bg-ink-900'
-          : ''
+          ? 'gs-rail gs-rail-jade relative overflow-hidden rounded-[1.75rem] bg-jade-950 p-4 text-white sm:p-5 dark:bg-ink-900'
+          : 'gs-rail'
       }
       aria-label={label}
     >

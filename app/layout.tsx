@@ -5,6 +5,7 @@ import { organizationLd, websiteLd } from '@/lib/seo/structured';
 import NetworkStatus from '@/components/ui/NetworkStatus';
 import FeedbackHost from '@/components/ui/FeedbackHost';
 import ServiceWorkerRegistrar from '@/components/pwa/ServiceWorkerRegistrar';
+import ThemeController from '@/components/ThemeController';
 
 // Fonts are linked at runtime rather than fetched at build time. `next/font/google`
 // needs network access to a font CDN while bundling, which fails the build (and
@@ -112,6 +113,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <NetworkStatus />
         <FeedbackHost />
         <ServiceWorkerRegistrar />
+        <ThemeController />
       </body>
     </html>
   );

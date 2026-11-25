@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { callRustAdminRpc } from '@/lib/server/rust-rpc';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { logger, publicErrorMessage } from '@/lib/logger';
 import { rateLimit, clientIpFromRequest } from '@/lib/rate-limit';
@@ -37,7 +38,7 @@ export async function GET(req: NextRequest) {
     const safeSearch = search.replace(/[^a-zA-Z0-9_.@-]/g, '');
 
     const [summary, settings, wallets, withdrawals, refunds, ledger, audit, funding] = await Promise.all([
-      supabase.rpc('admin_finance_summary'),
+      callRustAdminRpc<Record<string, unknown>>(supabase, 'admin_finance_summary'),
       loadWalletSettings(admin),
       admin
         .from('wallets')
@@ -144,7 +145,7 @@ export async function POST(req: NextRequest) {
       if (reason.length < 10) {
         return NextResponse.json({ success: false, error: 'An adjustment reason of at least 10 characters is required' }, { status: 400 });
       }
-      const { data, error } = await supabase.rpc('admin_adjust_wallet', {
+      const { data, error } = await callRustAdminRpc(supabase, 'admin_adjust_wallet', {
         p_user_id: userId,
         p_amount: amount,
         p_reason: reason,
@@ -166,7 +167,7 @@ export async function POST(req: NextRequest) {
       if (Object.values(values).some((value) => !Number.isFinite(value) || value < 0)) {
         return NextResponse.json({ success: false, error: 'Enter valid non-negative limits' }, { status: 400 });
       }
-      const { error } = await supabase.rpc('admin_update_wallet_settings', {
+      const { error } = await callRustAdminRpc(supabase, 'admin_update_wallet_settings', {
         p_funding_min: values.fundingMin,
         p_funding_max: values.fundingMax,
         p_withdrawal_min: values.withdrawalMin,
@@ -201,7 +202,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: verified.error || 'Could not verify transfer' }, { status: 400 });
       }
       if (verified.status === 'success') {
-        const { error } = await supabase.rpc('admin_payout_complete', {
+        const { error } = await callRustAdminRpc(supabase, 'admin_payout_complete', {
           p_withdrawal_id: withdrawalId,
           p_provider_reference: verified.reference,
         });
@@ -209,7 +210,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: true, status: 'SUCCESS', providerConfirmed: true });
       }
       if (['failed', 'reversed', 'abandoned'].includes(verified.status)) {
-        const { error } = await supabase.rpc('admin_payout_fail', {
+        const { error } = await callRustAdminRpc(supabase, 'admin_payout_fail', {
           p_withdrawal_id: withdrawalId,
           p_reason: `Paystack transfer status: ${verified.status}`,
         });
@@ -230,7 +231,7 @@ export async function POST(req: NextRequest) {
       if (!Number.isInteger(withdrawalId) || withdrawalId <= 0 || !reason) {
         return NextResponse.json({ success: false, error: 'Withdrawal and reason required' }, { status: 400 });
       }
-      const { error } = await supabase.rpc('admin_payout_fail', {
+      const { error } = await callRustAdminRpc(supabase, 'admin_payout_fail', {
         p_withdrawal_id: withdrawalId,
         p_reason: reason,
       });
@@ -244,7 +245,7 @@ export async function POST(req: NextRequest) {
       if (!Number.isInteger(refundId) || refundId <= 0 || reason.length < 5) {
         return NextResponse.json({ success: false, error: 'Refund and reason required' }, { status: 400 });
       }
-      const { data, error } = await supabase.rpc('admin_refund_to_wallet', {
+      const { data, error } = await callRustAdminRpc(supabase, 'admin_refund_to_wallet', {
         p_refund_id: refundId,
         p_reason: reason,
       });

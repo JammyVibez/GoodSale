@@ -8,6 +8,7 @@ The repository originally contained 84 Next.js API route handlers. This migratio
 
 - `POST /api/upload` remains the browser-facing compatibility route.
 - `POST /api/payments/verify` remains the browser-facing compatibility route and requires the signed-in buyer session.
+- `POST /api/payments/webhook` is a byte-preserving Next.js proxy; Rust verifies the Paystack HMAC-SHA512 signature and processes charge, wallet, premium, transfer and refund events. The raw body is never parsed or re-serialized before signature verification.
 - When `RUST_BACKEND_URL` is configured, the upload route forwards the authenticated multipart request to `POST /v1/uploads`.
 - The payment route forwards the verified Supabase access token and reference to `POST /v1/payments/verify`; Rust verifies the Paystack charge, checks that every referenced order belongs to the signed-in buyer, validates the amount/currency/order status, then calls the existing idempotent RPC.
 - The Rust service verifies the access token against Supabase Auth, enforces bucket policy and limits, verifies file signatures, and writes to Cloudinary or Supabase Storage.
@@ -24,6 +25,10 @@ The repository originally contained 84 Next.js API route handlers. This migratio
 | GET | `/health/ready` | Supabase and distributed-limiter readiness |
 | POST | `/v1/uploads` | Authenticated and validated media upload |
 | POST | `/v1/payments/verify` | Paystack order verification and buyer-bound reconciliation |
+| POST | `/v1/payments/webhook` | Raw-body Paystack signature verification and event reconciliation |
+| GET | `/v1/wallet/status` | Authenticated wallet limits, provider status and funding history |
+| GET | `/v1/premium/subscriptions` | Authenticated membership state and payment history |
+| GET | `/v1/public/premium-benefits` | Public membership plan benefit copy |
 | POST | `/internal/rate-limit` | Private Next.js-to-Rust Redis rate-limit decision (shared-secret protected) |
 | POST | `/v1/security/inspect-text` | Unicode/control-character validation for plain text |
 | POST | `/v1/security/validate-url` | HTTP(S) URL validation for displayed links |
@@ -80,7 +85,7 @@ Port one domain at a time and preserve the exact JSON/status contracts used by t
 
 1. Auth, sessions, profiles and account lifecycle.
 2. Listings, catalogue, search, seller tools, reviews and inventory.
-3. Checkout, Paystack webhooks, wallet, payouts and refunds (order verification is already on Rust).
+3. Checkout, wallet, payouts and refunds (order verification and Paystack webhook processing are on Rust; the Next.js webhook route is only a raw-body proxy).
 4. Orders, buyer protection, disputes and claims.
 5. Delivery, courier webhooks, rider operations and tracking.
 6. Chat, notifications, support and realtime integration.

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { callRustRpc } from '@/lib/server/rust-rpc';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { logger, publicErrorMessage } from '@/lib/logger';
 import {
@@ -43,13 +44,9 @@ export async function GET(req: NextRequest) {
 
     let code = String(profile.referral_code || '').trim();
     if (!code) {
-      const { data: generated } = await admin.rpc('generate_referral_code', {
-        p_name: String(profile.full_name || ''),
-        p_username: String(profile.username || ''),
-      });
+      const { data: generated } = await callRustRpc<string>(supabase, 'ensure_my_referral_code');
       if (generated) {
         code = String(generated);
-        await admin.from('profiles').update({ referral_code: code }).eq('id', profileId);
       }
     }
 

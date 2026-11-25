@@ -1,4 +1,4 @@
-import { callRustRpc } from '@/lib/server/rust-rpc';
+import { callRustInternalRpc } from '@/lib/server/rust-rpc';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -62,12 +62,15 @@ export async function POST(req: NextRequest) {
 
     let result;
     if (featureType === 'FEATURED') {
-      result = await admin.rpc('purchase_featured_promotion', {
+      const args = {
         p_user_id: profileId,
         p_product_id: productId,
         p_duration_days: Number.isInteger(durationDays) ? durationDays : 7,
         p_use_credits: useCredits,
-      });
+      };
+      result = process.env.RUST_BACKEND_URL
+        ? await callRustInternalRpc('purchase_featured_promotion', args)
+        : await admin.rpc('purchase_featured_promotion', args);
     } else {
       const salePrice = Number(body.salePrice);
       const startsAt = body.startsAt ? new Date(String(body.startsAt)) : null;
@@ -82,14 +85,17 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: 'Flash Sale quantity must be a positive whole number' }, { status: 400 });
       }
 
-      result = await admin.rpc('purchase_flash_sale', {
+      const args = {
         p_user_id: profileId,
         p_product_id: productId,
         p_sale_price: Math.round(salePrice),
         p_starts_at: startsAt ? startsAt.toISOString() : null,
         p_quantity_limit: quantityLimit,
         p_use_credits: useCredits,
-      });
+      };
+      result = process.env.RUST_BACKEND_URL
+        ? await callRustInternalRpc('purchase_flash_sale', args)
+        : await admin.rpc('purchase_flash_sale', args);
     }
 
     if (result.error) {

@@ -18,6 +18,23 @@ export async function GET() {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
+    const rustBackend = process.env.RUST_BACKEND_URL?.trim().replace(/\/+$/, '');
+    if (rustBackend) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      }
+      const upstream = await fetch(`${rustBackend}/v1/premium/subscriptions`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        cache: 'no-store',
+      });
+      const payload = await upstream.json().catch(() => ({
+        success: false,
+        error: 'Membership service returned an invalid response',
+      }));
+      return NextResponse.json(payload, { status: upstream.status });
+    }
+
     const admin = createAdminClient();
     if (!admin) {
       return NextResponse.json({ success: false, error: 'Premium service is not configured' }, { status: 503 });

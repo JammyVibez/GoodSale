@@ -26,7 +26,8 @@ Fill in at minimum:
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Project Settings → API → `anon` `public` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Project Settings → API → `service_role` (server only) |
 | `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` | Paystack Dashboard → Settings → API Keys |
-| `PAYSTACK_SECRET_KEY` | Paystack secret key |
+| `PAYSTACK_SECRET_KEY` | Paystack secret key (server only) |
+| `PAYSTACK_WEBHOOK_SECRET` | Dedicated webhook HMAC secret; falls back to `PAYSTACK_SECRET_KEY` when omitted |
 | `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` locally |
 | `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` + `CLOUDINARY_API_KEY` + `CLOUDINARY_API_SECRET` | Cloudinary dashboard → Settings → API Keys (optional, see below) |
 
@@ -213,6 +214,6 @@ npm run backend:test
 npm run backend:check
 ```
 
-Shared API rate limiting is handled by Supabase Postgres (`check_rate_limit` RPC, migration 042), so no Redis or Rust service is needed. The Compose stack below is optional and only for the legacy Rust helpers.
+Next.js API rate limiting uses Supabase Postgres (`check_rate_limit`, migration 042). The Rust API remains enabled in this fork for signed Paystack webhooks, payment verification and media uploads; Docker Compose also runs its private Redis limiter for Rust endpoints.
 
-**Migration status:** media uploads and Paystack order verification are routed to Rust when `RUST_BACKEND_URL` is configured. The rest of the current Next.js API handlers remain in place while their Supabase, checkout, escrow, payout, webhook, delivery and admin contracts are migrated and tested. This is deliberate: financial handlers must retain their idempotency, role checks and exact database RPC semantics.
+**Migration status:** media uploads, Paystack order verification and signed Paystack webhook processing are routed to Rust when `RUST_BACKEND_URL` is configured. The webhook route forwards the original request bytes unchanged. Other account, catalogue, wallet, escrow, dispute, delivery, courier, chat, notification, referral and admin route handlers remain on their existing Next.js/Supabase implementations until their Rust replacements pass contract, authorization, replay and financial-flow tests.

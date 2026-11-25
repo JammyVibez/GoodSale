@@ -123,10 +123,10 @@ export default function ProductTile({
   return (
     <article
       onClick={onSelect}
-      className={`group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-xl border border-ink-200/80 bg-white transition-[border-color,box-shadow,transform] duration-150 ease-glide hover:-translate-y-0.5 hover:border-jade-500/45 hover:shadow-[0_10px_24px_-18px_rgba(16,54,38,0.55)] motion-reduce:transform-none motion-reduce:transition-none dark:border-ink-800 dark:bg-ink-900 dark:hover:border-jade-400/40 gs-product-card ${className}`}
+      className={`group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-[1.4rem] border border-ink-200/80 bg-white transition-[border-color,box-shadow,transform] duration-300 ease-glide hover:-translate-y-1 hover:border-jade-500/45 motion-reduce:transform-none motion-reduce:transition-none dark:border-ink-800 dark:bg-ink-900 dark:hover:border-jade-400/40 gs-product-card ${className}`}
     >
       {/* ── media ── */}
-      <div className="relative aspect-square w-full overflow-hidden bg-ink-50 dark:bg-ink-950">
+      <div className="relative aspect-square w-full overflow-hidden bg-ink-50 dark:bg-ink-950 gs-product-media">
         <button
           type="button"
           onClick={(event) => {
